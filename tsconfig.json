@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [],
+  "comment": "Root config for tooling. Each package self-typechecks via its own tsconfig; `pnpm typecheck` fans out with `pnpm -r`."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@slideblaster/web-shell",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@slideblaster/adapters-browser": "workspace:*",
+    "@slideblaster/editor": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

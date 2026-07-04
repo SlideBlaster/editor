@@ -1,0 +1,5 @@
+# JS/TS workspaces. The two services/ (auth, collab) are Elixir/Phoenix and are
+# intentionally not pnpm packages; services/git-proxy may become a JS package when
+# that spike lands.
+packages:
+  - packages/*
