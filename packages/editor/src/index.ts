@@ -19,3 +19,5 @@ export {
 export type { InlineStyle } from './content/index'
 export { resolveLayout, anchor, findPlaced, naiveMeasurer } from './layout/index'
 export type { AnchorName, Measurer, MeasureInput } from './layout/index'
+export { renderContent } from './render/index'
+export type { RenderOptions } from './render/index'
