@@ -1,0 +1,7 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+# Vendored third-party sources are not ours to format.
+**/vendor/**
+# Golden fixtures are byte-significant; prettier must not touch them.
+**/fixtures/**

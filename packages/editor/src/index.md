@@ -1,6 +1,9 @@
 # @slideblaster/editor (public surface)
 
-The package entry point. Currently re-exports the port interfaces (`./ports`). The
-engine (AST, `fromMarkdown` / `toMarkdown`, TikZ subset parser, layout, renderer,
-edit ops, tri-dialect content) attaches here at M1, test-first against the format
-invariants.
+The package entry point. Re-exports the port interfaces (`./ports`) and the engine's
+**format spine**: the document model (`./model`), the markdown container round-trip
+(`fromMarkdown` / `toMarkdown`), and the TikZ picture parse/serialize
+(`parsePicture` / `serializePicture`).
+
+Still to attach at later M1 stages: the tri-dialect node-content grammar, layout,
+the HTML/SVG renderer, and edit ops.
