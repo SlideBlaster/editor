@@ -15,9 +15,14 @@ export function role(node: NodeStatement): 'title' | undefined {
   return styleClasses(node).includes('title') ? 'title' : undefined
 }
 
+/** Whether a raw option token is a relative placement (`below=0.7 of title`). */
+export function isPlacementToken(token: string): boolean {
+  return /^(above|below|left|right)\b.*=.*\bof\b/.test(token)
+}
+
 /** The first relative-placement token (`below=0.7 of title`), if any. */
 export function placementToken(node: NodeStatement): string | undefined {
-  return node.options.find((token) => /^(above|below|left|right)\b.*=.*\bof\b/.test(token))
+  return node.options.find(isPlacementToken)
 }
 
 /** Default gap (slide units) for a relative placement written without a distance. */
