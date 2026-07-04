@@ -5,9 +5,15 @@ export type {
   TikzPicture,
   Statement,
   NodeStatement,
-  NodeContent,
   PathStatement,
   CoordinateStatement,
   VerbatimStatement,
   Point,
 } from './tikz'
+export type {
+  NodeContent,
+  TextRun,
+  LatexCommand,
+  MarkdownMarker,
+  Dialect,
+} from './content'

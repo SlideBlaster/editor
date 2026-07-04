@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import fc from 'fast-check'
 import type { SlideDocument } from '../model/document'
 import type { NodeStatement } from '../model/tikz'
+import { parseContent } from '../content/parse'
 import { fromMarkdown } from '../markdown/fromMarkdown'
 import { toMarkdown } from '../markdown/toMarkdown'
 import { modelRoundTrips, textIsCanonical, identityPreserved, nodeNames } from './invariants'
@@ -35,6 +36,20 @@ const coord = fc.record({
   y: fc.constantFrom(0, 1, 2, 3, 4.5, 8, 9),
 })
 
+// Canonical node bodies drawn through the real parser, so every generated content
+// value is in the parser's image (round-trips by construction).
+const NODE_CONTENTS = [
+  '',
+  'plain text',
+  'hello world',
+  '$x^2$',
+  '\n- one\n- two\n',
+  'a b',
+  '**bold**',
+  '\\emph{y}',
+  '<i>z</i>',
+].map(parseContent)
+
 const nodeStmt = fc.record({
   kind: fc.constant('node' as const),
   name: fc.option(fc.constantFrom('a', 'b', 'c', 'title', 'intro', 'note', 'box'), {
@@ -45,13 +60,7 @@ const nodeStmt = fc.record({
     { maxLength: 3 },
   ),
   at: fc.option(coord, { nil: undefined }),
-  content: fc.oneof(
-    fc.constant({ kind: 'empty' as const }),
-    fc.record({
-      kind: fc.constant('raw' as const),
-      source: fc.constantFrom('text', 'hello world', '$x^2$', '\n- one\n- two\n', 'a\nb'),
-    }),
-  ),
+  content: fc.constantFrom(...NODE_CONTENTS),
 })
 
 const pathStmt = fc.record({

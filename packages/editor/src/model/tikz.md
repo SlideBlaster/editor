@@ -4,8 +4,8 @@ A slide picture is an ordered list of `Statement`s. Four kinds:
 
 - **node** — `\node[options] (name) at (x,y) {content}`. `name` is the stable
   identity; `options` are ordered raw tokens (the serialization truth); `at` is the
-  absolute position when present; `content` is the body (A2: `empty` or verbatim
-  `raw`; parsed in A3).
+  absolute position when present; `content` is the body, parsed into tri-dialect
+  `NodeContent` (see `./content`).
 - **path** — `\draw`/`\path`/`\fill`/`\filldraw`; action + options modeled, segment
   body verbatim.
 - **coordinate** — `\coordinate (name) at (x,y)`.

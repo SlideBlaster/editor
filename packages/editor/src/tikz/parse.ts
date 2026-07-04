@@ -7,12 +7,13 @@
  */
 import type {
   CoordinateStatement,
-  NodeContent,
   NodeStatement,
   PathStatement,
   Statement,
   TikzPicture,
 } from '../model/tikz'
+import type { NodeContent } from '../model/content'
+import { parseContent } from '../content/parse'
 import {
   parsePoint,
   readGroup,
@@ -66,7 +67,7 @@ function parseNode(chunk: string): NodeStatement {
       i = group.end
     } else if (c === '{') {
       const group = readGroup(chunk, i, '{', '}')
-      content = group.inner === '' ? { kind: 'empty' } : { kind: 'raw', source: group.inner }
+      content = parseContent(group.inner)
       i = group.end
       sawBody = true
       break

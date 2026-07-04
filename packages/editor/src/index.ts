@@ -8,3 +8,12 @@ export * from './ports/index'
 export * from './model/index'
 export { fromMarkdown, toMarkdown } from './markdown/index'
 export { parsePicture, serializePicture, styleClasses, role, placementToken } from './tikz/index'
+export {
+  parseContent,
+  serializeContent,
+  serializeRuns,
+  inlineStyleOf,
+  dialectOf,
+  OutOfSubsetError,
+} from './content/index'
+export type { InlineStyle } from './content/index'

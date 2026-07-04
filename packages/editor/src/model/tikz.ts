@@ -5,8 +5,10 @@
  * A2 scope: statement STRUCTURE is modeled (node identity, options, absolute
  * position, paths, coordinates); node bodies and T2 constructs are kept verbatim.
  * Option tokens and verbatim spans are the serialization truth (span-preserving
- * round-trip, tikz-subset.md).
+ * round-trip, tikz-subset.md). Node bodies parse into tri-dialect content (A3);
+ * see `./content`.
  */
+import type { NodeContent } from './content'
 
 export interface Point {
   x: number
@@ -33,12 +35,6 @@ export interface NodeStatement {
   at?: Point
   content: NodeContent
 }
-
-/**
- * A node body. A2 keeps it verbatim (`raw`) or recognizes an empty body; the
- * tri-dialect parse into text/list/etc. is A3.
- */
-export type NodeContent = { kind: 'empty' } | { kind: 'raw'; source: string }
 
 /**
  * `\draw`/`\path`/`\fill`/`\filldraw`. A2 models the action and options; the

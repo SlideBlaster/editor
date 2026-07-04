@@ -24,7 +24,11 @@ describe('parsePicture', () => {
     const intro = pic.statements[1] as NodeStatement
     expect(intro.name).toBe('intro')
     expect(intro.options).toEqual(['body', 'below=0.7 of title', 'text width=12'])
-    expect(intro.content).toEqual({ kind: 'raw', source: '\n- point one\n- point two\n' })
+    // A markdown list is A3b; in A3a it stays literal text (round-trips either way).
+    expect(intro.content).toEqual({
+      kind: 'text',
+      runs: [{ kind: 'text', value: '\n- point one\n- point two\n' }],
+    })
 
     const o2 = pic.statements[2] as NodeStatement
     expect(o2.at).toEqual({ x: 10, y: 3 })

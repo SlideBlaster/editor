@@ -4,7 +4,7 @@
 (`splitStatements`) and classify each.
 
 - **node** — reads `[options]`, `(name)`, an `at (x,y)` clause, and a `{body}` in
-  any order; body becomes `empty` or verbatim `raw`.
+  any order; the body is handed to `../content/parse` (tri-dialect `NodeContent`).
 - **coordinate** — `\coordinate (name) at (x,y)`.
 - **path** — `\draw`/`\filldraw`/`\fill`/`\path`; action + `[options]` modeled, the
   rest verbatim.

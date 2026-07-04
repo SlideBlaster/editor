@@ -5,7 +5,8 @@
  * terminated by ';'. Modeled statements regenerate canonically; verbatim spans are
  * emitted untouched (span-preserving splice). Deterministic — one model, one text.
  */
-import type { NodeContent, NodeStatement, Statement, TikzPicture } from '../model/tikz'
+import type { NodeStatement, Statement, TikzPicture } from '../model/tikz'
+import { serializeContent } from '../content/serialize'
 import { formatNumber } from '../text/scanner'
 
 export function serializePicture(picture: TikzPicture): string {
@@ -30,12 +31,8 @@ function serializeNode(node: NodeStatement): string {
   out += options(node.options)
   if (node.name !== undefined) out += ` (${node.name})`
   if (node.at !== undefined) out += ` at (${point(node.at)})`
-  out += ` ${body(node.content)}`
+  out += ` ${serializeContent(node.content)}`
   return out
-}
-
-function body(content: NodeContent): string {
-  return content.kind === 'empty' ? '{}' : `{${content.source}}`
 }
 
 function options(tokens: string[]): string {
