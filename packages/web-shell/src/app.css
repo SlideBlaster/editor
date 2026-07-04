@@ -1,0 +1,204 @@
+/* Web-shell workspace chrome. Layers on top of the engine's slideStylesheet().
+   Tokenized palette; dark is the default signal, the viewer's toggle wins. */
+
+:root {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --ink: #1b1e28;
+  --muted: #6b7180;
+  --line: #e2e5ec;
+  --accent: #4f5bd5;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --slide-shadow: 0 1px 2px rgba(20, 22, 28, 0.08), 0 8px 28px rgba(20, 22, 28, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161c;
+    --surface: #1c1f27;
+    --ink: #e7e9f0;
+    --muted: #9aa0b0;
+    --line: #2a2e3a;
+    --accent: #7c86f0;
+    --slide-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+}
+
+:root[data-theme='light'] {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --ink: #1b1e28;
+  --muted: #6b7180;
+  --line: #e2e5ec;
+  --accent: #4f5bd5;
+  --slide-shadow: 0 1px 2px rgba(20, 22, 28, 0.08), 0 8px 28px rgba(20, 22, 28, 0.1);
+}
+
+:root[data-theme='dark'] {
+  --bg: #14161c;
+  --surface: #1c1f27;
+  --ink: #e7e9f0;
+  --muted: #9aa0b0;
+  --line: #2a2e3a;
+  --accent: #7c86f0;
+  --slide-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+/* Top bar */
+.app-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.app-name {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.app-doc {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.app-doc::before {
+  content: '/ ';
+  opacity: 0.5;
+}
+
+.app-tag {
+  margin-left: auto;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Workspace: stage over a filmstrip rail */
+.workspace {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+}
+
+.stage-wrap {
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  min-height: 0;
+  overflow: auto;
+}
+
+.stage {
+  width: min(100%, 62rem);
+}
+
+/* The rendered slide: engine sets .sb-slide (16/9); we frame it. */
+.stage .sb-slide {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--slide-shadow);
+  container-type: inline-size;
+}
+
+/* Slide-proportional type. 1 slide unit = 6.25cqw (16 units across).
+   Provisional metrics until the W3 DOM measurer is the source of truth. */
+.stage .sb-content {
+  font-size: 2.6cqw;
+  line-height: 1.3;
+  color: #1b1e28;
+}
+
+.stage .sb-node.sb-style-title {
+  font-size: 4.2cqw;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.stage .sb-content ul,
+.stage .sb-content ol {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.stage .sb-content .sb-math {
+  font-style: italic;
+}
+
+/* Filmstrip */
+.filmstrip {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.thumb {
+  flex: 0 0 auto;
+  width: 9rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.12s ease;
+}
+
+.thumb:hover {
+  border-color: var(--accent);
+}
+
+.thumb.is-current {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.thumb .sb-slide {
+  container-type: inline-size;
+}
+
+.thumb .sb-content {
+  font-size: 2.6cqw;
+  line-height: 1.25;
+  color: #1b1e28;
+}
+
+.thumb .sb-node.sb-style-title {
+  font-size: 4.2cqw;
+  font-weight: 700;
+}
+
+.thumb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
