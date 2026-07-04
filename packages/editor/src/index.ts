@@ -17,3 +17,5 @@ export {
   OutOfSubsetError,
 } from './content/index'
 export type { InlineStyle } from './content/index'
+export { resolveLayout, anchor, findPlaced, naiveMeasurer } from './layout/index'
+export type { AnchorName, Measurer, MeasureInput } from './layout/index'
