@@ -45,4 +45,9 @@ describe('renderSlide', () => {
   it('marks the title box with its style class', () => {
     expect(html).toContain('class="sb-box sb-style-title"')
   })
+
+  it('tags content nodes with their model identity (data-node)', () => {
+    expect(html).toContain('data-node="intro"')
+    expect(html).toContain('data-node="o2"')
+  })
 })

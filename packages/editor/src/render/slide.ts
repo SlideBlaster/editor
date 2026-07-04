@@ -46,7 +46,10 @@ function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions
   const left = pct(node.center.x - node.size.width / 2, SLIDE_W)
   const top = pct(SLIDE_H - node.center.y - node.size.height / 2, SLIDE_H)
   const width = pct(node.size.width, SLIDE_W)
-  return `<div class="${nodeClass(node)}" style="left:${left}%;top:${top}%;width:${width}%">${renderContent(source.content, options)}</div>`
+  // Model identity in the DOM: lets an editor hit-test and address this node
+  // (selection, drag, inline edit). Harmless in the export DOM (ADR 0014).
+  const id = source.name !== undefined ? ` data-node="${source.name}"` : ''
+  return `<div class="${nodeClass(node)}"${id} style="left:${left}%;top:${top}%;width:${width}%">${renderContent(source.content, options)}</div>`
 }
 
 function arrowSvg(path: PathStatement, layout: Layout): string {

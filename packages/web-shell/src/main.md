@@ -1,29 +1,26 @@
 # web-shell entry (main.ts)
 
-The reactive render controller: runs the editor engine unchanged in the browser and
-keeps a live edit loop between the source text and the rendered slide.
-
-Pipeline, per frame:
+The reactive render + edit controller. Runs the editor engine unchanged in the
+browser and keeps a **two-way** loop between the source text and the slide, both
+sharing one source of truth (the `.slideBlaster.md` text, A1).
 
 ```
-code pane text            (the .slideBlaster.md source of truth, A1)
-  -> fromMarkdown           document container round-trip
-  -> frame.picture          a slide is a TikZ picture (ADR 0004)
-  -> resolveLayout(_, naiveMeasurer)   measure -> resolve (B1)
-  -> renderSlide            layered SVG geometry + HTML content (ADR 0014, B3)
-  -> stage + filmstrip
+text -> render (W2):   code pane -> fromMarkdown -> resolveLayout -> renderSlide
+canvas -> text (W4):   gesture   -> E1 edit op   -> toMarkdown    -> code pane
 ```
 
-- **W2 — live round-trip.** A two-pane workspace: an editable code pane (source of
-  truth) beside the rendered stage, plus a filmstrip of live thumbnails. Every edit
-  re-parses and re-renders. Frame selection is click-through on the filmstrip.
-- **Tolerant parse.** A malformed edit shows an error banner and keeps the last good
-  render rather than blanking the stage.
-- **Source seam, not model state.** The controller owns `source -> fromMarkdown ->
-  render`; the code pane is one editable view. Canvas edits (W4+, via engine edit
-  ops) will mutate the model and push new source through the same seam
-  (`CodePane.setValue`).
-- **Measurer.** `naiveMeasurer`; text metrics are approximate until W3 swaps in a
-  DOM-measurement adapter (the Track-0 async-measurement risk).
-- **Styling seam.** `slideStylesheet()` (engine) supplies the base layered-DOM rules;
-  `app.css` layers the workspace chrome and slide-proportional font sizing on top.
+- **Edit actions.** `CanvasActions` map a canvas gesture to an engine edit op on the
+  current frame's picture: `move -> moveNodeTo`, `create -> createNode`,
+  `remove -> deleteNode`. Each applies to the last good parsed document, swaps the
+  one edited frame (`withFrame`), re-serializes with `toMarkdown`, pushes the new
+  source into the code pane (`setValue`), and re-renders.
+- **Selection is cheap.** `select` only toggles handle classes; it must not
+  re-render, or it would destroy the element a drag started on.
+- **Delete key** removes the selection, except while typing in the code pane.
+- **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
+  form, so a canvas edit normalizes source formatting document-wide (fine for the
+  canonical sample; surgical per-frame splicing is a later refinement).
+- **Tolerant parse.** A malformed manual edit shows an error banner and keeps the last
+  good render. **Measurer** is `naiveMeasurer` until W3's DOM measurer.
+- **Styling seam.** `slideStylesheet()` supplies the base layered-DOM rules; `app.css`
+  layers the workspace chrome, the interaction overlay, and slide-proportional type.

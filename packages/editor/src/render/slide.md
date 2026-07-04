@@ -19,7 +19,9 @@ viewable when mounted.
   anchors (B1) and `(x,y)` endpoints to points. Arrowheads come from `->`/`<-`/`<->`
   in the path options.
 - **Content.** Each node's box holds `renderContent` output (B2); style classes
-  become `sb-style-*` classes on both the SVG box and the content div.
+  become `sb-style-*` classes on both the SVG box and the content div. A named node's
+  content div also carries `data-node="<name>"` so an editor can hit-test and address
+  it (selection, drag, inline edit); harmless in the export DOM.
 
 Contract: pure, deterministic string output; headless and snapshot-testable. Limits:
 straight segments only (no curves/`controls` yet); endpoints use node centers, not
