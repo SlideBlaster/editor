@@ -56,11 +56,14 @@ the render path is fully client-side.
 
 ## Status
 
-- **M0 (current):** scaffold + the six port interfaces. Done in `packages/editor`;
-  other packages are declared but empty.
-- **Next (Track 0 spikes):** browser git + CORS proxy (`adapters-browser` +
-  `services/git-proxy`), async measurement layout (engine), WASM latexml
-  (`adapters-shared`), Yjs<->AST round-trip.
+- **M0:** scaffold + the six port interfaces. Done in `packages/editor`.
+- **Track-0 spike — browser git + CORS proxy:** landed. `services/git-proxy`
+  (runtime-agnostic handler + Worker/Node entries, allowlist + CORS unit-tested)
+  and `packages/adapters-browser` (`IsomorphicGitAdapter` Git port + env-gated live
+  round-trip). Open: in-browser CORS/IndexedDB round-trip and body-framing against
+  real GitHub (see `services/git-proxy/README.md`).
+- **Track-0 spikes remaining:** async measurement layout (engine), WASM latexml
+  (`adapters-shared`, handled separately), Yjs<->AST round-trip.
 - **M1:** the engine, test-first against the format invariants.
 
 Milestones M0-M8: `../design/roadmap.md`.
