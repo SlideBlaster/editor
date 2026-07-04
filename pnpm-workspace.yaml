@@ -1,5 +1,6 @@
-# JS/TS workspaces. The two services/ (auth, collab) are Elixir/Phoenix and are
-# intentionally not pnpm packages; services/git-proxy may become a JS package when
-# that spike lands.
+# JS/TS workspaces. The two Phoenix services (auth, collab) are Elixir and are
+# intentionally not pnpm packages; services/git-proxy is a JS package (the browser
+# git spike's server half).
 packages:
   - packages/*
+  - services/git-proxy

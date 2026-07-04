@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 // *.test.ts / *.spec.ts.
 export default defineConfig({
   test: {
-    include: ['packages/**/*.{test,spec}.ts'],
+    include: ['packages/**/*.{test,spec}.ts', 'services/**/*.{test,spec}.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
 })
