@@ -16,7 +16,7 @@ import type {
   NodeContent,
   TextRun,
 } from '../model/content'
-import { readGroup } from '../text/scanner'
+import { readGroup, skipWhitespace } from '../text/scanner'
 
 /** Raised when a construct is outside the supported subset; carries a message. */
 export class OutOfSubsetError extends Error {}
@@ -39,7 +39,14 @@ const LIST_ITEM_LINE = /^([ \t]*)([-+*]|\d+\.)[ \t]+/
 const LATEX_LIST_BEGIN = /^\\begin\{(itemize|enumerate)\}/
 const LATEX_LIST_END = /^\\end\{(itemize|enumerate)\}/
 const HTML_LIST_OPEN = /^<(ul|ol)>/i
-const FRAGMENT = /^\\(appear|pause)\b/
+const HTML_FRAGMENT = /^<appear>/i
+const FRAGMENT = /^\\(appear|pause|only)(?:\[=(\d+)\])?/
+const COLUMNS_BEGIN = /^\\begin\{columns\}/
+const TABULAR_BEGIN = /^\\begin\{tabular\}/
+const MATRIX = /^\\matrix\b/
+const IMAGE_LATEX = /^\\image\{/
+const CAT = /^\\cat\{/
+const MD_IMAGE = /^!\[([^\]]*)\]\(([^)]*)\)/
 
 export function parseContent(body: string): NodeContent {
   if (body === '') return { kind: 'empty' }
@@ -86,6 +93,13 @@ function parseRuns(s: string): TextRun[] {
         continue
       }
     } else if (c === '<') {
+      if (HTML_FRAGMENT.test(rest)) {
+        emit(
+          { kind: 'fragment', name: 'appear', dialect: 'html' },
+          i + HTML_FRAGMENT.exec(rest)![0].length,
+        )
+        continue
+      }
       if (HTML_LIST_OPEN.test(rest)) {
         const list = parseHtmlList(s, i)
         emit(list.run, list.end)
@@ -110,9 +124,43 @@ function parseRuns(s: string): TextRun[] {
         emit(list.run, list.end)
         continue
       }
+      if (COLUMNS_BEGIN.test(rest)) {
+        const cols = parseColumns(s, i)
+        emit(cols.run, cols.end)
+        continue
+      }
+      if (MATRIX.test(rest)) {
+        const mx = parseMatrix(s, i)
+        emit(mx.run, mx.end)
+        continue
+      }
+      if (TABULAR_BEGIN.test(rest)) {
+        const env = captureLatexEnv(s, i, 'tabular')
+        emit({ kind: 'deferred', feature: 'table', source: env.source }, env.end)
+        continue
+      }
+      if (IMAGE_LATEX.test(rest)) {
+        const g = readGroup(s, i + '\\image'.length, '{', '}')
+        emit({ kind: 'image', src: g.inner, alt: '', dialect: 'latex' }, g.end)
+        continue
+      }
+      if (CAT.test(rest)) {
+        const g = readGroup(s, i + '\\cat'.length, '{', '}')
+        emit({ kind: 'include', path: g.inner }, g.end)
+        continue
+      }
       const fragment = FRAGMENT.exec(rest)
       if (fragment) {
-        emit({ kind: 'fragment', name: fragment[1] as FragmentName }, i + fragment[0].length)
+        const at = fragment[2] !== undefined ? Number(fragment[2]) : undefined
+        emit(
+          {
+            kind: 'fragment',
+            name: fragment[1] as FragmentName,
+            dialect: 'latex',
+            ...(at !== undefined ? { at } : {}),
+          },
+          i + fragment[0].length,
+        )
         continue
       }
       const macro = LATEX_MACRO.exec(rest)
@@ -137,6 +185,12 @@ function parseRuns(s: string): TextRun[] {
           { kind: 'markdown', marker, children: parseRuns(s.slice(i + marker.length, close)) },
           close + marker.length,
         )
+        continue
+      }
+    } else if (c === '!') {
+      const m = MD_IMAGE.exec(rest)
+      if (m) {
+        emit({ kind: 'image', src: m[2]!, alt: m[1]!, dialect: 'md' }, i + m[0].length)
         continue
       }
     }
@@ -276,6 +330,121 @@ function splitHtmlItems(inner: string): string[] {
     }
   }
   return items
+}
+
+/** `\begin{columns}\column{w}…\column{w}…\end{columns}` -> a structured group run. */
+function parseColumns(s: string, start: number): { run: TextRun; end: number } {
+  const env = captureLatexEnv(s, start, 'columns')
+  const inner = env.source.slice(
+    '\\begin{columns}'.length,
+    env.source.length - '\\end{columns}'.length,
+  )
+  return { run: { kind: 'columns', columns: splitColumns(inner) }, end: env.end }
+}
+
+/** Split a columns body at top-level `\column{width}` markers (content trimmed). */
+function splitColumns(inner: string): { width: string; children: TextRun[] }[] {
+  const columns: { width: string; children: TextRun[] }[] = []
+  let brace = 0
+  let i = 0
+  let width: string | null = null
+  let contentStart = 0
+  while (i < inner.length) {
+    const ch = inner[i]!
+    if (ch === '{') {
+      brace += 1
+      i += 1
+      continue
+    }
+    if (ch === '}') {
+      brace = Math.max(0, brace - 1)
+      i += 1
+      continue
+    }
+    if (brace === 0 && /^\\column\{/.test(inner.slice(i))) {
+      if (width !== null) {
+        columns.push({ width, children: parseRuns(inner.slice(contentStart, i).trim()) })
+      }
+      const g = readGroup(inner, i + '\\column'.length, '{', '}')
+      width = g.inner
+      contentStart = g.end
+      i = g.end
+      continue
+    }
+    i += 1
+  }
+  if (width !== null) columns.push({ width, children: parseRuns(inner.slice(contentStart).trim()) })
+  return columns
+}
+
+/** `\matrix[options]{ a & b \\ c & d }` -> rows of cells (each cell content recurses). */
+function parseMatrix(s: string, start: number): { run: TextRun; end: number } {
+  let i = skipWhitespace(s, start + '\\matrix'.length)
+  let options = ''
+  if (s[i] === '[') {
+    const g = readGroup(s, i, '[', ']')
+    options = g.inner
+    i = skipWhitespace(s, g.end)
+  }
+  if (s[i] !== '{') throw new OutOfSubsetError('\\matrix without a { } body')
+  const g = readGroup(s, i, '{', '}')
+  const rows = splitTopLevel(g.inner, '\\\\').map((row) =>
+    splitTopLevel(row, '&').map((cell) => ({ children: parseRuns(cell.trim()) })),
+  )
+  return { run: { kind: 'matrix', options, rows }, end: g.end }
+}
+
+/** Split `body` on a top-level (brace-depth 0) separator (`&` or `\\`). */
+function splitTopLevel(body: string, sep: '&' | '\\\\'): string[] {
+  const parts: string[] = []
+  let brace = 0
+  let start = 0
+  let i = 0
+  while (i < body.length) {
+    const ch = body[i]!
+    if (ch === '{') {
+      brace += 1
+      i += 1
+      continue
+    }
+    if (ch === '}') {
+      brace = Math.max(0, brace - 1)
+      i += 1
+      continue
+    }
+    if (brace === 0 && body.startsWith(sep, i)) {
+      parts.push(body.slice(start, i))
+      i += sep.length
+      start = i
+      continue
+    }
+    i += 1
+  }
+  parts.push(body.slice(start))
+  return parts
+}
+
+/** Capture a whole `\begin{env}…\end{env}` (nesting-aware) as verbatim source. */
+function captureLatexEnv(s: string, start: number, env: string): { source: string; end: number } {
+  const beginTok = `\\begin{${env}}`
+  const endTok = `\\end{${env}}`
+  let depth = 0
+  let i = start
+  while (i < s.length) {
+    if (s.startsWith(beginTok, i)) {
+      depth += 1
+      i += beginTok.length
+      continue
+    }
+    if (s.startsWith(endTok, i)) {
+      depth -= 1
+      if (depth === 0) return { source: s.slice(start, i + endTok.length), end: i + endTok.length }
+      i += endTok.length
+      continue
+    }
+    i += 1
+  }
+  throw new OutOfSubsetError(`unclosed \\begin{${env}}`)
 }
 
 /** Match a math fence at the START of `rest`; null if unterminated (treat `$` literal). */

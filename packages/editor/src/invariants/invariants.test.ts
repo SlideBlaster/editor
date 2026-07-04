@@ -48,6 +48,8 @@ const NODE_CONTENTS = [
   '**bold**',
   '\\emph{y}',
   '<i>z</i>',
+  '\\image{fig.png}',
+  '\\begin{columns}\\column{0.5}a\\column{0.5}b\\end{columns}',
 ].map(parseContent)
 
 const nodeStmt = fc.record({

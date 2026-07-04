@@ -6,15 +6,18 @@ A recursive-descent scanner that applies the precedence of
 `design/format/node-content.md` at every nesting level, recursing into each
 container's body (transparent nesting):
 
-1. **lists** — a line beginning `- `/`* `/`N. ` starts a markdown list;
-   `\begin{itemize|enumerate}` a LaTeX list; `<ul>`/`<ol>` an HTML list. A list is a
-   `TextRun`, so it nests inside a wrap or an item. Item content recurses.
+1. **block containers** — a line beginning `- `/`* `/`N. ` starts a markdown list;
+   `\begin{itemize|enumerate}` a LaTeX list; `<ul>`/`<ol>` an HTML list;
+   `\begin{columns}` a columns group; `\matrix[..]{..}` a matrix group;
+   `\begin{tabular}` an opaque `deferred` table. All are `TextRun`s, so they nest
+   inside a wrap or an item; item/column/cell content recurses.
 2. **math** `$$…$$` then `$…$` — opaque, source kept literal, not re-scanned.
-3. **HTML tags** — a supported tag (`b strong i em u s div span`, no attributes)
-   opens an element whose inner text recurses.
-4. **LaTeX** — `\textbf`/`\emph`/`\textit`/`\underline` with a `{ }` argument that
-   recurses; bare `\appear`/`\pause` become reveal fragments.
-5. **markdown emphasis** — `**…**` / `*…*` when a matching delimiter exists.
+3. **HTML** — `<appear>` (fragment); a supported tag (`b strong i em u s div span`,
+   no attributes) opens an element whose inner text recurses.
+4. **LaTeX** — `\textbf`/`\emph`/`\textit`/`\underline` (`{ }` arg, recurses);
+   `\image{src}`, `\cat{path}` (include); `\appear`/`\pause`/`\only` (with optional
+   `[=N]`) become reveal fragments.
+5. **markdown** — emphasis `**…**` / `*…*` (matching delimiter); `![alt](src)` image.
 6. anything else accumulates as literal **text**.
 
 ## Contract
@@ -29,14 +32,17 @@ container's body (transparent nesting):
   which dialect each construct used.
 - Empty body -> `{ kind: 'empty' }`.
 
-## Limits (widen in A3c)
+## Limits
 
-- No tables, images, `\cat`, or groups yet, and only bare `\appear`/`\pause`
-  fragments — the rest is A3c. Moving a construct from "literal/error" to "parsed"
-  is how later increments grow the subset.
-- Lists are flat except where a container nests them (a LaTeX item or HTML wrap
-  holding a sublist); markdown indentation-nesting is not modeled yet. List
-  whitespace and markers normalize on save (`-`, renumbered), so only canonical list
-  text round-trips byte-exact.
+- `table` (`tabular`) is kept opaque `deferred` — rendering needs the Compile port
+  (latexml, ADR 0007); `include` (`\cat`) keeps only its path, resolution needs the
+  Storage port. Both round-trip; neither renders yet.
+- `columns`/`matrix` are structured, but their visual layout (multi-column, grid) is
+  the render track. Markdown list nesting is by container only (a LaTeX item / HTML
+  wrap holding a sublist), not markdown indentation.
+- Whitespace/markers in lists, columns, and matrices normalize on save (list markers
+  -> `-` and renumbered; matrix cells joined ` & `, rows ` \\ `), so only canonical
+  text round-trips byte-exact. Matrix `&`/`\\` splitting respects braces but not math
+  `$…$`.
 - HTML tags must be attribute-less; math delimiters are only `$`/`$$`; an unmatched
-  `$` or `*` is treated as a literal character.
+  `$` or `*` is a literal character.

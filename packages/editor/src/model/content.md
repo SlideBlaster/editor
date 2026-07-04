@@ -39,10 +39,16 @@ track, not stored here.
 
 ## Scope
 
-Inline runs, lists in all three dialects (`- x` / `itemize` / `enumerate` / `<ul>` /
-`<ol>`, nestable via containers), and bare reveal fragments (`\appear`, `\pause`).
-A list is a `TextRun`, so it nests inside an HTML wrap or a LaTeX item. List
-whitespace is normalized on save (markers -> `-`, ordered lists renumber); canonical
-lists round-trip byte-exact. Still A3c: the port-coupled payloads (tables, `\cat`,
-image, group) and richer `FragmentConfig`. Parsed by `../content/parse`, serialized
-by `../content/serialize`.
+Inline runs; lists in all three dialects (`- x` / `itemize` / `enumerate` / `<ul>` /
+`<ol>`, nestable via containers); reveal fragments (`\appear`/`\pause`/`\only`,
+`[=N]` step, `<appear>`); images (`\image`, `![alt](src)`); and `columns`/`matrix`
+groups. Any container run (list, columns, matrix, wrap) is a `TextRun`, so it nests
+freely. Whitespace in lists/columns/matrix is normalized on save (list markers ->
+`-`, ordered lists renumber; cells joined by ` & `, rows by ` \\ `); canonical text
+round-trips byte-exact.
+
+Two constructs are parsed but not renderable without a port, so they preserve source
+and are **not** errors: `table` (`\begin{tabular}` -> Compile port, kept opaque as
+`deferred`) and `include` (`\cat{path}` -> Storage port). Their visual/resolved
+rendering is the render track. Parsed by `../content/parse`, serialized by
+`../content/serialize`.

@@ -38,8 +38,24 @@ function serializeRun(run: TextRun): string {
       return `<${run.tag}>${serializeRuns(run.children)}</${run.tag}>`
     case 'list':
       return serializeList(run)
+    case 'columns':
+      return `\\begin{columns}${run.columns
+        .map((col) => `\\column{${col.width}}${serializeRuns(col.children)}`)
+        .join('')}\\end{columns}`
+    case 'matrix':
+      return `\\matrix${run.options ? `[${run.options}]` : ''}{${run.rows
+        .map((row) => row.map((cell) => serializeRuns(cell.children)).join(' & '))
+        .join(' \\\\ ')}}`
     case 'fragment':
-      return `\\${run.name}`
+      return run.dialect === 'html'
+        ? `<${run.name}>`
+        : `\\${run.name}${run.at !== undefined ? `[=${run.at}]` : ''}`
+    case 'image':
+      return run.dialect === 'md' ? `![${run.alt}](${run.src})` : `\\image{${run.src}}`
+    case 'include':
+      return `\\cat{${run.path}}`
+    case 'deferred':
+      return run.source
   }
 }
 

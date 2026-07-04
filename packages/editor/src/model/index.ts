@@ -14,8 +14,11 @@ export type {
   NodeContent,
   TextRun,
   ListItem,
+  Column,
+  MatrixCell,
   LatexCommand,
   MarkdownMarker,
   FragmentName,
+  DeferredFeature,
   Dialect,
 } from './content'

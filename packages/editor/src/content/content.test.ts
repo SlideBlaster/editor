@@ -166,6 +166,71 @@ describe('lists (A3b): all three dialects, nested, byte-exact for canonical form
   })
 })
 
+describe('A3c: images, includes, columns, matrix, richer fragments, deferred tables', () => {
+  for (const inner of [
+    '\\image{figures/plot.png}', // LaTeX image
+    '![a caption](figures/plot.png)', // markdown image
+    '\\cat{shared/defs.tex}', // include (Storage port deferred)
+    'reveal \\only[=2] this and \\appear[=1] that', // fragments with steps
+    'html <appear> marker',
+    '\\begin{columns}\\column{0.5}left\\column{0.5}**right**\\end{columns}', // columns (structured)
+    '\\matrix{a & b \\\\ c & d}', // matrix (structured)
+    '\\matrix[scale=2]{x & y}', // matrix with options
+    '\\begin{tabular}{cc}a & b\\end{tabular}', // table (deferred to Compile, opaque)
+  ]) {
+    it(`round-trips ${JSON.stringify(inner)}`, () => {
+      expect(serializeContent(parseContent(inner))).toBe(`{${inner}}`)
+    })
+  }
+
+  const runOf = (inner: string): TextRun => {
+    const c = parseContent(inner)
+    if (c.kind !== 'text' || c.runs[0] === undefined) throw new Error('expected a run')
+    return c.runs[0]
+  }
+
+  it('models images, includes, and stepped fragments structurally', () => {
+    expect(runOf('\\image{fig.png}')).toEqual({
+      kind: 'image',
+      src: 'fig.png',
+      alt: '',
+      dialect: 'latex',
+    })
+    expect(runOf('![a cat](cat.png)')).toEqual({
+      kind: 'image',
+      src: 'cat.png',
+      alt: 'a cat',
+      dialect: 'md',
+    })
+    expect(runOf('\\cat{p.tex}')).toEqual({ kind: 'include', path: 'p.tex' })
+    expect(runOf('\\only[=2]')).toEqual({ kind: 'fragment', name: 'only', dialect: 'latex', at: 2 })
+  })
+
+  it('columns and matrix parse into a real structure (only their layout is deferred to B)', () => {
+    const cols = runOf('\\begin{columns}\\column{0.5}left\\column{0.6}right\\end{columns}')
+    expect(cols).toMatchObject({ kind: 'columns' })
+    if (cols.kind !== 'columns') return
+    expect(cols.columns.map((c) => c.width)).toEqual(['0.5', '0.6'])
+    expect(cols.columns[0]!.children).toEqual([{ kind: 'text', value: 'left' }])
+
+    const mx = runOf('\\matrix{a & b \\\\ c & d}')
+    expect(mx).toMatchObject({ kind: 'matrix', options: '' })
+    if (mx.kind !== 'matrix') return
+    expect(mx.rows).toHaveLength(2)
+    expect(mx.rows[0]).toHaveLength(2)
+    expect(mx.rows[1]![1]!.children).toEqual([{ kind: 'text', value: 'd' }])
+  })
+
+  it('a table is preserved opaque, pending the Compile port (not an error)', () => {
+    const table = runOf('\\begin{tabular}{cc}a & b\\end{tabular}')
+    expect(table).toEqual({
+      kind: 'deferred',
+      feature: 'table',
+      source: '\\begin{tabular}{cc}a & b\\end{tabular}',
+    })
+  })
+})
+
 // Property: any concatenation of canonical fragments is itself canonical —
 // serialize(parse(inner)) == {inner}. Fragments carry no leading/trailing chars
 // that would fuse across a boundary into a new construct.

@@ -31,6 +31,14 @@ export function dialectOf(run: TextRun): Dialect | undefined {
       return 'html'
     case 'list':
       return run.dialect
+    case 'image':
+    case 'fragment':
+      return run.dialect
+    case 'columns':
+    case 'matrix':
+    case 'include':
+    case 'deferred':
+      return 'latex'
     default:
       return undefined
   }
