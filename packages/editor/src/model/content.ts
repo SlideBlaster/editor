@@ -1,11 +1,11 @@
 /**
  * Node-content model: the tri-dialect body of a `\node { … }`. Contract: see content.md.
  *
- * A3a scope: inline runs only — literal text, opaque math, and provenance-faithful
- * emphasis in each dialect (LaTeX `\textbf`/`\emph`/`\textit`/`\underline`, markdown
- * `**`/`*`, HTML inline/wrap tags). Lists and the port-coupled payloads (tables,
- * `\cat`, image, group, fragments) are A3b/A3c. Out-of-subset input becomes `error`
- * (ADR 0015); ordinary text and not-yet-modeled markdown stay literal `text`.
+ * Scope so far: inline runs (text, opaque math, provenance-faithful emphasis in
+ * every dialect), lists (md / LaTeX itemize+enumerate / HTML ul+ol, nestable), and
+ * bare reveal fragments (`\appear`/`\pause`). The port-coupled payloads (tables,
+ * `\cat`, image, group) and richer FragmentConfig are A3c. Out-of-subset input
+ * becomes `error` (ADR 0015).
  *
  * Runs are SURFACE-FAITHFUL: each stores the exact form it was written in, so the
  * dialect (ADR 0007 provenance) is implicit in the run kind and byte-exact
@@ -27,12 +27,22 @@ export type TextRun =
   | { kind: 'latex'; command: LatexCommand; children: TextRun[] }
   | { kind: 'markdown'; marker: MarkdownMarker; children: TextRun[] }
   | { kind: 'html'; tag: string; children: TextRun[] }
+  | { kind: 'list'; ordered: boolean; dialect: Dialect; items: ListItem[] }
+  | { kind: 'fragment'; name: FragmentName }
+
+/** A list item: its inline content, which may itself contain a nested `list` run. */
+export interface ListItem {
+  children: TextRun[]
+}
 
 /** LaTeX inline commands modeled in A3a. `\command{ … }`. */
 export type LatexCommand = 'textbf' | 'emph' | 'textit' | 'underline'
 
 /** Markdown emphasis delimiters modeled in A3a. */
 export type MarkdownMarker = '*' | '**'
+
+/** Reveal markers modeled in A3b (bare, argument-less); richer FragmentConfig is A3c. */
+export type FragmentName = 'appear' | 'pause'
 
 /** Provenance tag (ADR 0007), derived from a run's kind in `../content/styles`. */
 export type Dialect = 'md' | 'latex' | 'html'

@@ -6,7 +6,7 @@
  * (format invariant 2, extended to node content with dialect provenance). Returns
  * the full braced token so it drops straight into a node's body slot.
  */
-import type { NodeContent, TextRun } from '../model/content'
+import type { ListItem, NodeContent, TextRun } from '../model/content'
 
 export function serializeContent(content: NodeContent): string {
   switch (content.kind) {
@@ -36,5 +36,30 @@ function serializeRun(run: TextRun): string {
       return `${run.marker}${serializeRuns(run.children)}${run.marker}`
     case 'html':
       return `<${run.tag}>${serializeRuns(run.children)}</${run.tag}>`
+    case 'list':
+      return serializeList(run)
+    case 'fragment':
+      return `\\${run.name}`
+  }
+}
+
+/** Canonical, normalizing list output — markers become `-`, ordered lists renumber. */
+function serializeList(run: {
+  ordered: boolean
+  dialect: 'md' | 'latex' | 'html'
+  items: ListItem[]
+}): string {
+  const bodies = run.items.map((item) => serializeRuns(item.children))
+  switch (run.dialect) {
+    case 'md':
+      return bodies.map((b, i) => (run.ordered ? `${i + 1}. ${b}` : `- ${b}`)).join('\n')
+    case 'latex': {
+      const env = run.ordered ? 'enumerate' : 'itemize'
+      return `\\begin{${env}}${bodies.map((b) => `\\item ${b}`).join('')}\\end{${env}}`
+    }
+    case 'html': {
+      const tag = run.ordered ? 'ol' : 'ul'
+      return `<${tag}>${bodies.map((b) => `<li>${b}</li>`).join('')}</${tag}>`
+    }
   }
 }

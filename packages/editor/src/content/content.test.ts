@@ -74,12 +74,8 @@ describe('worked corpus: byte-exact round-trip', () => {
     expect(serializeContent({ kind: 'empty' })).toBe('{}')
   })
 
-  it('a markdown list stays literal text in A3a (the fixture body), round-trips', () => {
+  it('the intro fixture body round-trips byte-exact (list handled in A3b)', () => {
     const body = '\n- point one\n- point two\n'
-    expect(parseContent(body)).toEqual<NodeContent>({
-      kind: 'text',
-      runs: [{ kind: 'text', value: body }],
-    })
     expect(serializeContent(parseContent(body))).toBe(`{${body}}`)
   })
 })
@@ -107,6 +103,66 @@ describe('tri-dialect equivalence is derivable (styles)', () => {
     expect(inlineStyleOf(firstRun('\\emph{x}'))).toBe('italic')
     expect(inlineStyleOf(firstRun('\\textit{x}'))).toBe('italic')
     expect(firstRun('\\emph{x}')).not.toEqual(firstRun('\\textit{x}'))
+  })
+})
+
+describe('lists (A3b): all three dialects, nested, byte-exact for canonical form', () => {
+  for (const inner of [
+    '\n- one\n- two\n', // markdown, framed by newlines (the fixture shape)
+    '\n- first\n- second $a^2+b^2=c^2$ \\appear\n', // corpus 4: math + fragment in an item
+    '\n1. alpha\n2. beta\n', // ordered markdown
+    '\\begin{itemize}\\item a\\item b\\end{itemize}', // LaTeX itemize
+    '\\begin{enumerate}\\item a\\item b\\end{enumerate}', // LaTeX enumerate
+    '<ul><li>a</li><li>b</li></ul>', // HTML unordered
+    '<ol><li>a</li><li>b</li></ol>', // HTML ordered
+    '<div>\\begin{itemize}\\item bold **text**\\item plain\\end{itemize}</div>', // corpus 5: html>latex>md
+  ]) {
+    it(`round-trips ${JSON.stringify(inner)}`, () => {
+      expect(serializeContent(parseContent(inner))).toBe(`{${inner}}`)
+    })
+  }
+
+  it('a markdown list is a run framed by its surrounding newlines', () => {
+    expect(parseContent('\n- a\n- b\n')).toEqual<NodeContent>({
+      kind: 'text',
+      runs: [
+        { kind: 'text', value: '\n' },
+        {
+          kind: 'list',
+          ordered: false,
+          dialect: 'md',
+          items: [
+            { children: [{ kind: 'text', value: 'a' }] },
+            { children: [{ kind: 'text', value: 'b' }] },
+          ],
+        },
+        { kind: 'text', value: '\n' },
+      ],
+    })
+  })
+
+  it('corpus 5: html wraps a LaTeX list whose item carries markdown (3 dialects nested)', () => {
+    const content = parseContent(
+      '<div>\\begin{itemize}\\item bold **text**\\item plain\\end{itemize}</div>',
+    )
+    expect(content.kind).toBe('text')
+    if (content.kind !== 'text') return
+    const div = content.runs[0]
+    expect(div).toMatchObject({ kind: 'html', tag: 'div' })
+    if (div?.kind !== 'html') return
+    const list = div.children[0]
+    expect(list).toMatchObject({ kind: 'list', dialect: 'latex', ordered: false })
+    if (list?.kind !== 'list') return
+    expect(list.items).toHaveLength(2)
+    expect(list.items[0]!.children).toEqual([
+      { kind: 'text', value: 'bold ' },
+      { kind: 'markdown', marker: '**', children: [{ kind: 'text', value: 'text' }] },
+    ])
+  })
+
+  it('non-canonical lists normalize on save (markers -> -, renumber)', () => {
+    expect(serializeContent(parseContent('\n* x\n* y\n'))).toBe('{\n- x\n- y\n}')
+    expect(serializeContent(parseContent('\n3. x\n7. y\n'))).toBe('{\n1. x\n2. y\n}')
   })
 })
 

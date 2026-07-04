@@ -24,10 +24,22 @@ describe('parsePicture', () => {
     const intro = pic.statements[1] as NodeStatement
     expect(intro.name).toBe('intro')
     expect(intro.options).toEqual(['body', 'below=0.7 of title', 'text width=12'])
-    // A markdown list is A3b; in A3a it stays literal text (round-trips either way).
+    // The body is a markdown list (A3b), framed by the surrounding newlines.
     expect(intro.content).toEqual({
       kind: 'text',
-      runs: [{ kind: 'text', value: '\n- point one\n- point two\n' }],
+      runs: [
+        { kind: 'text', value: '\n' },
+        {
+          kind: 'list',
+          ordered: false,
+          dialect: 'md',
+          items: [
+            { children: [{ kind: 'text', value: 'point one' }] },
+            { children: [{ kind: 'text', value: 'point two' }] },
+          ],
+        },
+        { kind: 'text', value: '\n' },
+      ],
     })
 
     const o2 = pic.statements[2] as NodeStatement

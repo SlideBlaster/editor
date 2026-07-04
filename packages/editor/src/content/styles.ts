@@ -29,6 +29,8 @@ export function dialectOf(run: TextRun): Dialect | undefined {
       return 'md'
     case 'html':
       return 'html'
+    case 'list':
+      return run.dialect
     default:
       return undefined
   }

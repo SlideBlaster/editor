@@ -13,7 +13,9 @@ export type {
 export type {
   NodeContent,
   TextRun,
+  ListItem,
   LatexCommand,
   MarkdownMarker,
+  FragmentName,
   Dialect,
 } from './content'

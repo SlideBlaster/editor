@@ -37,9 +37,12 @@ Source spans (which bytes back each run) are a render/edit-time concern — need
 "edit the construct under the cursor" (ADR 0014) — and are computed by the render
 track, not stored here.
 
-## A3a scope
+## Scope
 
-Inline runs only. Lists (`- x`, `itemize`, `<ul>`) and the port-coupled payloads
-(tables, `\cat`, image, group, fragments) are A3b/A3c; until then their syntax stays
-literal `text` (round-trips, renders as text) unless it uses a denylisted construct,
-which errors. Parsed by `../content/parse`, serialized by `../content/serialize`.
+Inline runs, lists in all three dialects (`- x` / `itemize` / `enumerate` / `<ul>` /
+`<ol>`, nestable via containers), and bare reveal fragments (`\appear`, `\pause`).
+A list is a `TextRun`, so it nests inside an HTML wrap or a LaTeX item. List
+whitespace is normalized on save (markers -> `-`, ordered lists renumber); canonical
+lists round-trip byte-exact. Still A3c: the port-coupled payloads (tables, `\cat`,
+image, group) and richer `FragmentConfig`. Parsed by `../content/parse`, serialized
+by `../content/serialize`.
