@@ -13,10 +13,17 @@
         <span class="app-tag">web-shell &middot; M2</span>
       </header>
       <main class="workspace">
-        <section class="stage-wrap">
-          <div class="stage" id="stage"></div>
+        <section class="editor">
+          <div class="editor-head">sample.slideBlaster.md</div>
+          <div class="code-host" id="code"></div>
         </section>
-        <nav class="filmstrip" id="filmstrip"></nav>
+        <section class="preview">
+          <div class="stage-wrap">
+            <div class="stage" id="stage"></div>
+          </div>
+          <div class="parse-error" id="error" hidden></div>
+          <nav class="filmstrip" id="filmstrip"></nav>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>
