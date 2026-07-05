@@ -23,6 +23,8 @@ export interface ZoomController {
   zoomIn(): void
   zoomOut(): void
   reset(): void
+  /** Fit a slide to the scrollport width (a common "fit page width" preset). */
+  fitWidth(): void
   get(): number
 }
 
@@ -79,6 +81,16 @@ export function enableZoomPan(
   const zoomCentre = (next: number): void => {
     const rect = scrollport.getBoundingClientRect()
     zoomToPoint(next, rect.left + rect.width / 2, rect.top + rect.height / 2)
+  }
+
+  /** Scale so a slide fills the scrollport width (leaving a hair of margin). Zoom is
+   *  linear in `--zoom`, so the target is the current zoom times the width ratio. */
+  const fitWidth = (): void => {
+    const slide = scrollport.querySelector<HTMLElement>('.deck-slide')
+    if (!slide) return zoomCentre(1)
+    const width = slide.getBoundingClientRect().width
+    if (width <= 0) return
+    zoomCentre(zoom * (scrollport.clientWidth / width) * 0.98)
   }
 
   scrollport.addEventListener(
@@ -173,6 +185,7 @@ export function enableZoomPan(
     zoomIn: () => zoomCentre(zoom * STEP),
     zoomOut: () => zoomCentre(zoom / STEP),
     reset: () => zoomCentre(1),
+    fitWidth,
     get: () => zoom,
   }
 }

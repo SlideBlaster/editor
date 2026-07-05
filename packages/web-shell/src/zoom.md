@@ -2,7 +2,7 @@
 
 Beamer/PDF-style zoom and pan for the deck scrollport (`#deck`), per
 ux/canvas-zoom-pan.md. `enableZoomPan(scrollport, { onChange })` wires the input
-and returns `{ zoomIn, zoomOut, reset, get }` for a UI control.
+and returns `{ zoomIn, zoomOut, reset, fitWidth, get }` for a UI control.
 
 - **Applied by scaling width.** Zoom sets the `--zoom` custom property on the
   scrollport; the CSS scales the slide width by it (`width: calc(min(100%, 62rem)
@@ -36,4 +36,8 @@ and returns `{ zoomIn, zoomOut, reset, get }` for a UI control.
   of the overlay treating it as select/create. Space is guarded off while typing
   in the code pane.
 
-Range 0.25x–6x. Open: fit-to-width presets, touch pinch, persisting zoom.
+- **Fit width.** `fitWidth()` (the Fit button) scales a slide to the scrollport width.
+  Zoom is linear in `--zoom`, so the target is the current zoom times the measured
+  width ratio (with a hair of margin).
+
+Range 0.25x–6x. Open: touch pinch, persisting zoom across reloads.

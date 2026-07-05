@@ -57,8 +57,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   removed. Repainting the navigator never touches the canvas, its scroll, or the active
   slide.
 - **Keyboard.** Delete removes the selected node or connector; undo/redo as above; Esc
-  exits connect mode. All are ignored while a text field (code pane, inline editor, menu
-  filter) is focused, so those keep their native behaviour.
+  exits connect mode; PageUp/PageDown and Home/End move between slides
+  (`deckHandle.scrollToSlide`). All are ignored while a text field (code pane, inline
+  editor, menu filter) is focused, so those keep their native behaviour. The zoom control
+  also has a **Fit** button (`zoom.fitWidth`).
 - **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
   form, so a canvas edit normalizes source formatting document-wide (fine for the
   canonical sample; surgical per-frame splicing is a later refinement). `paintDeck`

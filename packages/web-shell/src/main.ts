@@ -401,6 +401,28 @@ function main(): void {
       setConnectMode(false)
       return
     }
+    // Slide navigation by keyboard (PageUp/Down, Home/End).
+    const last = currentDoc ? currentDoc.frames.length - 1 : 0
+    if (event.key === 'PageDown') {
+      event.preventDefault()
+      deckHandle?.scrollToSlide(Math.min(state.active + 1, last))
+      return
+    }
+    if (event.key === 'PageUp') {
+      event.preventDefault()
+      deckHandle?.scrollToSlide(Math.max(state.active - 1, 0))
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      deckHandle?.scrollToSlide(0)
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      deckHandle?.scrollToSlide(last)
+      return
+    }
     if (event.key !== 'Delete' && event.key !== 'Backspace') return
     if (state.selectedConnector) {
       event.preventDefault()
@@ -428,6 +450,7 @@ function main(): void {
       button.addEventListener('click', () => {
         if (button.dataset.zoom === 'in') zoom.zoomIn()
         else if (button.dataset.zoom === 'out') zoom.zoomOut()
+        else if (button.dataset.zoom === 'fit') zoom.fitWidth()
         else zoom.reset()
       })
     })
