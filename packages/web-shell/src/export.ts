@@ -15,6 +15,7 @@
  */
 import { slideStylesheet, type RenderedSlide } from '@slideblaster/editor'
 import { SLIDE_TYPE_CSS } from './slideType'
+import { KATEX_CSS } from './katexInlineCss'
 
 /** Standard 16:9 slide page (PowerPoint/Beamer widescreen), used for the print @page. */
 const PAGE = { w: '13.333in', h: '7.5in' }
@@ -53,7 +54,8 @@ export async function printDeck(
   const html = await toStandaloneHtml(slides, opts)
   const iframe = document.createElement('iframe')
   iframe.setAttribute('aria-hidden', 'true')
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+  iframe.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
   document.body.append(iframe)
 
   await new Promise<void>((resolve) => {
@@ -81,9 +83,7 @@ export async function printDeck(
 /** Assemble the full HTML document. Slide HTML is trusted engine output. */
 function buildDeckDocument(slides: RenderedSlide[], title: string): string {
   const ordered = [...slides].sort((a, b) => a.index - b.index)
-  const pages = ordered
-    .map((s) => `<section class="export-slide">${s.html}</section>`)
-    .join('\n')
+  const pages = ordered.map((s) => `<section class="export-slide">${s.html}</section>`).join('\n')
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -94,6 +94,7 @@ function buildDeckDocument(slides: RenderedSlide[], title: string): string {
 ${DOCUMENT_CSS}
 ${slideStylesheet()}
 ${SLIDE_TYPE_CSS}
+${KATEX_CSS}
 </style>
 </head>
 <body>

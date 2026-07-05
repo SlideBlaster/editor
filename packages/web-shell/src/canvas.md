@@ -11,6 +11,15 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   pointer-up if it actually dragged past a small threshold (a bare click is just
   selection). Empty overlay: click to deselect, double-click to `create` a node at
   that slide point. Delete is a keyboard action wired in the controller.
+- **Inline content editing (W6, whole-node).** Double-click a handle opens a raw-body
+  `textarea` (`.sb-inline-editor`) over the node, seeded from the engine's
+  `serializeBody(content)` and positioned by the same slide-space box (scales with
+  zoom). It **commits on blur or Ctrl/Cmd+Enter** by firing `editContent(name, body)`;
+  plain Enter stays a newline (lists, `\\`); **Escape cancels**. A no-op edit does not
+  commit. The controller re-parses the body (`parseContent`) — out-of-subset input
+  becomes preserved error content (ADR 0015), never a crash. `keydown` is stopped so
+  Delete / Space / zoom shortcuts stay inert while typing. Per-construct (sub-node)
+  editing is a later refinement; this replaces the whole node body.
 - **Live drag.** During a drag the handle and its rendered content
   (`.sb-node[data-node]`) are translated together for preview; the committed position
   is computed from the total pixel delta converted to slide units (y flips), then the

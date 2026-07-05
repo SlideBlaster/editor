@@ -5,3 +5,5 @@ pnpm-lock.yaml
 **/vendor/**
 # Golden fixtures are byte-significant; prettier must not touch them.
 **/fixtures/**
+# Auto-generated (scripts/genKatexCss.mjs) — a single huge line of embedded fonts.
+**/katexInlineCss.ts

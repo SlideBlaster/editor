@@ -13,8 +13,14 @@
  * in one pass. Results are cached by content, so re-rendering the whole deck on every
  * keystroke only measures the nodes that actually changed.
  */
-import { renderContent, type BatchMeasurer, type MeasureInput, type Size } from '@slideblaster/editor'
+import {
+  renderContent,
+  type BatchMeasurer,
+  type MeasureInput,
+  type Size,
+} from '@slideblaster/editor'
 import { SLIDE_TYPE_CSS } from './slideType'
+import { mathOptions } from './math'
 
 const SLIDE_W = 16
 /** Reference slide width in px. Larger = finer sub-pixel precision; the unit result
@@ -65,7 +71,7 @@ export function createDomMeasurer(): DomMeasurer {
       // node's natural width (widest line) with `max-content`.
       el.style.width =
         input.textWidth !== undefined ? `${input.textWidth * PER_UNIT}px` : 'max-content'
-      el.innerHTML = renderContent(input.content)
+      el.innerHTML = renderContent(input.content, mathOptions)
       content.append(el)
       els.push(el)
     }

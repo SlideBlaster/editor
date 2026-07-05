@@ -11,14 +11,19 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
 ```
 
 - **The canvas is the deck.** `paintDeck` ([deck.ts](./deck.md)) stacks every slide
-  in one continuous vertical scroll; each is live-editable. A `deckNav`
-  ([deckNav.ts](./deckNav.md)) rail jumps between slides. See
-  ux/deck-navigation.md.
+  in one continuous vertical scroll; each is live-editable. A carousel `deckNav`
+  ([deckNav.ts](./deckNav.md)) rail jumps between slides. Math renders via KaTeX
+  ([math.ts](./math.md)) on every surface. See ux/deck-navigation.md.
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
-  `move -> moveNodeTo`, `create -> createNode`, `remove -> deleteNode`. Each applies
-  to the last good parsed document, swaps the one edited frame (`withFrame`),
-  re-serializes with `toMarkdown`, pushes the new source into the code pane
-  (`setValue`), and re-renders.
+  `move -> moveNodeTo`, `create -> createNode`, `remove -> deleteNode`,
+  `editContent -> parseContent + setNodeContent`. Each applies to the last good parsed
+  document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
+  pushes the new source into the code pane (`setValue`), and re-renders.
+- **Out-of-subset error state.** An inline edit is re-parsed by `parseContent`, which
+  tolerates unsupported constructs by returning error content (source preserved
+  verbatim, renders as a marked error — ADR 0015). `setStatus` counts error nodes across
+  the deck (`countErrorNodes`) and surfaces the document error state; the git-commit
+  gate itself lands with the Git adapter (M4).
 - **Selection is cheap.** `select` only toggles handle outlines via
   `deckHandle.showSelection`; it must not re-render, or it would destroy the
   element a drag started on. Selection is `{ frame, name }` — names are unique per
@@ -26,12 +31,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
 - **Scroll <-> navigator sync.** The deck reports the slide most in view
   (`onActiveChange` -> `state.active` -> `navHandle.setActive`); a navigator click
   (`onSelect`) scrolls the deck (`deckHandle.scrollToSlide`). Neither re-renders.
-- **Navigator style setting.** `state.navStyle` is `filmstrip | carousel`, persisted
-  in `localStorage` (`sb.navStyle`). Each style has its own slot — filmstrip is the
-  horizontal `#deck-strip` below the canvas, carousel is the vertical `#deck-rail`
-  between the editor and the canvas; `applyNavPlacement` shows one and hides the
-  other. The toggle only re-slots the navigator — the canvas, its scroll, and the
-  active slide are untouched.
+- **Navigator.** A single carousel rail (`#deck-rail`, the vertical strip between the
+  editor and the canvas) painted by `paintDeckNav`; the earlier filmstrip style was
+  removed. Repainting the navigator never touches the canvas, its scroll, or the active
+  slide.
 - **Delete key** removes the selection, except while typing in the code pane.
 - **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
   form, so a canvas edit normalizes source formatting document-wide (fine for the

@@ -23,6 +23,7 @@ export interface DeckActions {
   move(frame: number, name: string, center: Point): void
   create(frame: number, center: Point): void
   remove(frame: number, name: string): void
+  editContent(frame: number, name: string, body: string): void
 }
 
 /** A selected node, qualified by its slide (node names are unique per slide only). */
@@ -116,6 +117,7 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     move: (name, center) => actions.move(frame, name, center),
     create: (center) => actions.create(frame, center),
     remove: (name) => actions.remove(frame, name),
+    editContent: (name, body) => actions.editContent(frame, name, body),
   }
 }
 

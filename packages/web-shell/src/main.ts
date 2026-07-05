@@ -5,7 +5,7 @@
  * The engine, running unchanged in a browser, with a two-way edit loop:
  *   - text -> render: code pane -> fromMarkdown -> resolveLayout -> renderSlide (W2)
  *   - canvas -> text: a gesture -> E1 edit op -> toMarkdown -> code pane (W4)
- * The canvas is the whole deck in one continuous vertical scroll (deck.ts); a
+ * The canvas is the whole deck in one continuous vertical scroll (deck.ts); a carousel
  * navigator rail (deckNav.ts) jumps between slides and stays synced to the scroll.
  * Both edit directions share one source of truth (the .slideBlaster.md text, A1).
  */
@@ -16,9 +16,11 @@ import {
   slideStylesheet,
   renderSlide,
   resolveLayoutAsync,
+  parseContent,
   moveNodeTo,
   createNode,
   deleteNode,
+  setNodeContent,
   type NodeContent,
   type RenderedSlide,
   type SlideDocument,
@@ -27,20 +29,19 @@ import {
 import initialSource from './sample.slideBlaster.md?raw'
 import { createCodePane, type CodePane } from './codePane'
 import { paintDeck, type DeckActions, type DeckHandle, type Selection } from './deck'
-import { paintDeckNav, type NavHandle, type NavStyle } from './deckNav'
+import { paintDeckNav, type NavHandle } from './deckNav'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
 import { SLIDE_TYPE_CSS } from './slideType'
+import { mathOptions } from './math'
+import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import './app.css'
-
-const NAV_STYLE_KEY = 'sb.navStyle'
 
 interface State {
   source: string
   active: number // the slide most in view; drives the navigator highlight
   selected: Selection | null
-  navStyle: NavStyle
 }
 
 function qs<T extends HTMLElement>(selector: string): T {
@@ -71,18 +72,25 @@ function textContent(value: string): NodeContent {
   return { kind: 'text', runs: [{ kind: 'text', value }] }
 }
 
+/** Count nodes whose content is out of subset (ADR 0015 error state) across the deck. */
+function countErrorNodes(doc: SlideDocument): number {
+  return doc.frames.reduce(
+    (total, frame) =>
+      total +
+      frame.picture.statements.filter((s) => s.kind === 'node' && s.content.kind === 'error')
+        .length,
+    0,
+  )
+}
+
 function main(): void {
-  const savedStyle = localStorage.getItem(NAV_STYLE_KEY)
   const state: State = {
     source: initialSource,
     active: 0,
     selected: null,
-    navStyle: savedStyle === 'carousel' ? 'carousel' : 'filmstrip',
   }
   const deck = qs('#deck')
-  const deckRail = qs('#deck-rail') // carousel: vertical strip between editor and canvas
-  const deckStrip = qs('#deck-strip') // filmstrip: horizontal rail below the canvas
-  const navToggle = qs('#nav-toggle')
+  const deckRail = qs('#deck-rail') // the carousel navigator: a vertical rail beside the canvas
   const errorBanner = qs('#error')
   const docTitle = qs('#doc-title')
   const status = qs('#status')
@@ -94,25 +102,16 @@ function main(): void {
   // Monotonic render token: a slow async paint that finishes after a newer edit is dropped.
   let renderSeq = 0
 
-  /** The navigator host for the active style; the other stays hidden. */
-  const navHost = (): HTMLElement => (state.navStyle === 'carousel' ? deckRail : deckStrip)
-
-  /** Show the active navigator in its place, hide the other. */
-  const applyNavPlacement = (): void => {
-    deckRail.hidden = state.navStyle !== 'carousel'
-    deckStrip.hidden = state.navStyle === 'carousel'
-  }
-
-  const markToggle = (): void => {
-    navToggle
-      .querySelectorAll<HTMLButtonElement>('button')
-      .forEach((b) => b.classList.toggle('is-active', b.dataset.view === state.navStyle))
-  }
-
   const setStatus = (): void => {
+    // Out-of-subset nodes take precedence: surface the document error state (ADR 0015).
+    const errors = currentDoc ? countErrorNodes(currentDoc) : 0
+    if (errors > 0) {
+      status.textContent = `${errors} node${errors > 1 ? 's' : ''} out of subset — source kept, fix to render (ADR 0015)`
+      return
+    }
     status.textContent = state.selected
-      ? `Selected ${state.selected.name} on slide ${state.selected.frame + 1} — drag to move, Delete to remove`
-      : 'Scroll the canvas to move through slides · click a node to select · double-click to add'
+      ? `Selected ${state.selected.name} on slide ${state.selected.frame + 1} — drag to move, double-click to edit, Delete to remove`
+      : 'Scroll to move through slides · click to select · double-click to edit or add'
   }
 
   /** Apply an edit op result: re-serialize, sync the code pane, re-render. */
@@ -127,7 +126,11 @@ function main(): void {
     Promise.all(
       doc.frames.map(async (frame, index) => ({
         index,
-        html: renderSlide(frame.picture, await resolveLayoutAsync(frame.picture, measurer)),
+        html: renderSlide(
+          frame.picture,
+          await resolveLayoutAsync(frame.picture, measurer),
+          mathOptions,
+        ),
       })),
     )
 
@@ -157,6 +160,13 @@ function main(): void {
       if (!currentDoc || !target) return
       if (state.selected?.frame === frame && state.selected.name === name) state.selected = null
       commit(withFrame(currentDoc, frame, deleteNode(target.picture, name)))
+    },
+    editContent(frame, name, body) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      // parseContent tolerates out-of-subset input: it lands as error content that
+      // re-serializes verbatim (source kept) and renders as a marked error (ADR 0015).
+      commit(withFrame(currentDoc, frame, setNodeContent(target.picture, name, parseContent(body))))
     },
   }
 
@@ -190,11 +200,9 @@ function main(): void {
     })
     if (handle === null) return // a newer render superseded this one
     deckHandle = handle
-    applyNavPlacement()
-    navHandle = paintDeckNav(navHost(), {
+    navHandle = paintDeckNav(deckRail, {
       frames: doc.frames,
       active: state.active,
-      style: state.navStyle,
       onSelect: (index) => deckHandle?.scrollToSlide(index),
     })
     setStatus()
@@ -215,24 +223,6 @@ function main(): void {
       event.preventDefault()
       actions.remove(state.selected.frame, state.selected.name)
     }
-  })
-
-  // Navigator-style toggle: move the navigator to its slot; the canvas is untouched.
-  navToggle.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-    button.addEventListener('click', () => {
-      const next: NavStyle = button.dataset.view === 'carousel' ? 'carousel' : 'filmstrip'
-      if (next === state.navStyle) return
-      state.navStyle = next
-      localStorage.setItem(NAV_STYLE_KEY, next)
-      markToggle()
-      applyNavPlacement()
-      navHandle = paintDeckNav(navHost(), {
-        frames: currentDoc?.frames ?? [],
-        active: state.active,
-        style: next,
-        onSelect: (index) => deckHandle?.scrollToSlide(index),
-      })
-    })
   })
 
   // Zoom & pan the deck canvas (Ctrl/pinch to zoom, middle/Space-drag to pan).
@@ -273,15 +263,15 @@ function main(): void {
       })
     })
 
-  markToggle()
   void render()
 }
 
-// Inject the engine's base stylesheet + the shared slide type scale once; app.css
-// layers the workspace chrome. SLIDE_TYPE_CSS is keyed on .sb-slide so the deck,
-// thumbnails, the measurer, and the export all render identical proportions.
+// Inject the engine's base stylesheet, the shared slide type scale, and the KaTeX
+// stylesheet once; app.css layers the workspace chrome. SLIDE_TYPE_CSS is keyed on
+// .sb-slide so the deck, thumbnails, the measurer, and the export match; KATEX_CSS
+// (fonts embedded) styles the math the renderMath seam emits, document-wide.
 const style = document.createElement('style')
-style.textContent = `${slideStylesheet()}\n${SLIDE_TYPE_CSS}`
+style.textContent = `${slideStylesheet()}\n${SLIDE_TYPE_CSS}\n${KATEX_CSS}`
 document.head.append(style)
 
 main()

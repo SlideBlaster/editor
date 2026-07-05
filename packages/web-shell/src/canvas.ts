@@ -9,12 +9,15 @@
  * re-implements the render — only the ADR-0014 slide(0..16 x 0..9, y-up) -> box map.
  */
 import {
+  findNode,
   renderSlide,
+  serializeBody,
   type Layout,
   type PlacedNode,
   type Point,
   type TikzPicture,
 } from '@slideblaster/editor'
+import { mathOptions } from './math'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -26,6 +29,8 @@ export interface CanvasActions {
   move(name: string, center: Point): void
   create(center: Point): void
   remove(name: string): void
+  /** Commit an inline content edit: `body` is the edited raw node body (re-parsed by the engine). */
+  editContent(name: string, body: string): void
 }
 
 export interface CanvasProps {
@@ -36,7 +41,7 @@ export interface CanvasProps {
 }
 
 export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
-  stage.innerHTML = renderSlide(props.picture, props.layout)
+  stage.innerHTML = renderSlide(props.picture, props.layout, mathOptions)
   const slideEl = stage.querySelector<HTMLElement>('.sb-slide')
   if (!slideEl) return
 
@@ -45,11 +50,17 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
 
   for (const node of props.layout.nodes) {
     if (!node.name) continue
+    const name = node.name
     const handle = document.createElement('div')
-    handle.className = node.name === props.selected ? 'sb-handle is-selected' : 'sb-handle'
+    handle.className = name === props.selected ? 'sb-handle is-selected' : 'sb-handle'
     handle.style.cssText = boxStyle(node)
-    handle.dataset.node = node.name
-    wireHandle(handle, node.name, node.center, slideEl, stage, props.actions)
+    handle.dataset.node = name
+    wireHandle(handle, name, node.center, slideEl, stage, props.actions)
+    // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
+    handle.addEventListener('dblclick', (event) => {
+      event.stopPropagation() // don't let the empty-overlay dblclick create a node
+      openInlineEditor(overlay, node, name, props.picture, props.actions)
+    })
     overlay.append(handle)
   }
 
@@ -63,6 +74,54 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   })
 
   stage.append(overlay)
+}
+
+/**
+ * Open a raw-body editor over a node (W6, whole-node granularity). Seeds a textarea
+ * from the node's current source (`serializeBody`), positioned on the slide so it
+ * scales with zoom. Commits on blur or Ctrl/Cmd+Enter (re-parsed by the engine);
+ * Escape cancels. A no-op edit doesn't commit, avoiding a needless re-serialize.
+ */
+function openInlineEditor(
+  overlay: HTMLElement,
+  placed: PlacedNode,
+  name: string,
+  picture: TikzPicture,
+  actions: CanvasActions,
+): void {
+  if (overlay.querySelector('.sb-inline-editor')) return // already editing something
+  const node = findNode(picture, name)
+  const seed = node ? serializeBody(node.content) : ''
+
+  const editor = document.createElement('textarea')
+  editor.className = 'sb-inline-editor'
+  editor.style.cssText = boxStyle(placed)
+  editor.value = seed
+  editor.spellcheck = false
+
+  let settled = false
+  const close = (commit: boolean): void => {
+    if (settled) return
+    settled = true // guard: removing a focused textarea fires blur, which must not re-enter
+    editor.remove()
+    if (commit && editor.value !== seed) actions.editContent(name, editor.value)
+  }
+
+  editor.addEventListener('blur', () => close(true))
+  editor.addEventListener('keydown', (event) => {
+    event.stopPropagation() // keep Delete / Space / zoom shortcuts out while typing
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      close(false)
+    } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      editor.blur() // commit via blur; plain Enter stays a newline (lists, \\)
+    }
+  })
+
+  overlay.append(editor)
+  editor.focus()
+  editor.select()
 }
 
 function wireHandle(
