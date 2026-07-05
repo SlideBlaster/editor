@@ -16,8 +16,11 @@
  *   - double-click the arrow line to insert a waypoint there.
  */
 import {
+  anchor as nodeAnchorPoint,
   findPlaced,
+  isAnchorName,
   type Anchor,
+  type AnchorName,
   type ConnectorPath,
   type CurveControls,
   type Layout,
@@ -46,8 +49,12 @@ export function paintConnectorEditor(
   // node centre for this paint; a dragged anchor overrides its own entry.
   const anchors: Anchor[] = source.anchors.map(cloneAnchor)
   const curves: (CurveControls | null)[] = source.curves.map(cloneCurve)
-  const resolve = (a: Anchor): Point =>
-    a.kind === 'node' ? (findPlaced(layout, a.name)?.center ?? { x: 0, y: 0 }) : { ...a.at }
+  const resolve = (a: Anchor): Point => {
+    if (a.kind === 'point') return { ...a.at }
+    const placed = findPlaced(layout, a.name)
+    if (!placed) return { x: 0, y: 0 }
+    return a.anchor && isAnchorName(a.anchor) ? nodeAnchorPoint(placed, a.anchor) : placed.center
+  }
   const pts: Point[] = anchors.map(resolve)
 
   const arrow = slideEl.querySelector<SVGPathElement>(`.sb-arrow[data-arrow="${index}"]`)
@@ -185,54 +192,60 @@ export function paintConnectorEditor(
     }
   }
 
-  // Snap layer: while an anchor is dragged, a dot marks every node it can attach to;
-  // the one being snapped is highlighted. Dots are indicators only (pointer-events none).
+  // Snap layer: while an anchor is dragged, a dot marks every border anchor (N/S/E/W, the
+  // corners, and the centre) of every node it can attach to; the one being snapped is
+  // highlighted. Dots are indicators only (pointer-events none).
   const snapLayer = document.createElementNS(SVG_NS, 'g')
   snapLayer.setAttribute('class', 'sb-snap-layer')
   svg.append(snapLayer)
-  let snappedNode: string | null = null
+  let snapped: { name: string; port: AnchorName } | null = null
   const showSnapDots = (): void => {
     snapLayer.replaceChildren()
     for (const node of layout.nodes) {
       if (!node.name) continue
-      const d = document.createElementNS(SVG_NS, 'circle')
-      d.setAttribute('cx', String(node.center.x))
-      d.setAttribute('cy', String(flip(node.center.y)))
-      d.setAttribute('r', '0.13')
-      d.setAttribute('class', 'sb-snap-dot')
-      d.dataset.node = node.name
-      snapLayer.append(d)
+      for (const port of PORTS) {
+        const pt = nodeAnchorPoint(node, port)
+        const d = document.createElementNS(SVG_NS, 'circle')
+        d.setAttribute('cx', String(pt.x))
+        d.setAttribute('cy', String(flip(pt.y)))
+        d.setAttribute('r', port === 'center' ? '0.1' : '0.08')
+        d.setAttribute('class', 'sb-snap-dot')
+        d.dataset.key = snapKey(node.name, port)
+        snapLayer.append(d)
+      }
     }
   }
-  const highlightSnap = (name: string | null): void => {
+  const highlightSnap = (key: string | null): void => {
     for (const child of Array.from(snapLayer.children)) {
-      child.classList.toggle('is-active', (child as SVGElement).dataset.node === name)
+      child.classList.toggle('is-active', (child as SVGElement).dataset.key === key)
     }
   }
 
-  // Anchor handles last (on top). Drag snaps to a node's centre when near; on release it
-  // attaches there (`(name)`), else it becomes a free point. Interior anchors delete on
-  // double-click.
+  // Anchor handles last (on top). Drag snaps to the nearest border anchor of whatever node
+  // the pointer is over; on release it attaches there (`(name.north)`, or `(name)` for the
+  // centre), else it becomes a free point. Interior anchors delete on double-click.
   for (let i = 0; i < pts.length; i++) {
     const handle = dot(pts[i]!, 'sb-anchor')
     draggable(
       handle,
       (p) => {
-        const snap = nearestNode(p, layout.nodes)
-        snappedNode = snap?.name ?? null
-        const pos = snap ? snap.center : p
+        const snap = nearestAnchor(p, layout.nodes)
+        snapped = snap ? { name: snap.name, port: snap.port } : null
+        const pos = snap ? snap.point : p
         pts[i] = pos
         move(handle, pos)
-        highlightSnap(snappedNode)
+        highlightSnap(snap ? snapKey(snap.name, snap.port) : null)
       },
       {
         onStart: () => {
-          snappedNode = null
+          snapped = null
           showSnapDots()
         },
         onEnd: () => {
-          anchors[i] = snappedNode
-            ? { kind: 'node', name: snappedNode }
+          anchors[i] = snapped
+            ? snapped.port === 'center'
+              ? { kind: 'node', name: snapped.name }
+              : { kind: 'node', name: snapped.name, anchor: snapped.port }
             : { kind: 'point', at: { ...pts[i]! } }
           snapLayer.replaceChildren()
         },
@@ -250,32 +263,66 @@ export function paintConnectorEditor(
   }
 }
 
-/** The node whose box (with a small margin) contains `p`, nearest centre first — the
- *  snap target for a dragged connector endpoint. */
-function nearestNode(
+/** The node border anchors an endpoint can snap to, in preference order (the centre last
+ *  so it loses ties to an edge — arrows read better touching a border than buried inside). */
+const PORTS: readonly AnchorName[] = [
+  'north',
+  'south',
+  'east',
+  'west',
+  'north east',
+  'north west',
+  'south east',
+  'south west',
+  'center',
+]
+
+/** Stable id for a node's border-anchor dot (`name|port`), so a drag can highlight it. */
+function snapKey(name: string, port: AnchorName): string {
+  return `${name}|${port}`
+}
+
+/** The border anchor to snap a dragged endpoint to: pick the node whose box (with a small
+ *  margin) contains `p` (nearest centre wins), then that node's anchor nearest to `p`. Null
+ *  when the pointer is over no node — the endpoint stays a free point. */
+function nearestAnchor(
   p: Point,
   nodes: readonly PlacedNode[],
-): { name: string; center: Point } | null {
+): { name: string; port: AnchorName; point: Point } | null {
   const MARGIN = 0.3
-  let best: { name: string; center: Point } | null = null
-  let bestD = Infinity
-  for (const node of nodes) {
-    if (!node.name) continue
-    const hw = node.size.width / 2 + MARGIN
-    const hh = node.size.height / 2 + MARGIN
-    if (Math.abs(p.x - node.center.x) <= hw && Math.abs(p.y - node.center.y) <= hh) {
-      const d = Math.hypot(p.x - node.center.x, p.y - node.center.y)
-      if (d < bestD) {
-        bestD = d
-        best = { name: node.name, center: { ...node.center } }
+  let node: PlacedNode | null = null
+  let nodeD = Infinity
+  for (const n of nodes) {
+    if (!n.name) continue
+    const hw = n.size.width / 2 + MARGIN
+    const hh = n.size.height / 2 + MARGIN
+    if (Math.abs(p.x - n.center.x) <= hw && Math.abs(p.y - n.center.y) <= hh) {
+      const d = Math.hypot(p.x - n.center.x, p.y - n.center.y)
+      if (d < nodeD) {
+        nodeD = d
+        node = n
       }
+    }
+  }
+  if (!node?.name) return null
+  let best: { name: string; port: AnchorName; point: Point } | null = null
+  let bestD = Infinity
+  for (const port of PORTS) {
+    const point = nodeAnchorPoint(node, port)
+    const d = Math.hypot(p.x - point.x, p.y - point.y)
+    if (d < bestD) {
+      bestD = d
+      best = { name: node.name, port, point }
     }
   }
   return best
 }
 
 function cloneAnchor(a: Anchor): Anchor {
-  return a.kind === 'node' ? { kind: 'node', name: a.name } : { kind: 'point', at: { ...a.at } }
+  if (a.kind === 'point') return { kind: 'point', at: { ...a.at } }
+  return a.anchor
+    ? { kind: 'node', name: a.name, anchor: a.anchor }
+    : { kind: 'node', name: a.name }
 }
 
 function cloneCurve(c: CurveControls | null): CurveControls | null {

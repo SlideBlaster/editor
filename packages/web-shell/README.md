@@ -1,18 +1,18 @@
 # @slideblaster/web-shell
 
-The web application: a Vite static app that wires the browser adapters into the
-editor core and ships to the browser. A launch prerequisite alongside
-`desktop-shell` (ADR 0013).
+The web application: a thin Vite shell that mounts the shared editor app
+(`@slideblaster/app`) in the browser and, as they land, wires the **browser** port
+adapters (IndexedDB/FSA storage, isomorphic-git + CORS proxy, browser export). A
+launch prerequisite alongside `desktop-shell` (ADR 0013).
 
-Milestone **M2** (dogfood). Built incrementally:
+All editor UI and behaviour lives in `@slideblaster/app` so it is shared with the
+desktop shell (implement once). This package owns only `index.html`,
+`vite.config.ts`, and `src/main.ts` (the mount + future adapter wiring).
 
-- **W1 (landed)** — scaffold + live render mount. Runs the engine pipeline unchanged
-  in the browser (`fromMarkdown -> resolveLayout -> renderSlide`), showing a stage
-  slide and a clickable filmstrip. Read-only. See `src/main.md`.
-- **W2** — code pane (source <-> live slide), frame editing.
-- **W3** — DOM-measurement adapter (replaces the naive measurer).
-- **W4+** — canvas: select/drag, positioning, snapping, creation menu, inline
-  content editing. These depend on engine **edit ops** (not yet built).
+Milestone **M2** (dogfood) built the editor incrementally (render mount, code pane,
+DOM-measurement layout, canvas select/drag/snap, creation menu, inline editing,
+connectors, properties, undo/redo, export) — that work now lives in the shared app
+package. Next: browser Storage + Git adapters (M3).
 
 ## Run
 

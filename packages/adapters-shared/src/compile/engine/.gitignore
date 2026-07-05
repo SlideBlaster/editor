@@ -1,0 +1,6 @@
+# Build artifacts — reproducible via build-clibs.sh / build-web.sh and the roadmap pipeline
+vendor/
+build/
+tmp/
+*.wasm
+*.data

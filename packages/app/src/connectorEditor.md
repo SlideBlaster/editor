@@ -10,11 +10,13 @@ and commits a reshaped path via `updateConnector`.
   handles fresh. Structural changes (add/delete waypoint, straighten) just mutate + commit;
   the re-render redraws them.
 - **Handles.**
-  - **Anchor dots** at every anchor. Drag to move. While dragging, a **snap dot** marks
-    every node's centre (`sb-snap-dot`); when the pointer nears a node (its box plus a
-    small margin) the endpoint snaps to that node's centre and the dot highlights. On
-    release it attaches there as `(name)`, else it becomes a free `(x,y)`. Interior anchors
-    delete on **double-click**.
+  - **Anchor dots** at every anchor. Drag to move. While dragging, **snap dots**
+    (`sb-snap-dot`) mark every node's border anchors — N/S/E/W, the four corners, and the
+    centre. When the pointer is over a node (its box plus a small margin) the endpoint
+    snaps to that node's **nearest** anchor and the dot highlights; the centre loses ties
+    to an edge, so arrows prefer to touch a border rather than bury themselves inside. On
+    release it attaches as `(name.north)` (or `(name)` for the centre), else it becomes a
+    free `(x,y)`. Interior anchors delete on **double-click**.
   - **Bend handle** at each straight segment's midpoint — drag to curve it. The cubic
     controls are placed so the curve bows through the drag point (`bendControls`).
   - **Control handles** (two per curved segment, with dashed guide lines to their anchors)

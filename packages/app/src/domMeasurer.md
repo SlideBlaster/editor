@@ -2,7 +2,7 @@
 
 The browser adapter for the engine's `BatchMeasurer` seam — the Track-0 "async
 measurement" spike made real. Replaces `naiveMeasurer`'s character estimate with the
-node's *actual* rendered box, so layout matches what you see.
+node's _actual_ rendered box, so layout matches what you see.
 
 `createDomMeasurer()` returns a `BatchMeasurer` plus `dispose()`.
 

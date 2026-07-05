@@ -8,8 +8,9 @@ change (per `AGENTS.md`).
 A presentations editor that is LaTeX/TikZ-native, where `*.slideBlaster.md` files in
 the user's own GitHub repo are the source of truth. One platform-agnostic editor
 core reaches every external capability through a **port**; per-platform **adapters**
-implement the ports; two **shells** (web, desktop) wire them together; two small
-**services** are our only infra. Full design in the sibling `design/` repo.
+implement the ports; one shared **app** holds the whole editor UI; two thin **shells**
+(web, desktop) mount it and wire the adapters; two small **services** are our only
+infra. Full design in the sibling `design/` repo.
 
 ## Layout
 
@@ -17,11 +18,12 @@ implement the ports; two **shells** (web, desktop) wire them together; two small
 editor/                         <- this monorepo (pnpm workspace)
   packages/
     editor/            @slideblaster/editor            core: defines the six ports (engine at M1)
+    app/               @slideblaster/app               shared editor UI: controller + canvas/code/deck/props (createApp)
     adapters-browser/  @slideblaster/adapters-browser  isomorphic-git + CORS proxy, IndexedDB/FSA, y-webrtc, export
     adapters-native/   @slideblaster/adapters-native   native FS + git + keychain + print (Tauri)
-    adapters-shared/   @slideblaster/adapters-shared   WASM latexml compile, collab client
-    web-shell/         @slideblaster/web-shell         Vite static app (browser adapters)
-    desktop-shell/     @slideblaster/desktop-shell     Tauri app (native adapters)
+    adapters-shared/   @slideblaster/adapters-shared   WASM latexml compile (scaffold; engine unbuilt), collab client
+    web-shell/         @slideblaster/web-shell         thin Vite app: mounts app + browser adapters
+    desktop-shell/     @slideblaster/desktop-shell     thin Tauri app: mounts app + native adapters
   services/
     auth/       Phoenix: GitHub App, KMS token minting, identity, capabilities   (not a pnpm package)
     collab/     Phoenix: P2P signaling + premium server sessions + WAL           (not a pnpm package)

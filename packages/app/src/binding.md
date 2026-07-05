@@ -1,6 +1,6 @@
 # relative-binding detection (binding.ts)
 
-The E2 counterpart to [snap.ts](./snap.md). Snapping resolves an *absolute* drop;
+The E2 counterpart to [snap.ts](./snap.md). Snapping resolves an _absolute_ drop;
 this decides whether a dragged node should instead **bind** to a peer —
 `[<side>=<gap> of <ref>]`. Pure and unit-tested ([binding.test.ts](./binding.test.ts));
 [canvas.ts](./canvas.md) prefers a binding over an absolute snap and commits it via the

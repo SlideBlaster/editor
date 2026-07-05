@@ -12,6 +12,6 @@ standalone/print document ([export.ts](./export.md)).
   `.sb-slide` is the `inline-size` container; 1 slide unit = 6.25cqw (16 units across).
   So the measurer can measure at any single reference width and the slide-unit result
   holds at every rendered size.
-- **Split of duties.** The engine's `slideStylesheet()` owns slide *structure* (the
-  layered geometry/content positioning); this owns the *type scale*. `app.css` keeps
+- **Split of duties.** The engine's `slideStylesheet()` owns slide _structure_ (the
+  layered geometry/content positioning); this owns the _type scale_. `app.css` keeps
   only chrome (the card border/shadow around `.deck-slide .sb-slide`, thumbnail frames).

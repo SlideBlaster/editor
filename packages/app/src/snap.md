@@ -11,7 +11,7 @@ maps its result to a pixel preview and commit. Spec: `design/ux/positioning-snap
   units. `center` is the snapped position; `guides` are line segments to render.
 - **Per-axis, independent.** X and Y resolve separately (a box can align on one axis
   and space on the other). Each box is projected to `{ c, half, pc, phalf }` — center
-  and half-extent *along* the axis, and *across* it (for spacing overlap) — so one
+  and half-extent _along_ the axis, and _across_ it (for spacing overlap) — so one
   routine serves both axes.
 - **Precedence per axis:** `alignment` > `spacing` > `grid`. The first that lands
   within `threshold` wins; nothing within threshold leaves that axis free (exact).

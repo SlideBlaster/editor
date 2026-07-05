@@ -6,43 +6,7 @@
     <title>SlideBlaster</title>
   </head>
   <body>
-    <div id="app">
-      <header class="app-bar">
-        <span class="app-name">SlideBlaster</span>
-        <span class="app-doc" id="doc-title"></span>
-        <div class="tool-actions" role="group" aria-label="Tools">
-          <button type="button" id="undo" aria-label="Undo" title="Undo (Ctrl+Z)">Undo</button>
-          <button type="button" id="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
-            Redo
-          </button>
-          <button type="button" id="connect-toggle" aria-pressed="false">&rarr; Connect</button>
-        </div>
-        <div class="export-actions" id="export-actions" role="group" aria-label="Export">
-          <button type="button" data-export="print">Print / PDF</button>
-          <button type="button" data-export="html">Export HTML</button>
-        </div>
-        <span class="app-tag">web-shell &middot; M2</span>
-      </header>
-      <main class="workspace">
-        <section class="editor">
-          <div class="editor-head">sample.slideBlaster.md</div>
-          <div class="code-host" id="code"></div>
-        </section>
-        <nav class="deck-rail" id="deck-rail" aria-label="Slides" hidden></nav>
-        <section class="preview">
-          <div class="deck" id="deck"></div>
-          <aside class="props-panel" id="props" aria-label="Properties" hidden></aside>
-          <div class="zoom-control" id="zoom-control">
-            <button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>
-            <button type="button" data-zoom="reset" id="zoom-readout">100%</button>
-            <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
-            <button type="button" data-zoom="fit" aria-label="Fit width">Fit</button>
-          </div>
-          <div class="parse-error" id="error" hidden></div>
-          <div class="status-bar" id="status"></div>
-        </section>
-      </main>
-    </div>
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

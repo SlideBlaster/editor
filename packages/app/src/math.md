@@ -15,7 +15,7 @@ source.
   document — no CDN, no external font files, offline and CSP-safe.
 - **Never throws.** `throwOnError: false` renders malformed math in place (KaTeX's red
   error text) rather than breaking the whole slide render — matching the engine's tolerant
-  posture. (Out-of-subset *constructs* are still the engine's hard error; this is only for
+  posture. (Out-of-subset _constructs_ are still the engine's hard error; this is only for
   math syntax inside an accepted `$…$`.)
 
 Regenerate the CSS after upgrading katex: `node scripts/genKatexCss.mjs`.

@@ -489,10 +489,14 @@ body {
   pointer-events: none;
 }
 
+/* Selection target: a forgiving straight stroke along the connector's anchor chord — the
+   "original straight line", never the curved path — so a curved arrow is selected by its
+   baseline (which, with border anchors, runs edge-to-edge in the open) rather than by
+   chasing the bulge of the curve. */
 .sb-hit {
   fill: none;
   stroke: transparent;
-  stroke-width: 0.4;
+  stroke-width: 0.5;
   pointer-events: stroke;
   cursor: pointer;
 }
