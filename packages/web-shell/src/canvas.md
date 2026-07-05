@@ -9,8 +9,13 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   only that coordinate mapping.
 - **Gestures -> intent.** A handle reports `select` on pointer-down, and `move` on
   pointer-up if it actually dragged past a small threshold (a bare click is just
-  selection). Empty overlay: click to deselect, double-click to `create` a node at
-  that slide point. Delete is a keyboard action wired in the controller.
+  selection). Empty overlay: click to deselect, double-click to `requestCreate` (open
+  the creation menu, [createMenu.ts](./createMenu.md)) at that slide point, passing the
+  cursor's client coordinates so the popover anchors there. Delete is a keyboard action
+  wired in the controller.
+- **Auto-edit (W5).** `props.autoEdit` names a just-created node; after painting, its
+  inline editor is opened immediately so a freshly-inserted element lands in edit mode
+  with an empty caret. The controller supplies (and then clears) it.
 - **Inline content editing (W6, whole-node).** Double-click a handle opens a raw-body
   `textarea` (`.sb-inline-editor`) over the node, seeded from the engine's
   `serializeBody(content)` and positioned by the same slide-space box (scales with

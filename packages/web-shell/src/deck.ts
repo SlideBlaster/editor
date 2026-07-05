@@ -22,7 +22,7 @@ export interface DeckActions {
   select(frame: number, name: string | null): void
   move(frame: number, name: string, center: Point): void
   bind(frame: number, name: string, binding: { side: RelativeSide; gap: number; ref: string }): void
-  create(frame: number, center: Point): void
+  requestCreate(frame: number, center: Point, client: Point): void
   remove(frame: number, name: string): void
   editContent(frame: number, name: string, body: string): void
   connect(frame: number, from: string, to: string): void
@@ -49,6 +49,8 @@ export interface DeckProps {
   selectedConnector: ConnectorSelection | null
   /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
   connectMode: boolean
+  /** A just-created node to open in edit mode, qualified by its slide (W5). */
+  autoEdit: Selection | null
   actions: DeckActions
   /** Sizes node boxes; the DOM measurer in the browser, naive in tests. */
   measurer: BatchMeasurer
@@ -96,12 +98,14 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
     const selectedName = props.selected?.frame === index ? props.selected.name : null
     const selectedConnector =
       props.selectedConnector?.frame === index ? props.selectedConnector.index : null
+    const autoEdit = props.autoEdit?.frame === index ? props.autoEdit.name : null
     paintCanvas(card, {
       picture: frame.picture,
       layout: layouts[index]!,
       selected: selectedName,
       selectedConnector,
       connectMode: props.connectMode,
+      autoEdit,
       actions: bindFrame(props.actions, index),
     })
     canvas.append(card)
@@ -134,7 +138,7 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     select: (name) => actions.select(frame, name),
     move: (name, center) => actions.move(frame, name, center),
     bind: (name, binding) => actions.bind(frame, name, binding),
-    create: (center) => actions.create(frame, center),
+    requestCreate: (center, client) => actions.requestCreate(frame, center, client),
     remove: (name) => actions.remove(frame, name),
     editContent: (name, body) => actions.editContent(frame, name, body),
     connect: (from, to) => actions.connect(frame, from, to),

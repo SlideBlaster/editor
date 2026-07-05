@@ -24,7 +24,6 @@ import {
   setNodeContent,
   createConnector,
   deleteConnector,
-  type NodeContent,
   type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
@@ -39,6 +38,7 @@ import {
   type ConnectorSelection,
 } from './deck'
 import { paintDeckNav, type NavHandle } from './deckNav'
+import { openCreationMenu, type MenuItem } from './createMenu'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
 import { SLIDE_TYPE_CSS } from './slideType'
@@ -53,7 +53,23 @@ interface State {
   selected: Selection | null
   selectedConnector: ConnectorSelection | null
   connectMode: boolean // E4: dragging a node draws an arrow instead of moving it
+  autoEdit: Selection | null // W5: a just-created node to open in edit mode next paint
 }
+
+/** The creation-menu catalogue (W5): each entry maps to a createNode spec. `body` is
+ *  the initial raw content (parsed on insert); empty means an empty caret to type into. */
+interface CatalogueEntry extends MenuItem {
+  options: string[]
+  body: string
+}
+
+const CATALOGUE: CatalogueEntry[] = [
+  { id: 'text', label: 'Text', hint: 'plain', options: [], body: '' },
+  { id: 'title', label: 'Title', hint: 'heading', options: ['title'], body: '' },
+  { id: 'body', label: 'Body', hint: 'text block', options: ['body'], body: '' },
+  { id: 'note', label: 'Note', hint: 'aside', options: ['note'], body: '' },
+  { id: 'math', label: 'Math', hint: '$…$', options: [], body: '$x$' },
+]
 
 function qs<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector)
@@ -78,11 +94,6 @@ function withFrame(doc: SlideDocument, index: number, picture: TikzPicture): Sli
   }
 }
 
-/** Minimal visible content for a freshly created node. */
-function textContent(value: string): NodeContent {
-  return { kind: 'text', runs: [{ kind: 'text', value }] }
-}
-
 /** Count nodes whose content is out of subset (ADR 0015 error state) across the deck. */
 function countErrorNodes(doc: SlideDocument): number {
   return doc.frames.reduce(
@@ -101,12 +112,19 @@ function main(): void {
     selected: null,
     selectedConnector: null,
     connectMode: false,
+    autoEdit: null,
   }
+  // Source-history undo/redo: each committed canvas edit snapshots the prior source.
+  const undoStack: string[] = []
+  const redoStack: string[] = []
+  const HISTORY_LIMIT = 100
   const deck = qs('#deck')
   const deckRail = qs('#deck-rail') // the carousel navigator: a vertical rail beside the canvas
   const errorBanner = qs('#error')
   const docTitle = qs('#doc-title')
   const status = qs('#status')
+  const undoButton = qs<HTMLButtonElement>('#undo')
+  const redoButton = qs<HTMLButtonElement>('#redo')
   let currentDoc: SlideDocument | null = null
   let codePane: CodePane
   let deckHandle: DeckHandle | null = null
@@ -136,11 +154,37 @@ function main(): void {
       : 'Scroll to move through slides · click to select · double-click to edit or add'
   }
 
-  /** Apply an edit op result: re-serialize, sync the code pane, re-render. */
+  /** Apply an edit op result: snapshot for undo, re-serialize, sync the code pane, render. */
   const commit = (doc: SlideDocument): void => {
+    undoStack.push(state.source) // the pre-edit source is the undo target
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
+    redoStack.length = 0 // a new edit invalidates the redo branch
     state.source = toMarkdown(doc)
     codePane.setValue(state.source)
     void render()
+  }
+
+  /** Restore a source from history, syncing the pane and clearing transient selections. */
+  const restore = (source: string): void => {
+    state.source = source
+    codePane.setValue(source)
+    state.selected = null
+    state.selectedConnector = null
+    void render()
+  }
+
+  const undo = (): void => {
+    const prev = undoStack.pop()
+    if (prev === undefined) return
+    redoStack.push(state.source)
+    restore(prev)
+  }
+
+  const redo = (): void => {
+    const next = redoStack.pop()
+    if (next === undefined) return
+    undoStack.push(state.source)
+    restore(next)
   }
 
   /** Render every frame to self-contained HTML for export — same measurements as the canvas. */
@@ -187,15 +231,27 @@ function main(): void {
       if (!currentDoc || !target) return
       commit(withFrame(currentDoc, frame, placeNodeRelative(target.picture, name, binding)))
     },
-    create(frame, center) {
-      const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      const { picture, name } = createNode(target.picture, {
-        at: center,
-        content: textContent('Text'),
+    requestCreate(frame, center, client) {
+      if (!currentDoc?.frames[frame]) return
+      // Summon the creation menu at the cursor; picking inserts at the slide point,
+      // selects the new node, and opens it in edit mode (ux/creation-menu.md).
+      openCreationMenu(client.x, client.y, {
+        items: CATALOGUE,
+        onDismiss: () => {}, // an exploratory summon leaves no trace
+        onPick: (id) => {
+          const entry = CATALOGUE.find((item) => item.id === id)
+          const target = currentDoc?.frames[frame]
+          if (!entry || !currentDoc || !target) return
+          const { picture, name } = createNode(target.picture, {
+            at: center,
+            options: entry.options,
+            content: parseContent(entry.body),
+          })
+          state.selected = { frame, name }
+          state.autoEdit = { frame, name }
+          commit(withFrame(currentDoc, frame, picture))
+        },
       })
-      state.selected = { frame, name }
-      commit(withFrame(currentDoc, frame, picture))
     },
     remove(frame, name) {
       const target = currentDoc?.frames[frame]
@@ -231,11 +287,14 @@ function main(): void {
       state.selectedConnector = null
 
     const seq = ++renderSeq
+    const autoEdit = state.autoEdit
+    state.autoEdit = null // consumed by this paint (value captured in props below)
     const handle = await paintDeck(deck, {
       frames: doc.frames,
       selected: state.selected,
       selectedConnector: state.selectedConnector,
       connectMode: state.connectMode,
+      autoEdit,
       actions,
       measurer,
       isStale: () => seq !== renderSeq,
@@ -251,6 +310,8 @@ function main(): void {
       active: state.active,
       onSelect: (index) => deckHandle?.scrollToSlide(index),
     })
+    undoButton.disabled = undoStack.length === 0
+    redoButton.disabled = redoStack.length === 0
     setStatus()
   }
 
@@ -274,11 +335,29 @@ function main(): void {
   }
   connectToggle.addEventListener('click', () => setConnectMode(!state.connectMode))
 
-  // Delete/Backspace removes the selected node or connector — but not while typing in
-  // the code pane. Escape leaves connect mode.
+  // Undo / redo toolbar buttons (keyboard: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z).
+  undoButton.addEventListener('click', () => undo())
+  redoButton.addEventListener('click', () => redo())
+
+  // Keyboard: undo/redo, Delete, Escape — but never while typing in a field (the code
+  // pane, the inline editor, or the creation-menu filter keep their native behaviour,
+  // including the textarea's own undo).
   document.addEventListener('keydown', (event) => {
-    const typing = document.activeElement instanceof HTMLTextAreaElement
+    const el = document.activeElement
+    const typing = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
     if (typing) return
+    const mod = event.metaKey || event.ctrlKey
+    if (mod && event.key.toLowerCase() === 'z') {
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'y') {
+      event.preventDefault()
+      redo() // Windows-style redo
+      return
+    }
     if (event.key === 'Escape' && state.connectMode) {
       event.preventDefault()
       setConnectMode(false)

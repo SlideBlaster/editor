@@ -16,7 +16,7 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   ([math.ts](./math.md)) on every surface. See ux/deck-navigation.md.
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
   `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
-  `create -> createNode`, `remove -> deleteNode`,
+  `requestCreate -> creation menu -> createNode` (W5), `remove -> deleteNode`,
   `editContent -> parseContent + setNodeContent`, `connect -> createConnector` (E4),
   `selectConnector` (connector selection, exclusive with node selection). A connect-mode
   toolbar toggle (`#connect-toggle`, Esc to exit) flips dragging into arrow-drawing;
@@ -24,6 +24,17 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.
+- **Creation menu (W5).** `requestCreate` opens the cursor-anchored menu
+  ([createMenu.ts](./createMenu.md)) with the element `CATALOGUE`; picking inserts a node
+  of that kind at the slide point, selects it, and sets `autoEdit` so it opens in edit
+  mode next paint. Dismissing leaves the document untouched. Invocation is the
+  empty-canvas double-click (was: a direct text-node insert).
+- **Undo / redo.** A source-history stack: every `commit` snapshots the pre-edit source
+  onto `undoStack` (capped, clears the redo branch); `undo`/`redo` swap sources and sync
+  the code pane. Keys `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` (or `Ctrl+Y`), plus toolbar
+  buttons whose disabled state tracks the stacks. This covers **canvas edits**; typing in
+  the code pane keeps the textarea's own native undo (the keyboard handler ignores keys
+  while a field is focused). So one menu insertion is one undo step (ux/creation-menu.md).
 - **Out-of-subset error state.** An inline edit is re-parsed by `parseContent`, which
   tolerates unsupported constructs by returning error content (source preserved
   verbatim, renders as a marked error — ADR 0015). `setStatus` counts error nodes across
@@ -40,7 +51,9 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   editor and the canvas) painted by `paintDeckNav`; the earlier filmstrip style was
   removed. Repainting the navigator never touches the canvas, its scroll, or the active
   slide.
-- **Delete key** removes the selection, except while typing in the code pane.
+- **Keyboard.** Delete removes the selected node or connector; undo/redo as above; Esc
+  exits connect mode. All are ignored while a text field (code pane, inline editor, menu
+  filter) is focused, so those keep their native behaviour.
 - **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
   form, so a canvas edit normalizes source formatting document-wide (fine for the
   canonical sample; surgical per-frame splicing is a later refinement). `paintDeck`

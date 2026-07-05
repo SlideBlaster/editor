@@ -39,7 +39,9 @@ export interface CanvasActions {
   move(name: string, center: Point): void
   /** Relative drop (E2): bind the node `[side=gap of ref]`. */
   bind(name: string, binding: { side: Binding['side']; gap: number; ref: string }): void
-  create(center: Point): void
+  /** Open the creation menu: `center` is the slide-space insert point, `client` the
+   *  cursor position to anchor the popover (W5). */
+  requestCreate(center: Point, client: Point): void
   remove(name: string): void
   /** Commit an inline content edit: `body` is the edited raw node body (re-parsed by the engine). */
   editContent(name: string, body: string): void
@@ -57,6 +59,8 @@ export interface CanvasProps {
   selectedConnector: number | null
   /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
   connectMode: boolean
+  /** A just-created node to open in edit mode on this paint (W5), or null. */
+  autoEdit: string | null
   actions: CanvasActions
 }
 
@@ -101,16 +105,26 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     overlay.append(handle)
   }
 
-  // Empty-canvas gestures: click to deselect, double-click to create a node there.
+  // Empty-canvas gestures: click to deselect, double-click to open the creation menu
+  // at the cursor (W5). The menu anchors at the client point; insertion at the slide point.
   overlay.addEventListener('pointerdown', (event) => {
     if (event.target === overlay) props.actions.select(null)
   })
   overlay.addEventListener('dblclick', (event) => {
     if (event.target === overlay)
-      props.actions.create(pointToUnits(slideEl, event.clientX, event.clientY))
+      props.actions.requestCreate(pointToUnits(slideEl, event.clientX, event.clientY), {
+        x: event.clientX,
+        y: event.clientY,
+      })
   })
 
   stage.append(overlay)
+
+  // A just-created node opens straight in edit mode with an empty caret (W5).
+  if (props.autoEdit) {
+    const placed = props.layout.nodes.find((n) => n.name === props.autoEdit)
+    if (placed?.name) openInlineEditor(overlay, placed, placed.name, props.picture, props.actions)
+  }
 }
 
 /**
