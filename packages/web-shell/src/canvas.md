@@ -20,15 +20,24 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   becomes preserved error content (ADR 0015), never a crash. `keydown` is stopped so
   Delete / Space / zoom shortcuts stay inert while typing. Per-construct (sub-node)
   editing is a later refinement; this replaces the whole node body.
-- **Live drag.** During a drag the handle and its rendered content
-  (`.sb-node[data-node]`) are translated together for preview; the committed position
-  is computed from the total pixel delta converted to slide units (y flips), then the
-  controller applies `moveNodeTo` and re-renders (which clears the transforms).
+- **Live drag with snapping.** During a drag the pointer's free target (slide space,
+  y-up) is passed through the [snap resolver](./snap.md) against every other box on the
+  slide; the snapped center drives the preview (handle + `.sb-node[data-node]`
+  translated together) and is what commits on pointer-up via `moveNodeTo`. **Hold Alt**
+  to bypass snapping and place freely (ux/positioning-snapping.md). The re-render after
+  commit clears the transforms. Snapping only adjusts the *absolute* drop point —
+  choosing relative binding (`[below=of img]`) is the E2 drop, deferred.
+- **Snap guides.** While a drag engages a snap, `drawGuides` paints an SVG layer
+  (`svg.sb-guides`, viewBox `0 0 16 9`, stretched, non-scaling strokes) over the slide:
+  solid accent lines for edge/center/slide-guide alignment, dashed segments for the two
+  equal gaps of a spacing snap. The layer is rebuilt each move and removed on pointer-up
+  / cancel. Slide space is y-up, the viewBox y-down, so guide y flips to `9 - y`.
 - **Zoom-aware.** The whole canvas magnifies by scaling the slide width via
-  `--zoom` ([zoom.ts](./zoom.md)). Rect-based conversions (`pointToUnits`,
-  `pixelsToUnits`) stay correct because `getBoundingClientRect` returns the scaled
-  slide rect; the live-drag preview translates in plain pixels (no transform/zoom
-  context), so it already tracks the pointer 1:1.
+  `--zoom` ([zoom.ts](./zoom.md)). Rect-based conversions (`pointToUnits`, and the
+  drag's own px->unit math) stay correct because `getBoundingClientRect` returns the
+  scaled slide rect; the snap threshold is derived from a fixed pixel radius per drag,
+  so snapping feels the same at every zoom. The live-drag preview translates in plain
+  pixels (no transform/zoom context), so it already tracks the pointer 1:1.
 - **Selection must not re-render.** `actions.select` only toggles handle state — a
   full re-render would replace the very element mid-drag and break pointer capture.
   `move`/`create`/`remove` re-serialize and re-render.

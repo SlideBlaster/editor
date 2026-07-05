@@ -341,6 +341,35 @@ body {
   cursor: grabbing;
 }
 
+/* Snap guides: an SVG layer over the slide, drawn while dragging (canvas.ts, snap.ts).
+   viewBox is slide-sized and stretched to the box; non-scaling strokes keep lines
+   crisp at any zoom. Alignment lines are solid accent; spacing gaps are dashed. */
+.sb-guides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.sb-guides line {
+  vector-effect: non-scaling-stroke;
+}
+
+.sb-guide-align {
+  stroke: var(--accent);
+  stroke-width: 1px;
+  opacity: 0.9;
+}
+
+.sb-guide-space {
+  stroke: color-mix(in srgb, var(--accent) 70%, #14b8a6);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 3;
+}
+
 /* Inline content editor: a raw-source textarea over a node, double-click to open.
    Positioned in slide space (percent box) so it scales with zoom; cqw font matches
    the rendered content (via the .deck-slide query container). */

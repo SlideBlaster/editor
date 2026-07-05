@@ -18,10 +18,14 @@ import {
   type TikzPicture,
 } from '@slideblaster/editor'
 import { mathOptions } from './math'
+import { resolveSnap, type SnapBox, type SnapLine } from './snap'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
 const DRAG_THRESHOLD_PX = 2
+const SNAP_PX = 7 // snap radius in screen pixels — converted to slide units per drag (zoom-independent)
+const SNAP_GRID = 0.5 // sub-unit grid step in slide units
+const SVG_NS = 'http://www.w3.org/2000/svg'
 
 export interface CanvasActions {
   /** Selection only — cheap, must not re-render (a drag may be starting). */
@@ -51,11 +55,15 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   for (const node of props.layout.nodes) {
     if (!node.name) continue
     const name = node.name
+    // Snap targets: every other box on the slide (named or not), captured for this paint.
+    const peers: SnapBox[] = props.layout.nodes
+      .filter((other) => other !== node)
+      .map((other) => ({ center: other.center, size: other.size }))
     const handle = document.createElement('div')
     handle.className = name === props.selected ? 'sb-handle is-selected' : 'sb-handle'
     handle.style.cssText = boxStyle(node)
     handle.dataset.node = name
-    wireHandle(handle, name, node.center, slideEl, stage, props.actions)
+    wireHandle(handle, node, peers, slideEl, stage, overlay, props.actions)
     // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
     handle.addEventListener('dblclick', (event) => {
       event.stopPropagation() // don't let the empty-overlay dblclick create a node
@@ -126,48 +134,106 @@ function openInlineEditor(
 
 function wireHandle(
   handle: HTMLElement,
-  name: string,
-  center: Point,
+  node: PlacedNode,
+  peers: readonly SnapBox[],
   slideEl: HTMLElement,
   stage: HTMLElement,
+  overlay: HTMLElement,
   actions: CanvasActions,
 ): void {
-  let drag: { startX: number; startY: number; moved: boolean } | null = null
+  const name = node.name! // caller only wires named nodes
+  const origin = node.center
+  // The snapped target for this drag, updated live and committed on pointerup.
+  let drag: { startX: number; startY: number; moved: boolean; target: Point } | null = null
 
   handle.addEventListener('pointerdown', (event) => {
     event.stopPropagation()
     actions.select(name)
-    drag = { startX: event.clientX, startY: event.clientY, moved: false }
+    drag = { startX: event.clientX, startY: event.clientY, moved: false, target: origin }
     handle.setPointerCapture(event.pointerId)
   })
 
   handle.addEventListener('pointermove', (event) => {
     if (!drag) return
-    const dx = event.clientX - drag.startX
-    const dy = event.clientY - drag.startY
-    if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD_PX) drag.moved = true
-    // Live preview: translate handle and content together. Zoom scales the slide by
-    // width (no transform/zoom context), so a pixel translate already tracks the
-    // pointer 1:1; the committed position uses the zoomed rect and stays exact.
-    const transform = `translate(${dx}px, ${dy}px)`
+    const dxPx = event.clientX - drag.startX
+    const dyPx = event.clientY - drag.startY
+    if (Math.abs(dxPx) + Math.abs(dyPx) > DRAG_THRESHOLD_PX) drag.moved = true
+
+    const rect = slideEl.getBoundingClientRect()
+    // Free (unsnapped) target the pointer is pointing at, in slide space (y-up).
+    const proposed: Point = {
+      x: origin.x + (dxPx / rect.width) * SLIDE_W,
+      y: origin.y - (dyPx / rect.height) * SLIDE_H,
+    }
+    // Alt suppresses snapping for fully-free placement (ux/positioning-snapping.md).
+    let target = proposed
+    let guides: SnapLine[] = []
+    if (!event.altKey) {
+      const threshold = (SNAP_PX / rect.width) * SLIDE_W // px radius -> slide units (zoom-independent)
+      const snapped = resolveSnap({ center: proposed, size: node.size }, peers, {
+        threshold,
+        grid: SNAP_GRID,
+        slideWidth: SLIDE_W,
+        slideHeight: SLIDE_H,
+      })
+      target = snapped.center
+      guides = snapped.guides
+    }
+    drag.target = target
+
+    // Live preview: translate handle and content by the snapped delta. Zoom scales the
+    // slide by width (no transform/zoom context), so a pixel translate tracks 1:1.
+    const txPx = ((target.x - origin.x) / SLIDE_W) * rect.width
+    const tyPx = (-(target.y - origin.y) / SLIDE_H) * rect.height
+    const transform = `translate(${txPx}px, ${tyPx}px)`
     handle.style.transform = transform
     const content = stage.querySelector<HTMLElement>(`.sb-node[data-node="${CSS.escape(name)}"]`)
     if (content) content.style.transform = transform
+    drawGuides(overlay, guides)
   })
 
-  handle.addEventListener('pointerup', (event) => {
+  const end = (event: PointerEvent): void => {
     if (!drag) return
     const finished = drag
     drag = null
     handle.releasePointerCapture(event.pointerId)
+    clearGuides(overlay)
     if (!finished.moved) return // a click, not a drag; selection already happened
-    const delta = pixelsToUnits(
-      slideEl,
-      event.clientX - finished.startX,
-      event.clientY - finished.startY,
-    )
-    actions.move(name, { x: center.x + delta.x, y: center.y + delta.y })
-  })
+    actions.move(name, finished.target) // commit the snapped position; re-render resets the transform
+  }
+  handle.addEventListener('pointerup', end)
+  handle.addEventListener('pointercancel', end)
+}
+
+/** Draw the snap guides into a dedicated SVG layer over the slide (rebuilt each move).
+ *  Guides are in slide space (y-up); the SVG viewBox is y-down, so y flips to SLIDE_H - y. */
+function drawGuides(overlay: HTMLElement, guides: readonly SnapLine[]): void {
+  let svg = overlay.querySelector<SVGSVGElement>('svg.sb-guides')
+  if (guides.length === 0) {
+    svg?.remove()
+    return
+  }
+  if (!svg) {
+    svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('class', 'sb-guides')
+    svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+    svg.setAttribute('preserveAspectRatio', 'none')
+    overlay.append(svg)
+  }
+  svg.replaceChildren()
+  for (const g of guides) {
+    const line = document.createElementNS(SVG_NS, 'line')
+    line.setAttribute('x1', String(g.x1))
+    line.setAttribute('y1', String(SLIDE_H - g.y1))
+    line.setAttribute('x2', String(g.x2))
+    line.setAttribute('y2', String(SLIDE_H - g.y2))
+    line.setAttribute('class', g.kind === 'space' ? 'sb-guide-space' : 'sb-guide-align')
+    svg.append(line)
+  }
+}
+
+function clearGuides(overlay: HTMLElement): void {
+  overlay.querySelector('svg.sb-guides')?.remove()
 }
 
 /** Node box as CSS percentages of the slide, mirroring renderSlide's mapping (y-up). */
@@ -186,10 +252,4 @@ function pointToUnits(slideEl: HTMLElement, clientX: number, clientY: number): P
     x: ((clientX - rect.left) / rect.width) * SLIDE_W,
     y: SLIDE_H - ((clientY - rect.top) / rect.height) * SLIDE_H,
   }
-}
-
-/** Client pixel delta -> slide-space delta (y flips: screen y-down, slide y-up). */
-function pixelsToUnits(slideEl: HTMLElement, dxPx: number, dyPx: number): Point {
-  const rect = slideEl.getBoundingClientRect()
-  return { x: (dxPx / rect.width) * SLIDE_W, y: -(dyPx / rect.height) * SLIDE_H }
 }
