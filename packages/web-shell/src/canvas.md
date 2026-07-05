@@ -58,6 +58,9 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   layout)`; clicking one fires `selectConnector(index)` and a selected line shows a
   translucent band. The visible arrow itself is the engine's render. Delete of a
   selected connector is a controller keybinding (`deleteConnector`).
+- **Reshaping the selected arrow (E4+).** When the selected connector is editable, its
+  `ConnectorPath` is handed to [connectorEditor.ts](./connectorEditor.md), which draws
+  endpoint/waypoint/curve handles and commits reshaped paths via `updateConnector`.
 - **Connect mode (E4).** When `props.connectMode`, node handles are wired by
   `wireConnect` instead of `wireHandle`: dragging from a node draws a rubber band
   (`svg.sb-rubber`) to the pointer and, on release over another node

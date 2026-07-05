@@ -14,6 +14,7 @@ import {
   renderSlide,
   connectorsOf,
   serializeBody,
+  type ConnectorPath,
   type Layout,
   type PlacedNode,
   type Point,
@@ -22,6 +23,7 @@ import {
 import { mathOptions } from './math'
 import { resolveSnap, type SnapBox, type SnapLine, type SnapSize } from './snap'
 import { findBinding, type BindBox, type Binding } from './binding'
+import { paintConnectorEditor } from './connectorEditor'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -49,6 +51,8 @@ export interface CanvasActions {
   connect(from: string, to: string): void
   /** Select an existing connector by its index (or clear with null). */
   selectConnector(index: number | null): void
+  /** E4+: replace a connector's shape (endpoints, waypoints, curves). */
+  updateConnector(index: number, path: ConnectorPath): void
 }
 
 export interface CanvasProps {
@@ -74,7 +78,16 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
 
   // Connector hit-lines (under the handles): a clickable stroke along each arrow so it
   // can be selected and deleted. The visible arrow itself lives in the render's SVG.
-  paintConnectors(overlay, props)
+  const connectors = connectorsOf(props.picture, props.layout)
+  paintConnectors(overlay, connectors, props.selectedConnector, props.actions)
+
+  // Reshape the selected connector (endpoints, waypoints, curves) if it is editable.
+  const selected = connectors.find((c) => c.index === props.selectedConnector)
+  if (selected?.editable) {
+    paintConnectorEditor(overlay, slideEl, selected.index, selected.editable, props.layout, {
+      update: (index, path) => props.actions.updateConnector(index, path),
+    })
+  }
 
   for (const node of props.layout.nodes) {
     if (!node.name) continue
@@ -336,8 +349,12 @@ function clearGuides(overlay: HTMLElement): void {
 
 /** Render a clickable hit-line along each connector so arrows can be selected/deleted.
  *  The visible arrow is drawn by the engine's SVG; this is only the interaction target. */
-function paintConnectors(overlay: HTMLElement, props: CanvasProps): void {
-  const connectors = connectorsOf(props.picture, props.layout)
+function paintConnectors(
+  overlay: HTMLElement,
+  connectors: readonly ReturnType<typeof connectorsOf>[number][],
+  selectedConnector: number | null,
+  actions: CanvasActions,
+): void {
   if (connectors.length === 0) return
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', 'sb-connectors')
@@ -349,11 +366,11 @@ function paintConnectors(overlay: HTMLElement, props: CanvasProps): void {
     poly.dataset.connector = String(connector.index)
     poly.setAttribute(
       'class',
-      connector.index === props.selectedConnector ? 'sb-hit is-selected' : 'sb-hit',
+      connector.index === selectedConnector ? 'sb-hit is-selected' : 'sb-hit',
     )
     poly.addEventListener('pointerdown', (event) => {
       event.stopPropagation()
-      props.actions.selectConnector(connector.index)
+      actions.selectConnector(connector.index)
     })
     svg.append(poly)
   }

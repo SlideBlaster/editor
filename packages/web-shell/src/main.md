@@ -18,7 +18,8 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
   `requestCreate -> creation menu -> createNode` (W5), `remove -> deleteNode`,
   `editContent -> parseContent + setNodeContent`, `connect -> createConnector` (E4),
-  `selectConnector` (connector selection, exclusive with node selection). A connect-mode
+  `selectConnector` (connector selection, exclusive with node selection),
+  `updateConnector -> updateConnector` (reshape endpoints/waypoints/curves). A connect-mode
   toolbar toggle (`#connect-toggle`, Esc to exit) flips dragging into arrow-drawing;
   Delete removes the selected node or connector (`deleteConnector`). Each applies to the
   last good parsed

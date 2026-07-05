@@ -25,7 +25,7 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
   controller guards against stale async paints with a render sequence ([main.ts](./main.md)).
 - **Frame-bound editing.** `bindFrame(actions, index)` wraps the controller's
   frame-addressed `DeckActions` (`select`/`move`/`bind`/`requestCreate`/`remove`/
-  `editContent`/`connect`/`selectConnector`) into
+  `editContent`/`connect`/`selectConnector`/`updateConnector`) into
   the `CanvasActions` one slide expects, so `paintCanvas` is reused unchanged and every
   edit — including an inline content edit — carries its slide.
 - **Active tracking.** An `IntersectionObserver` (root = the deck) reports the

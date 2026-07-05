@@ -12,6 +12,7 @@
 import {
   resolveLayoutAsync,
   type BatchMeasurer,
+  type ConnectorPath,
   type Frame,
   type Point,
 } from '@slideblaster/editor'
@@ -27,6 +28,7 @@ export interface DeckActions {
   editContent(frame: number, name: string, body: string): void
   connect(frame: number, from: string, to: string): void
   selectConnector(frame: number, index: number | null): void
+  updateConnector(frame: number, index: number, path: ConnectorPath): void
 }
 
 type RelativeSide = 'above' | 'below' | 'left' | 'right'
@@ -143,6 +145,7 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     editContent: (name, body) => actions.editContent(frame, name, body),
     connect: (from, to) => actions.connect(frame, from, to),
     selectConnector: (index) => actions.selectConnector(frame, index),
+    updateConnector: (index, path) => actions.updateConnector(frame, index, path),
   }
 }
 

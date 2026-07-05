@@ -439,6 +439,63 @@ body {
   cursor: crosshair;
 }
 
+/* Connector reshape editor (E4+): handles over the selected arrow. Sits above the node
+   handles (z-index) so anchor dots stay draggable even over a node. */
+.sb-conn-edit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.sb-conn-add {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0.25;
+  pointer-events: stroke;
+  cursor: copy;
+}
+
+.sb-ctrl-line {
+  stroke: #a855f7;
+  stroke-width: 0.02;
+  stroke-dasharray: 0.1 0.08;
+}
+
+.sb-conn-edit circle {
+  pointer-events: all;
+  cursor: grab;
+}
+
+.sb-conn-edit circle:active {
+  cursor: grabbing;
+}
+
+.sb-anchor {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 0.045;
+}
+
+.sb-anchor.is-waypoint {
+  fill: var(--accent);
+}
+
+.sb-ctrl {
+  fill: #a855f7;
+  stroke: #fff;
+  stroke-width: 0.03;
+}
+
+.sb-bend {
+  fill: #fff;
+  stroke: #a855f7;
+  stroke-width: 0.045;
+}
+
 /* Creation menu (W5): a cursor-anchored popover on document.body (fixed). */
 .sb-create-menu {
   position: fixed;

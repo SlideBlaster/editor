@@ -24,6 +24,7 @@ import {
   setNodeContent,
   createConnector,
   deleteConnector,
+  updateConnector,
   type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
@@ -220,6 +221,11 @@ function main(): void {
       state.selectedConnector = index === null ? null : { frame, index }
       if (index !== null) state.selected = null // connector and node selection are exclusive
       void render() // cheap re-render to reflect the connector highlight (no drag in flight)
+    },
+    updateConnector(frame, index, path) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      commit(withFrame(currentDoc, frame, updateConnector(target.picture, index, path)))
     },
     move(frame, name, center) {
       const target = currentDoc?.frames[frame]
