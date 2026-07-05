@@ -12,6 +12,12 @@ body slot.
 
 `serializeRuns(runs)` is exposed (no braces) for content-level round-trip tests.
 
+`serializeBody(content) -> string` is the un-braced body (`serializeContent` minus the
+outer braces): `''` for empty, `source` for error, `serializeRuns(runs)` for text. It
+is the exact inverse of `parseContent` (which takes an un-braced body), so an inline
+editor seeds from it and re-parses on commit: `parseContent(serializeBody(c))` round-
+trips `c`.
+
 ## Contract
 
 - **Deterministic** — one content model prints one string.

@@ -17,8 +17,7 @@ import { isPlacementToken } from '../tikz/options'
 /** Find a node by its stable identity. */
 export function findNode(picture: TikzPicture, name: string): NodeStatement | undefined {
   return picture.statements.find(
-    (statement): statement is NodeStatement =>
-      statement.kind === 'node' && statement.name === name,
+    (statement): statement is NodeStatement => statement.kind === 'node' && statement.name === name,
   )
 }
 
@@ -47,6 +46,20 @@ export function moveNodeTo(picture: TikzPicture, name: string, at: Point): TikzP
     at,
     options: node.options.filter((token) => !isPlacementToken(token)),
   }))
+}
+
+/**
+ * Replace a node's body content (E3: inline content editing). A no-op if the node is
+ * not found. Content is the parsed result of the edited raw body, so an out-of-subset
+ * edit lands as `{ kind: 'error', source, message }` and is preserved verbatim on
+ * serialize (ADR 0015); geometry and options are untouched.
+ */
+export function setNodeContent(
+  picture: TikzPicture,
+  name: string,
+  content: NodeContent,
+): TikzPicture {
+  return mapNode(picture, name, (node) => ({ ...node, content }))
 }
 
 export interface NodeSpec {

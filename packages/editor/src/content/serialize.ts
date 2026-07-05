@@ -9,13 +9,23 @@
 import type { ListItem, NodeContent, TextRun } from '../model/content'
 
 export function serializeContent(content: NodeContent): string {
+  return `{${serializeBody(content)}}`
+}
+
+/**
+ * The node body WITHOUT the surrounding braces — the exact inverse of `parseContent`
+ * (which takes an un-braced body). This is the string a raw inline editor seeds from
+ * and re-parses on commit, so `parseContent(serializeBody(c))` round-trips `c`. An
+ * out-of-subset node returns its preserved source verbatim (ADR 0015).
+ */
+export function serializeBody(content: NodeContent): string {
   switch (content.kind) {
     case 'empty':
-      return '{}'
+      return ''
     case 'error':
-      return `{${content.source}}`
+      return content.source
     case 'text':
-      return `{${serializeRuns(content.runs)}}`
+      return serializeRuns(content.runs)
   }
 }
 

@@ -11,13 +11,21 @@ export { parsePicture, serializePicture, styleClasses, role, placementToken } fr
 export {
   parseContent,
   serializeContent,
+  serializeBody,
   serializeRuns,
   inlineStyleOf,
   dialectOf,
   OutOfSubsetError,
 } from './content/index'
 export type { InlineStyle } from './content/index'
-export { resolveLayout, resolveLayoutAsync, anchor, findPlaced, naiveMeasurer, asBatch } from './layout/index'
+export {
+  resolveLayout,
+  resolveLayoutAsync,
+  anchor,
+  findPlaced,
+  naiveMeasurer,
+  asBatch,
+} from './layout/index'
 export type {
   AnchorName,
   Measurer,
@@ -29,5 +37,12 @@ export type {
 } from './layout/index'
 export { renderContent, renderSlide, slideStylesheet } from './render/index'
 export type { RenderOptions } from './render/index'
-export { findNode, uniqueName, moveNodeTo, createNode, deleteNode } from './edit/index'
+export {
+  findNode,
+  uniqueName,
+  moveNodeTo,
+  createNode,
+  deleteNode,
+  setNodeContent,
+} from './edit/index'
 export type { NodeSpec } from './edit/index'

@@ -25,8 +25,18 @@ format invariants.
 - `deleteNode(picture, name)` — remove the node and prune any path whose verbatim
   body references it (`(name)` or `(name.anchor)`), so no dangling connector remains.
 
+## E3 — content (this file)
+
+- `setNodeContent(picture, name, content)` — replace a node's body content, leaving
+  geometry and options untouched. No-op if the node is absent. The `content` is the
+  parsed edited body, so an out-of-subset edit lands as `{ kind: 'error', source,
+  message }` and re-serializes verbatim (ADR 0015) — data-safe by construction. The
+  shell seeds the raw editor with `serializeBody(content)` and re-parses on commit, so
+  `setNodeContent(p, name, parseContent(serializeBody(c)))` round-trips.
+
 ## Not here
 
 Undo/redo (callers keep history / re-derive from source). Relative placement and
-absolute<->relative conversion (E2), content edits (E3), arrows (E4), options/style
-(E5). Document/frame targeting and re-serialization live in the shell, not the ops.
+absolute<->relative conversion (E2), arrows (E4), options/style (E5). Per-construct
+(sub-node) content splicing is a later refinement — E3 replaces whole-node content.
+Document/frame targeting and re-serialization live in the shell, not the ops.

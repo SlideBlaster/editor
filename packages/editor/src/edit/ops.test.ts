@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { parsePicture } from '../tikz/parse'
 import { serializePicture } from '../tikz/serialize'
-import { findNode, uniqueName, moveNodeTo, createNode, deleteNode } from './ops'
+import { parseContent } from '../content/parse'
+import { serializeBody } from '../content/serialize'
+import { findNode, uniqueName, moveNodeTo, createNode, deleteNode, setNodeContent } from './ops'
 
 const SOURCE = [
   '\\node[title] (title) at (8,8) {T};',
@@ -71,6 +73,39 @@ describe('createNode', () => {
       options: ['note'],
     })
     expect(serializePicture(out)).toContain('\\node[note] (box) at (2,2) {};')
+  })
+})
+
+describe('setNodeContent', () => {
+  it('replaces the body and leaves geometry and options untouched', () => {
+    const out = serializePicture(setNodeContent(picture(), 'intro', parseContent('**bold**')))
+    expect(out).toContain('\\node[body, below=0.7 of title, text width=12] (intro) {**bold**};')
+  })
+
+  it('is local: other statements are untouched', () => {
+    const lines = serializePicture(
+      setNodeContent(picture(), 'intro', parseContent('new text')),
+    ).split('\n')
+    expect(lines[0]).toBe('\\node[title] (title) at (8,8) {T};')
+    expect(lines[2]).toBe('\\node[note] (o2) at (10,3) {x};')
+    expect(lines[3]).toBe('\\draw[->] (intro) -- (o2);')
+  })
+
+  it('preserves out-of-subset source verbatim in an error node (ADR 0015)', () => {
+    const out = serializePicture(
+      setNodeContent(picture(), 'intro', parseContent('\\usetikzlibrary{calc}')),
+    )
+    expect(out).toContain('(intro) {\\usetikzlibrary{calc}};')
+  })
+
+  it('is a serialization no-op for an unknown node', () => {
+    expect(serializePicture(setNodeContent(picture(), 'ghost', parseContent('x')))).toBe(SOURCE)
+  })
+
+  it('round-trips, and re-parsing the edited body is stable', () => {
+    const edited = setNodeContent(picture(), 'intro', parseContent('a *b* c'))
+    expect(roundTrips(edited)).toBe(true)
+    expect(serializeBody(findNode(edited, 'intro')!.content)).toBe('a *b* c')
   })
 })
 
