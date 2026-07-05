@@ -9,7 +9,12 @@
  * navigator highlight (ux/deck-navigation.md). The navigator, in turn, scrolls
  * this canvas via `scrollToSlide`.
  */
-import { resolveLayout, naiveMeasurer, type Frame, type Point } from '@slideblaster/editor'
+import {
+  resolveLayoutAsync,
+  type BatchMeasurer,
+  type Frame,
+  type Point,
+} from '@slideblaster/editor'
 import { paintCanvas, type CanvasActions } from './canvas'
 
 /** Frame-addressed edit intents: the frame you touched is an explicit argument. */
@@ -30,6 +35,10 @@ export interface DeckProps {
   frames: Frame[]
   selected: Selection | null
   actions: DeckActions
+  /** Sizes node boxes; the DOM measurer in the browser, naive in tests. */
+  measurer: BatchMeasurer
+  /** Checked after async measuring: if a newer render has started, skip the paint. */
+  isStale?(): boolean
   /** Fired when scrolling changes which slide is most in view. */
   onActiveChange(index: number): void
 }
@@ -44,14 +53,23 @@ export interface DeckHandle {
 /** One IntersectionObserver per deck host, disconnected before each rebuild. */
 const observers = new WeakMap<HTMLElement, IntersectionObserver>()
 
-export function paintDeck(host: HTMLElement, props: DeckProps): DeckHandle {
+export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<DeckHandle | null> {
+  // Measure/resolve every slide first (async), so the paint below stays synchronous
+  // and never shows a half-built deck.
+  const layouts = await Promise.all(
+    props.frames.map((frame) => resolveLayoutAsync(frame.picture, props.measurer)),
+  )
+  // A newer edit may have landed while we measured; drop this paint so we don't clobber
+  // the DOM with a stale layout (the newer render owns the deck now).
+  if (props.isStale?.()) return null
+
   const scrollTop = host.scrollTop // preserve position across a rebuild
   const scrollLeft = host.scrollLeft
   observers.get(host)?.disconnect()
   host.replaceChildren()
 
-  // Inner wrapper carries the zoom (CSS `zoom: var(--zoom)`, set by zoom.ts on the
-  // scrollport); `#deck` stays the fixed viewport that pans.
+  // Inner wrapper carries the zoom (--zoom, set by zoom.ts on the scrollport);
+  // `#deck` stays the fixed viewport that pans.
   const canvas = document.createElement('div')
   canvas.className = 'deck-canvas'
   const cards: HTMLElement[] = []
@@ -63,7 +81,7 @@ export function paintDeck(host: HTMLElement, props: DeckProps): DeckHandle {
     const selectedName = props.selected?.frame === index ? props.selected.name : null
     paintCanvas(card, {
       picture: frame.picture,
-      layout: resolveLayout(frame.picture, naiveMeasurer),
+      layout: layouts[index]!,
       selected: selectedName,
       actions: bindFrame(props.actions, index),
     })

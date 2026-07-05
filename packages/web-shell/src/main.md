@@ -5,8 +5,9 @@ browser and keeps a **two-way** loop between the source text and the slides, bot
 sharing one source of truth (the `.slideBlaster.md` text, A1).
 
 ```
-text -> render (W2):   code pane -> fromMarkdown -> resolveLayout -> renderSlide
-canvas -> text (W4):   gesture   -> E1 edit op   -> toMarkdown    -> code pane
+text -> render (W2):   code pane -> fromMarkdown -> resolveLayoutAsync -> renderSlide
+canvas -> text (W4):   gesture   -> E1 edit op   -> toMarkdown         -> code pane
+export:                deck       -> renderSlide  -> browser export     -> PDF / .html
 ```
 
 - **The canvas is the deck.** `paintDeck` ([deck.ts](./deck.md)) stacks every slide
@@ -37,6 +38,16 @@ canvas -> text (W4):   gesture   -> E1 edit op   -> toMarkdown    -> code pane
   canonical sample; surgical per-frame splicing is a later refinement). `paintDeck`
   preserves scroll position across the rebuild.
 - **Tolerant parse.** A malformed manual edit shows an error banner and keeps the last
-  good render. **Measurer** is `naiveMeasurer` until W3's DOM measurer.
-- **Styling seam.** `slideStylesheet()` supplies the base layered-DOM rules; `app.css`
-  layers the workspace chrome, the interaction overlay, and slide-proportional type.
+  good render.
+- **DOM measurement (async render).** Node sizes come from the DOM measurer
+  ([domMeasurer.ts](./domMeasurer.md)) via `resolveLayoutAsync`, so `render` is async.
+  A monotonic `renderSeq` token (passed as `isStale`) drops a slow paint that finishes
+  after a newer edit, so rapid typing can't paint a stale layout. The measurer caches by
+  content, so a full-deck rebuild only re-measures the node that changed.
+- **Export.** The app-bar Print / PDF and Export HTML buttons render every frame with the
+  same cached DOM measurements (`collectSlides` -> `renderSlide`), then hand the
+  `RenderedSlide[]` to the browser export adapter ([export.ts](./export.md)) — print to
+  PDF or download a self-contained presenter `.html`.
+- **Styling seam.** `slideStylesheet()` supplies the base layered-DOM rules; the shared
+  `SLIDE_TYPE_CSS` ([slideType.ts](./slideType.md)) the proportional type scale; `app.css`
+  layers the workspace chrome and the interaction overlay.

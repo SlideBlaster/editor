@@ -14,10 +14,13 @@ import {
   toMarkdown,
   getMeta,
   slideStylesheet,
+  renderSlide,
+  resolveLayoutAsync,
   moveNodeTo,
   createNode,
   deleteNode,
   type NodeContent,
+  type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
 } from '@slideblaster/editor'
@@ -26,6 +29,9 @@ import { createCodePane, type CodePane } from './codePane'
 import { paintDeck, type DeckActions, type DeckHandle, type Selection } from './deck'
 import { paintDeckNav, type NavHandle, type NavStyle } from './deckNav'
 import { enableZoomPan } from './zoom'
+import { createDomMeasurer } from './domMeasurer'
+import { SLIDE_TYPE_CSS } from './slideType'
+import { downloadDeckHtml, printDeck } from './export'
 import './app.css'
 
 const NAV_STYLE_KEY = 'sb.navStyle'
@@ -84,6 +90,9 @@ function main(): void {
   let codePane: CodePane
   let deckHandle: DeckHandle | null = null
   let navHandle: NavHandle | null = null
+  const measurer = createDomMeasurer()
+  // Monotonic render token: a slow async paint that finishes after a newer edit is dropped.
+  let renderSeq = 0
 
   /** The navigator host for the active style; the other stays hidden. */
   const navHost = (): HTMLElement => (state.navStyle === 'carousel' ? deckRail : deckStrip)
@@ -110,8 +119,17 @@ function main(): void {
   const commit = (doc: SlideDocument): void => {
     state.source = toMarkdown(doc)
     codePane.setValue(state.source)
-    render()
+    void render()
   }
+
+  /** Render every frame to self-contained HTML for export — same measurements as the canvas. */
+  const collectSlides = (doc: SlideDocument): Promise<RenderedSlide[]> =>
+    Promise.all(
+      doc.frames.map(async (frame, index) => ({
+        index,
+        html: renderSlide(frame.picture, await resolveLayoutAsync(frame.picture, measurer)),
+      })),
+    )
 
   const actions: DeckActions = {
     select(frame, name) {
@@ -142,7 +160,7 @@ function main(): void {
     },
   }
 
-  const render = (): void => {
+  const render = async (): Promise<void> => {
     const result = parse(state.source)
     if ('error' in result) {
       errorBanner.textContent = result.error
@@ -158,15 +176,20 @@ function main(): void {
     state.active = Math.min(state.active, maxIndex)
     if (state.selected && state.selected.frame > maxIndex) state.selected = null
 
-    deckHandle = paintDeck(deck, {
+    const seq = ++renderSeq
+    const handle = await paintDeck(deck, {
       frames: doc.frames,
       selected: state.selected,
       actions,
+      measurer,
+      isStale: () => seq !== renderSeq,
       onActiveChange: (index) => {
         state.active = index
         navHandle?.setActive(index)
       },
     })
+    if (handle === null) return // a newer render superseded this one
+    deckHandle = handle
     applyNavPlacement()
     navHandle = paintDeckNav(navHost(), {
       frames: doc.frames,
@@ -181,7 +204,7 @@ function main(): void {
     value: state.source,
     onChange: (value) => {
       state.source = value
-      render()
+      void render()
     },
   })
 
@@ -229,13 +252,36 @@ function main(): void {
       })
     })
 
+  // Export: render the whole deck to a self-contained document, then print (Save as
+  // PDF) or download the .html. Both use the DOM-measured layout, so exports are faithful.
+  qs('#export-actions')
+    .querySelectorAll<HTMLButtonElement>('button')
+    .forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (!currentDoc) return
+        const title = getMeta(currentDoc.meta, 'title') ?? 'Slides'
+        button.disabled = true
+        try {
+          const slides = await collectSlides(currentDoc)
+          if (button.dataset.export === 'print') await printDeck(slides, { title })
+          else await downloadDeckHtml(slides, { title })
+        } catch (err) {
+          status.textContent = `Export failed: ${err instanceof Error ? err.message : String(err)}`
+        } finally {
+          button.disabled = false
+        }
+      })
+    })
+
   markToggle()
-  render()
+  void render()
 }
 
-// Inject the engine's base stylesheet once; app.css layers the workspace chrome.
+// Inject the engine's base stylesheet + the shared slide type scale once; app.css
+// layers the workspace chrome. SLIDE_TYPE_CSS is keyed on .sb-slide so the deck,
+// thumbnails, the measurer, and the export all render identical proportions.
 const style = document.createElement('style')
-style.textContent = slideStylesheet()
+style.textContent = `${slideStylesheet()}\n${SLIDE_TYPE_CSS}`
 document.head.append(style)
 
 main()

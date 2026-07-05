@@ -17,6 +17,12 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
   `#deck`. `#deck` stays the fixed scrollport that pans. Rebuilds replace the
   wrapper, so zoom (on `#deck`) persists; horizontal scroll is preserved alongside
   vertical.
+- **Measure first, then paint.** `paintDeck` is async: it resolves every slide's
+  layout up front via `resolveLayoutAsync` and the injected `BatchMeasurer` (the DOM
+  measurer, [domMeasurer.ts](./domMeasurer.md)), awaiting them all before touching the
+  DOM — so the deck never appears half-built. The measurer caches by content, so a
+  keystroke-triggered full rebuild only re-measures the node that changed. The
+  controller guards against stale async paints with a render sequence ([main.ts](./main.md)).
 - **Frame-bound editing.** `bindFrame(actions, index)` wraps the controller's
   frame-addressed `DeckActions` into the `CanvasActions` one slide expects, so
   `paintCanvas` is reused unchanged and every edit carries its slide.

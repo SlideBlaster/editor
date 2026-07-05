@@ -137,6 +137,38 @@ body {
   outline-offset: -2px;
 }
 
+/* Export group: Print / PDF and Export HTML. */
+.export-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.export-actions button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.24rem 0.66rem;
+  cursor: pointer;
+}
+
+.export-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.export-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.export-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Workspace: code editor | carousel rail (carousel style only) | preview deck.
    The middle track collapses to 0 when the rail is hidden (filmstrip style). */
 .workspace {
@@ -237,7 +269,8 @@ body {
 .deck {
   height: 100%;
   overflow: auto;
-  scroll-behavior: smooth;
+  /* No CSS smooth-scroll: wheel, pan, and zoom must track input 1:1 (PDF-viewer feel).
+     Thumbnail jumps pass behavior:'smooth' explicitly, so those still glide. */
 }
 
 .deck.space-held {
@@ -337,36 +370,13 @@ body {
   cursor: grabbing;
 }
 
-/* The rendered slide: engine sets .sb-slide (16/9); we frame it. */
+/* The rendered slide: engine sets .sb-slide (16/9); we frame it. The slide's type
+   scale (and container-type) lives in SLIDE_TYPE_CSS (slideType.ts), keyed on
+   .sb-slide so the deck, thumbnails, the measurer, and the export all match. */
 .deck-slide .sb-slide {
   border: 1px solid var(--line);
   border-radius: 6px;
   box-shadow: var(--slide-shadow);
-  container-type: inline-size;
-}
-
-/* Slide-proportional type. 1 slide unit = 6.25cqw (16 units across).
-   Provisional metrics until the W3 DOM measurer is the source of truth. */
-.deck-slide .sb-content {
-  font-size: 2.6cqw;
-  line-height: 1.3;
-  color: #1b1e28;
-}
-
-.deck-slide .sb-node.sb-style-title {
-  font-size: 4.2cqw;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.deck-slide .sb-content ul,
-.deck-slide .sb-content ol {
-  margin: 0;
-  padding-left: 1.4em;
-}
-
-.deck-slide .sb-content .sb-math {
-  font-style: italic;
 }
 
 /* Carousel navigator: a vertical strip between the editor and the canvas.
@@ -439,21 +449,6 @@ body {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: -1px;
-}
-
-.thumb .sb-slide {
-  container-type: inline-size;
-}
-
-.thumb .sb-content {
-  font-size: 2.6cqw;
-  line-height: 1.25;
-  color: #1b1e28;
-}
-
-.thumb .sb-node.sb-style-title {
-  font-size: 4.2cqw;
-  font-weight: 700;
 }
 
 .thumb:focus-visible {

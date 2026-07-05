@@ -11,7 +11,13 @@
  */
 const MIN = 0.25
 const MAX = 6
-const STEP = 1.15
+const STEP = 1.15 // discrete step for buttons / keyboard
+// Wheel/pinch zoom scales by the gesture magnitude (like a PDF viewer), not a fixed
+// step: `factor = exp(-normalizedDelta * SENSITIVITY)`. Tuned so one mouse notch
+// (~100px) ~= one STEP, while a fine trackpad pinch (small delta) nudges smoothly.
+const WHEEL_SENSITIVITY = 0.0014
+const LINE_PX = 16 // deltaMode=line -> px, so line-mode mice zoom at a sane rate
+const MAX_WHEEL_FACTOR = 1.35 // clamp a single event so a huge delta can't lurch
 
 export interface ZoomController {
   zoomIn(): void
@@ -32,20 +38,41 @@ export function enableZoomPan(
     opts.onChange?.(zoom)
   }
 
-  /** Zoom toward a viewport point, keeping the content under it fixed. */
+  /** The scaled slide under a viewport point (fallback: the first slide). */
+  const anchorAt = (clientX: number, clientY: number): HTMLElement | null => {
+    const hit = document.elementFromPoint(clientX, clientY)
+    return (
+      hit?.closest<HTMLElement>('.deck-slide') ??
+      scrollport.querySelector<HTMLElement>('.deck-slide')
+    )
+  }
+
+  /**
+   * Zoom toward a viewport point, keeping the content under it fixed. Rather than
+   * predicting where the point lands (which assumes the scaled content grows from the
+   * scroll origin — false here, since the deck centres slides and only gains scroll
+   * range once a slide overflows), we MEASURE: record the cursor's fraction across the
+   * slide it is over, apply the zoom, then re-read that slide's box and correct scroll
+   * by the real pixel delta. Immune to the centring / overflow-flip that broke the
+   * closed-form version.
+   */
   const zoomToPoint = (next: number, clientX: number, clientY: number): void => {
     const z1 = clamp(next)
-    const f = z1 / zoom
-    if (f === 1) return
-    const rect = scrollport.getBoundingClientRect()
-    const px = clientX - rect.left
-    const py = clientY - rect.top
-    const left = (scrollport.scrollLeft + px) * f - px
-    const top = (scrollport.scrollTop + py) * f - py
+    if (z1 === zoom) return
+    const anchor = anchorAt(clientX, clientY)
+    if (anchor === null) {
+      zoom = z1
+      emit()
+      return
+    }
+    const before = anchor.getBoundingClientRect()
+    const relX = before.width > 0 ? (clientX - before.left) / before.width : 0
+    const relY = before.height > 0 ? (clientY - before.top) / before.height : 0
     zoom = z1
-    emit() // relayout at the new scale first...
-    scrollport.scrollLeft = left // ...then anchor the cursor point.
-    scrollport.scrollTop = top
+    emit() // relayout at the new scale...
+    const after = anchor.getBoundingClientRect() // ...then read where the point moved...
+    scrollport.scrollLeft += after.left + relX * after.width - clientX // ...and pull it back.
+    scrollport.scrollTop += after.top + relY * after.height - clientY
   }
 
   /** Zoom toward the viewport centre (buttons / keyboard). */
@@ -57,9 +84,21 @@ export function enableZoomPan(
   scrollport.addEventListener(
     'wheel',
     (event) => {
-      if (!event.ctrlKey && !event.metaKey) return // plain wheel scrolls
+      if (!event.ctrlKey && !event.metaKey) return // plain wheel scrolls / pans
       event.preventDefault() // also suppresses browser page-zoom / pinch-zoom
-      zoomToPoint(zoom * (event.deltaY < 0 ? STEP : 1 / STEP), event.clientX, event.clientY)
+      // Normalize line/page deltas to px, then zoom by the gesture magnitude so fine
+      // pinches are fine and a full notch is a full step.
+      const px =
+        event.deltaMode === 1
+          ? event.deltaY * LINE_PX
+          : event.deltaMode === 2
+            ? event.deltaY * scrollport.clientHeight
+            : event.deltaY
+      const factor = Math.min(
+        MAX_WHEEL_FACTOR,
+        Math.max(1 / MAX_WHEEL_FACTOR, Math.exp(-px * WHEEL_SENSITIVITY)),
+      )
+      zoomToPoint(zoom * factor, event.clientX, event.clientY)
     },
     { passive: false },
   )
