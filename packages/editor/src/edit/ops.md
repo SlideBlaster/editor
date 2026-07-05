@@ -25,6 +25,26 @@ format invariants.
 - `deleteNode(picture, name)` — remove the node and prune any path whose verbatim
   body references it (`(name)` or `(name.anchor)`), so no dangling connector remains.
 
+## E2 — relative placement (this file)
+
+The relative half of the two-mode rule (`moveNodeTo` is the absolute half). Placement
+already *parses* (`tikz/options.placement`) and *renders* (`layout/resolve`); these ops
+are the writer.
+
+- `placeNodeRelative(picture, name, { side, gap, ref })` — bind a node
+  `[<side>=<gap> of <ref>]`. Drops any absolute `at` and replaces any existing
+  placement token in place (other options kept in order). **No-op** if the node or
+  `ref` is missing, if `ref` is the node itself, or if the binding would form a
+  placement **cycle** (`placementChainReaches` walks ref -> ref) — refusing keeps the
+  relative chain acyclic, so the layout never has to pin a cycle to the origin.
+- `adjustPlacement(picture, name, { side?, gap? })` — change an existing binding's gap
+  and/or side, keeping its `ref`. This is what a canvas drag of a bound node calls:
+  along the axis changes `gap`, across the axis flips `side`. No-op if the node is not
+  relatively placed.
+- **Detach** (relative -> absolute) is just `moveNodeTo(picture, name, resolvedCenter)`
+  — it already strips the placement token. The shell passes the node's current resolved
+  center from the layout, so the node stays put as it becomes absolute.
+
 ## E3 — content (this file)
 
 - `setNodeContent(picture, name, content)` — replace a node's body content, leaving
@@ -36,7 +56,7 @@ format invariants.
 
 ## Not here
 
-Undo/redo (callers keep history / re-derive from source). Relative placement and
-absolute<->relative conversion (E2), arrows (E4), options/style (E5). Per-construct
-(sub-node) content splicing is a later refinement — E3 replaces whole-node content.
-Document/frame targeting and re-serialization live in the shell, not the ops.
+Undo/redo (callers keep history / re-derive from source). Arrows (E4) and
+options/style (E5). Per-construct (sub-node) content splicing is a later refinement —
+E3 replaces whole-node content. Document/frame targeting and re-serialization live in
+the shell, not the ops.

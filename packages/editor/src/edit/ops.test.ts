@@ -3,7 +3,16 @@ import { parsePicture } from '../tikz/parse'
 import { serializePicture } from '../tikz/serialize'
 import { parseContent } from '../content/parse'
 import { serializeBody } from '../content/serialize'
-import { findNode, uniqueName, moveNodeTo, createNode, deleteNode, setNodeContent } from './ops'
+import {
+  findNode,
+  uniqueName,
+  moveNodeTo,
+  createNode,
+  deleteNode,
+  setNodeContent,
+  placeNodeRelative,
+  adjustPlacement,
+} from './ops'
 
 const SOURCE = [
   '\\node[title] (title) at (8,8) {T};',
@@ -106,6 +115,69 @@ describe('setNodeContent', () => {
     const edited = setNodeContent(picture(), 'intro', parseContent('a *b* c'))
     expect(roundTrips(edited)).toBe(true)
     expect(serializeBody(findNode(edited, 'intro')!.content)).toBe('a *b* c')
+  })
+})
+
+describe('placeNodeRelative', () => {
+  it('binds an absolute node below another, dropping its at', () => {
+    const out = serializePicture(
+      placeNodeRelative(picture(), 'o2', { side: 'below', gap: 0.5, ref: 'title' }),
+    )
+    expect(out).toContain('\\node[note, below=0.5 of title] (o2) {x};')
+    expect(out).not.toContain('at (10,3)')
+  })
+
+  it('replaces an existing placement token in place, keeping other options', () => {
+    const out = serializePicture(
+      placeNodeRelative(picture(), 'intro', { side: 'right', gap: 1, ref: 'title' }),
+    )
+    expect(out).toContain('\\node[body, right=1 of title, text width=12] (intro) {hi};')
+    expect(out).not.toContain('below=0.7')
+  })
+
+  it('is a no-op when the ref does not exist', () => {
+    expect(
+      serializePicture(placeNodeRelative(picture(), 'o2', { side: 'below', gap: 1, ref: 'ghost' })),
+    ).toBe(SOURCE)
+  })
+
+  it('refuses to bind a node to itself', () => {
+    expect(
+      serializePicture(placeNodeRelative(picture(), 'o2', { side: 'below', gap: 1, ref: 'o2' })),
+    ).toBe(SOURCE)
+  })
+
+  it('refuses a binding that would form a placement cycle', () => {
+    // intro is already below title; binding title below intro would close the cycle.
+    expect(
+      serializePicture(
+        placeNodeRelative(picture(), 'title', { side: 'below', gap: 1, ref: 'intro' }),
+      ),
+    ).toBe(SOURCE)
+  })
+
+  it('is local and round-trips', () => {
+    const edited = placeNodeRelative(picture(), 'o2', { side: 'above', gap: 0.5, ref: 'title' })
+    const lines = serializePicture(edited).split('\n')
+    expect(lines[0]).toBe('\\node[title] (title) at (8,8) {T};')
+    expect(lines[1]).toBe('\\node[body, below=0.7 of title, text width=12] (intro) {hi};')
+    expect(roundTrips(edited)).toBe(true)
+  })
+})
+
+describe('adjustPlacement', () => {
+  it('changes the gap, keeping side and ref', () => {
+    const out = serializePicture(adjustPlacement(picture(), 'intro', { gap: 1.5 }))
+    expect(out).toContain('\\node[body, below=1.5 of title, text width=12] (intro) {hi};')
+  })
+
+  it('flips the side, keeping gap and ref', () => {
+    const out = serializePicture(adjustPlacement(picture(), 'intro', { side: 'right' }))
+    expect(out).toContain('\\node[body, right=0.7 of title, text width=12] (intro) {hi};')
+  })
+
+  it('is a no-op on an absolutely-placed node', () => {
+    expect(serializePicture(adjustPlacement(picture(), 'o2', { gap: 2 }))).toBe(SOURCE)
   })
 })
 

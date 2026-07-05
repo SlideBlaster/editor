@@ -7,7 +7,15 @@
 export * from './ports/index'
 export * from './model/index'
 export { fromMarkdown, toMarkdown } from './markdown/index'
-export { parsePicture, serializePicture, styleClasses, role, placementToken } from './tikz/index'
+export {
+  parsePicture,
+  serializePicture,
+  styleClasses,
+  role,
+  placementToken,
+  placement,
+} from './tikz/index'
+export type { Placement } from './tikz/index'
 export {
   parseContent,
   serializeContent,
@@ -44,5 +52,7 @@ export {
   createNode,
   deleteNode,
   setNodeContent,
+  placeNodeRelative,
+  adjustPlacement,
 } from './edit/index'
 export type { NodeSpec } from './edit/index'

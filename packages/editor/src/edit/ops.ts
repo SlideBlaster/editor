@@ -12,7 +12,8 @@
  */
 import type { NodeStatement, Point, TikzPicture } from '../model/tikz'
 import type { NodeContent } from '../model/content'
-import { isPlacementToken } from '../tikz/options'
+import { isPlacementToken, placement, type Placement } from '../tikz/options'
+import { formatNumber } from '../text/scanner'
 
 /** Find a node by its stable identity. */
 export function findNode(picture: TikzPicture, name: string): NodeStatement | undefined {
@@ -62,6 +63,51 @@ export function setNodeContent(
   return mapNode(picture, name, (node) => ({ ...node, content }))
 }
 
+/**
+ * Bind a node relatively: `[<side>=<gap> of <ref>]` (E2, the relative half of the
+ * two-mode rule). Mirrors `moveNodeTo`'s inverse — it drops any absolute `at` and
+ * replaces any existing placement token, so absolute and relative never coexist.
+ * A no-op (same picture) if the node or `ref` is missing, if `ref` is the node
+ * itself, or if the binding would form a placement cycle (the layout would pin a
+ * cycle to the origin — refusing keeps the relative chain acyclic).
+ */
+export function placeNodeRelative(
+  picture: TikzPicture,
+  name: string,
+  spec: Placement,
+): TikzPicture {
+  if (spec.ref === name) return picture
+  if (findNode(picture, spec.ref) === undefined) return picture
+  if (placementChainReaches(picture, spec.ref, name)) return picture
+  const token = `${spec.side}=${formatNumber(spec.gap)} of ${spec.ref}`
+  return mapNode(picture, name, (node) => ({
+    ...node,
+    at: undefined, // relative wins: strip the absolute position (serializer omits it)
+    options: withPlacementToken(node.options, token),
+  }))
+}
+
+/**
+ * Adjust an existing relative placement's gap and/or side, keeping its `ref` (E2:
+ * dragging a bound node along its axis changes the gap; across the axis flips the
+ * side). A no-op if the node is not found or is not relatively placed.
+ */
+export function adjustPlacement(
+  picture: TikzPicture,
+  name: string,
+  changes: { side?: Placement['side']; gap?: number },
+): TikzPicture {
+  const node = findNode(picture, name)
+  if (node === undefined) return picture
+  const current = placement(node)
+  if (current === undefined) return picture
+  return placeNodeRelative(picture, name, {
+    side: changes.side ?? current.side,
+    gap: changes.gap ?? current.gap,
+    ref: current.ref,
+  })
+}
+
 export interface NodeSpec {
   name?: string
   at?: Point
@@ -102,6 +148,28 @@ export function deleteNode(picture: TikzPicture, name: string): TikzPicture {
       return true
     }),
   }
+}
+
+/** Replace the first placement token in place (or append), dropping any others. */
+function withPlacementToken(options: string[], token: string): string[] {
+  const idx = options.findIndex(isPlacementToken)
+  const without = options.filter((t) => !isPlacementToken(t))
+  if (idx === -1) return [...without, token]
+  without.splice(Math.min(idx, without.length), 0, token)
+  return without
+}
+
+/** Whether following placement refs from `from` reaches `target` (a would-be cycle). */
+function placementChainReaches(picture: TikzPicture, from: string, target: string): boolean {
+  const seen = new Set<string>()
+  let current: string | undefined = from
+  while (current !== undefined && !seen.has(current)) {
+    if (current === target) return true
+    seen.add(current)
+    const node = findNode(picture, current)
+    current = node ? placement(node)?.ref : undefined
+  }
+  return false
 }
 
 /** Rebuild the picture, replacing the named node via `fn`; other statements shared. */
