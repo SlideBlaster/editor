@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>booting</title></head>
+<body>
+<div id="out">booting…</div>
+<script src="perl-web.js"></script>
+<script>
+(async () => {
+  const log = (s) => { document.getElementById('out').textContent = s; document.title = s; };
+  try {
+    const t0 = performance.now();
+    const Module = await createPerlModule({ noInitialRun: true, print(){}, printErr(){} });
+    Module.ENV.PERL_HASH_SEED = '0';
+    const ready = Math.round(performance.now() - t0);
+
+    const tex = `\\documentclass{article}\\usepackage{booktabs}\\begin{document}\n` +
+      `\\begin{tabular}{lr}\\toprule Item & Qty \\\\ \\midrule Apples & 3 \\\\ Pears & 12 \\\\ \\bottomrule\\end{tabular}\n` +
+      `\\end{document}\n`;
+
+    const run = () => {
+      Module.FS.writeFile('/in.tex', tex);
+      try { Module.FS.unlink('/out.html'); } catch {}
+      const t = performance.now();
+      Module.callMain(['-I','/sb/overlay','-I','/sb/lib','-I','/sb/xml-libxml','-I','/sb/xml-libxslt','-I','/sb/perl5','/sb/driver.pl','/in.tex','/out.html']);
+      const html = Module.FS.readFile('/out.html', { encoding: 'utf8' });
+      return { html, ms: Math.round(performance.now() - t) };
+    };
+
+    const a = run();          // cold
+    const b = run();          // reuse
+    const ok = a.html.includes('ltx_tabular') && a.html.includes('<style') &&
+               b.html.includes('ltx_tabular');
+    log(`RESULT:${ok ? 'PASS' : 'FAIL'} ready=${ready}ms cold=${a.ms}ms reuse=${b.ms}ms len=${a.html.length} ltx=${a.html.includes('ltx_tabular')} style=${(a.html.match(/<style/g)||[]).length}`);
+  } catch (e) {
+    log('RESULT:ERROR ' + (e && e.message || e));
+  }
+})();
+</script>
+</body>
+</html>

@@ -4,3 +4,12 @@ build/
 tmp/
 *.wasm
 *.data
+
+# ...except the browser runtime under dist/, which ships so a fresh clone can run the
+# compiler without the 500 MB build toolchain: the glue (perl-web.js), its package.json and
+# harness go in as normal git; the two big blobs (perl-web.wasm/.data) via Git LFS (see
+# /.gitattributes). dist/ is re-included explicitly because the repo-root .gitignore excludes
+# every dist/, and a file can't be re-included while its parent dir is excluded.
+!dist/
+!dist/perl-web.wasm
+!dist/perl-web.data

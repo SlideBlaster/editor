@@ -1,0 +1,4 @@
+# LaTeXML WASM runtime artifacts — delivered via Git LFS (see docs/... / engine README).
+# Rebuilt by engine/build-web.sh; large binaries, so LFS keeps the pack lean.
+packages/adapters-shared/src/compile/engine/dist/perl-web.wasm filter=lfs diff=lfs merge=lfs -text
+packages/adapters-shared/src/compile/engine/dist/perl-web.data filter=lfs diff=lfs merge=lfs -text

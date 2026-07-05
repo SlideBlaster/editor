@@ -40,7 +40,23 @@ package the Perl+LaTeXML tree into `emperl.data`.
 The JS wrapper (P4 output) is what `../wasmLatexmlCompiler.ts` imports as the
 engine. Golden-file tests compare its output to native `latexml` on a table corpus.
 
+## Runtime artifacts (Git LFS)
+
+The browser runtime lives in `dist/`: `perl-web.js` (the Emscripten `createPerlModule`
+glue) plus `perl-web.wasm` (~7.9 MB) and `perl-web.data` (~12.7 MB, the preloaded LaTeXML
+filesystem). These ship in the repo so a fresh clone can run the compiler **without** the
+500 MB build toolchain — the two big blobs via **Git LFS** (see the repo-root
+`.gitattributes`); the glue and `package.json` as ordinary files.
+
+**You need git-lfs to get them.** Install it once (`apt install git-lfs` / `brew install
+git-lfs`, then `git lfs install`). A clone made without git-lfs gets ~130-byte pointer files
+instead of the real blobs and the compiler will fail to instantiate; `git lfs pull` fixes an
+existing clone. Rebuilding them from source instead is `build-web.sh` (needs emsdk + the
+`vendor/` Perl tree).
+
 ## Files
 
 - `build-clibs.sh` — libxml2 + libxslt + libexslt -> WASM static archives (verified).
-- `vendor/`, `*.wasm`, `*.data` — gitignored build artifacts.
+- `build-web.sh` — links the browser `dist/perl-web.*` runtime via `emcc`.
+- `dist/perl-web.{js,wasm,data}` — the shipped runtime (wasm/data via Git LFS).
+- `vendor/`, `build/`, `tmp/`, other `*.wasm`/`*.data` — gitignored build artifacts.
