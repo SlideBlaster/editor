@@ -22,6 +22,8 @@ import {
   createNode,
   deleteNode,
   setNodeContent,
+  createConnector,
+  deleteConnector,
   type NodeContent,
   type RenderedSlide,
   type SlideDocument,
@@ -29,7 +31,13 @@ import {
 } from '@slideblaster/editor'
 import initialSource from './sample.slideBlaster.md?raw'
 import { createCodePane, type CodePane } from './codePane'
-import { paintDeck, type DeckActions, type DeckHandle, type Selection } from './deck'
+import {
+  paintDeck,
+  type DeckActions,
+  type DeckHandle,
+  type Selection,
+  type ConnectorSelection,
+} from './deck'
 import { paintDeckNav, type NavHandle } from './deckNav'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
@@ -43,6 +51,8 @@ interface State {
   source: string
   active: number // the slide most in view; drives the navigator highlight
   selected: Selection | null
+  selectedConnector: ConnectorSelection | null
+  connectMode: boolean // E4: dragging a node draws an arrow instead of moving it
 }
 
 function qs<T extends HTMLElement>(selector: string): T {
@@ -89,6 +99,8 @@ function main(): void {
     source: initialSource,
     active: 0,
     selected: null,
+    selectedConnector: null,
+    connectMode: false,
   }
   const deck = qs('#deck')
   const deckRail = qs('#deck-rail') // the carousel navigator: a vertical rail beside the canvas
@@ -108,6 +120,15 @@ function main(): void {
     const errors = currentDoc ? countErrorNodes(currentDoc) : 0
     if (errors > 0) {
       status.textContent = `${errors} node${errors > 1 ? 's' : ''} out of subset — source kept, fix to render (ADR 0015)`
+      return
+    }
+    if (state.connectMode) {
+      status.textContent =
+        'Connect mode — drag from one node to another to draw an arrow (Esc to exit)'
+      return
+    }
+    if (state.selectedConnector) {
+      status.textContent = `Selected arrow on slide ${state.selectedConnector.frame + 1} — Delete to remove`
       return
     }
     status.textContent = state.selected
@@ -138,8 +159,23 @@ function main(): void {
   const actions: DeckActions = {
     select(frame, name) {
       state.selected = name === null ? null : { frame, name }
+      if (state.selectedConnector) {
+        // Selecting a node clears any connector selection — needs a re-render.
+        state.selectedConnector = null
+        void render()
+      }
       deckHandle?.showSelection(state.selected)
       setStatus()
+    },
+    connect(frame, from, to) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      commit(withFrame(currentDoc, frame, createConnector(target.picture, from, to)))
+    },
+    selectConnector(frame, index) {
+      state.selectedConnector = index === null ? null : { frame, index }
+      if (index !== null) state.selected = null // connector and node selection are exclusive
+      void render() // cheap re-render to reflect the connector highlight (no drag in flight)
     },
     move(frame, name, center) {
       const target = currentDoc?.frames[frame]
@@ -191,11 +227,15 @@ function main(): void {
     const maxIndex = Math.max(0, doc.frames.length - 1)
     state.active = Math.min(state.active, maxIndex)
     if (state.selected && state.selected.frame > maxIndex) state.selected = null
+    if (state.selectedConnector && state.selectedConnector.frame > maxIndex)
+      state.selectedConnector = null
 
     const seq = ++renderSeq
     const handle = await paintDeck(deck, {
       frames: doc.frames,
       selected: state.selected,
+      selectedConnector: state.selectedConnector,
+      connectMode: state.connectMode,
       actions,
       measurer,
       isStale: () => seq !== renderSeq,
@@ -222,10 +262,37 @@ function main(): void {
     },
   })
 
-  // Delete/Backspace removes the selection — but not while typing in the code pane.
+  // Connect mode (E4): a toolbar toggle. In connect mode dragging a node draws an arrow.
+  const connectToggle = qs<HTMLButtonElement>('#connect-toggle')
+  const setConnectMode = (on: boolean): void => {
+    state.connectMode = on
+    state.selectedConnector = null
+    connectToggle.classList.toggle('is-active', on)
+    connectToggle.setAttribute('aria-pressed', String(on))
+    void render()
+    setStatus()
+  }
+  connectToggle.addEventListener('click', () => setConnectMode(!state.connectMode))
+
+  // Delete/Backspace removes the selected node or connector — but not while typing in
+  // the code pane. Escape leaves connect mode.
   document.addEventListener('keydown', (event) => {
     const typing = document.activeElement instanceof HTMLTextAreaElement
-    if (!typing && state.selected && (event.key === 'Delete' || event.key === 'Backspace')) {
+    if (typing) return
+    if (event.key === 'Escape' && state.connectMode) {
+      event.preventDefault()
+      setConnectMode(false)
+      return
+    }
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return
+    if (state.selectedConnector) {
+      event.preventDefault()
+      const { frame, index } = state.selectedConnector
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      state.selectedConnector = null
+      commit(withFrame(currentDoc, frame, deleteConnector(target.picture, index)))
+    } else if (state.selected) {
       event.preventDefault()
       actions.remove(state.selected.frame, state.selected.name)
     }

@@ -17,7 +17,11 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
   `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
   `create -> createNode`, `remove -> deleteNode`,
-  `editContent -> parseContent + setNodeContent`. Each applies to the last good parsed
+  `editContent -> parseContent + setNodeContent`, `connect -> createConnector` (E4),
+  `selectConnector` (connector selection, exclusive with node selection). A connect-mode
+  toolbar toggle (`#connect-toggle`, Esc to exit) flips dragging into arrow-drawing;
+  Delete removes the selected node or connector (`deleteConnector`). Each applies to the
+  last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.
 - **Out-of-subset error state.** An inline edit is re-parsed by `parseContent`, which

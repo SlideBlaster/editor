@@ -104,13 +104,21 @@ body {
   color: var(--muted);
 }
 
-/* Export group: Print / PDF and Export HTML, pushed to the right of the app bar. */
-.export-actions {
+/* Tools group (Connect …), pushed right, just left of the export group. */
+.tool-actions {
   margin-left: auto;
   display: inline-flex;
   gap: 0.4rem;
 }
 
+/* Export group: Print / PDF and Export HTML, at the right of the app bar. */
+.export-actions {
+  margin-left: 0.4rem;
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.tool-actions button,
 .export-actions button {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -122,9 +130,17 @@ body {
   cursor: pointer;
 }
 
+.tool-actions button:hover,
 .export-actions button:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* Active connect-mode toggle reads as pressed. */
+.tool-actions button.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .export-actions button:disabled {
@@ -132,6 +148,7 @@ body {
   cursor: default;
 }
 
+.tool-actions button:focus-visible,
 .export-actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -375,6 +392,50 @@ body {
   stroke: #a855f7;
   stroke-width: 2px;
   stroke-dasharray: 2 2;
+}
+
+/* Connector hit-lines (E4): a clickable stroke along each arrow, under the handles.
+   Transparent-but-thick for easy hit-testing; a translucent band when selected. */
+.sb-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.sb-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0.4;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.sb-hit.is-selected {
+  stroke: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Connect-mode rubber band: a dashed line from the source node to the pointer. */
+.sb-rubber {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.sb-rubber-line {
+  stroke: #a855f7;
+  stroke-width: 0.06;
+  stroke-dasharray: 0.12 0.1;
+}
+
+/* In connect mode the node handles read as arrow sources. */
+.sb-overlay.is-connect .sb-handle {
+  cursor: crosshair;
 }
 
 /* Relationship badge: floats at the bound node showing the side and gap. */

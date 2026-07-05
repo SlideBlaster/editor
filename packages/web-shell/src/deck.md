@@ -24,7 +24,8 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
   keystroke-triggered full rebuild only re-measures the node that changed. The
   controller guards against stale async paints with a render sequence ([main.ts](./main.md)).
 - **Frame-bound editing.** `bindFrame(actions, index)` wraps the controller's
-  frame-addressed `DeckActions` (`select`/`move`/`bind`/`create`/`remove`/`editContent`) into
+  frame-addressed `DeckActions`
+  (`select`/`move`/`bind`/`create`/`remove`/`editContent`/`connect`/`selectConnector`) into
   the `CanvasActions` one slide expects, so `paintCanvas` is reused unchanged and every
   edit — including an inline content edit — carries its slide.
 - **Active tracking.** An `IntersectionObserver` (root = the deck) reports the

@@ -25,6 +25,8 @@ export interface DeckActions {
   create(frame: number, center: Point): void
   remove(frame: number, name: string): void
   editContent(frame: number, name: string, body: string): void
+  connect(frame: number, from: string, to: string): void
+  selectConnector(frame: number, index: number | null): void
 }
 
 type RelativeSide = 'above' | 'below' | 'left' | 'right'
@@ -35,9 +37,18 @@ export interface Selection {
   name: string
 }
 
+/** A selected connector, qualified by its slide and its index among that slide's paths. */
+export interface ConnectorSelection {
+  frame: number
+  index: number
+}
+
 export interface DeckProps {
   frames: Frame[]
   selected: Selection | null
+  selectedConnector: ConnectorSelection | null
+  /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
+  connectMode: boolean
   actions: DeckActions
   /** Sizes node boxes; the DOM measurer in the browser, naive in tests. */
   measurer: BatchMeasurer
@@ -83,10 +94,14 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
     card.className = 'deck-slide'
     card.dataset.frame = String(index)
     const selectedName = props.selected?.frame === index ? props.selected.name : null
+    const selectedConnector =
+      props.selectedConnector?.frame === index ? props.selectedConnector.index : null
     paintCanvas(card, {
       picture: frame.picture,
       layout: layouts[index]!,
       selected: selectedName,
+      selectedConnector,
+      connectMode: props.connectMode,
       actions: bindFrame(props.actions, index),
     })
     canvas.append(card)
@@ -122,6 +137,8 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     create: (center) => actions.create(frame, center),
     remove: (name) => actions.remove(frame, name),
     editContent: (name, body) => actions.editContent(frame, name, body),
+    connect: (from, to) => actions.connect(frame, from, to),
+    selectConnector: (index) => actions.selectConnector(frame, index),
   }
 }
 

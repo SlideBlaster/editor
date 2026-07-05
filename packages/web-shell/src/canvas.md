@@ -48,3 +48,13 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
 - **Selection must not re-render.** `actions.select` only toggles handle state — a
   full re-render would replace the very element mid-drag and break pointer capture.
   `move`/`create`/`remove` re-serialize and re-render.
+- **Connectors (E4).** `paintConnectors` lays a clickable hit-line (`svg.sb-connectors`,
+  a thick transparent `.sb-hit` stroke) along each arrow from `connectorsOf(picture,
+  layout)`; clicking one fires `selectConnector(index)` and a selected line shows a
+  translucent band. The visible arrow itself is the engine's render. Delete of a
+  selected connector is a controller keybinding (`deleteConnector`).
+- **Connect mode (E4).** When `props.connectMode`, node handles are wired by
+  `wireConnect` instead of `wireHandle`: dragging from a node draws a rubber band
+  (`svg.sb-rubber`) to the pointer and, on release over another node
+  (`document.elementFromPoint` -> `.sb-handle[data-node]`), fires `connect(from, to)`.
+  A release off any node cancels.

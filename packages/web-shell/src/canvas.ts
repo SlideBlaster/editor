@@ -12,6 +12,7 @@ import {
   findNode,
   placement,
   renderSlide,
+  connectorsOf,
   serializeBody,
   type Layout,
   type PlacedNode,
@@ -42,12 +43,20 @@ export interface CanvasActions {
   remove(name: string): void
   /** Commit an inline content edit: `body` is the edited raw node body (re-parsed by the engine). */
   editContent(name: string, body: string): void
+  /** E4: draw a connector from one node to another (connect mode). */
+  connect(from: string, to: string): void
+  /** Select an existing connector by its index (or clear with null). */
+  selectConnector(index: number | null): void
 }
 
 export interface CanvasProps {
   picture: TikzPicture
   layout: Layout
   selected: string | null
+  /** The selected connector's index, if any (mutually exclusive with a node selection). */
+  selectedConnector: number | null
+  /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
+  connectMode: boolean
   actions: CanvasActions
 }
 
@@ -57,7 +66,11 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   if (!slideEl) return
 
   const overlay = document.createElement('div')
-  overlay.className = 'sb-overlay'
+  overlay.className = props.connectMode ? 'sb-overlay is-connect' : 'sb-overlay'
+
+  // Connector hit-lines (under the handles): a clickable stroke along each arrow so it
+  // can be selected and deleted. The visible arrow itself lives in the render's SVG.
+  paintConnectors(overlay, props)
 
   for (const node of props.layout.nodes) {
     if (!node.name) continue
@@ -75,12 +88,16 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     handle.className = name === props.selected ? 'sb-handle is-selected' : 'sb-handle'
     handle.style.cssText = boxStyle(node)
     handle.dataset.node = name
-    wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions)
-    // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
-    handle.addEventListener('dblclick', (event) => {
-      event.stopPropagation() // don't let the empty-overlay dblclick create a node
-      openInlineEditor(overlay, node, name, props.picture, props.actions)
-    })
+    if (props.connectMode) {
+      wireConnect(handle, node, slideEl, overlay, props.actions)
+    } else {
+      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions)
+      // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
+      handle.addEventListener('dblclick', (event) => {
+        event.stopPropagation() // don't let the empty-overlay dblclick create a node
+        openInlineEditor(overlay, node, name, props.picture, props.actions)
+      })
+    }
     overlay.append(handle)
   }
 
@@ -301,6 +318,104 @@ function drawGuides(overlay: HTMLElement, guides: readonly SnapLine[]): void {
 
 function clearGuides(overlay: HTMLElement): void {
   overlay.querySelector('svg.sb-guides')?.remove()
+}
+
+/** Render a clickable hit-line along each connector so arrows can be selected/deleted.
+ *  The visible arrow is drawn by the engine's SVG; this is only the interaction target. */
+function paintConnectors(overlay: HTMLElement, props: CanvasProps): void {
+  const connectors = connectorsOf(props.picture, props.layout)
+  if (connectors.length === 0) return
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('class', 'sb-connectors')
+  svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+  svg.setAttribute('preserveAspectRatio', 'none')
+  for (const connector of connectors) {
+    const poly = document.createElementNS(SVG_NS, 'polyline')
+    poly.setAttribute('points', connector.points.map((p) => `${p.x},${SLIDE_H - p.y}`).join(' '))
+    poly.dataset.connector = String(connector.index)
+    poly.setAttribute(
+      'class',
+      connector.index === props.selectedConnector ? 'sb-hit is-selected' : 'sb-hit',
+    )
+    poly.addEventListener('pointerdown', (event) => {
+      event.stopPropagation()
+      props.actions.selectConnector(connector.index)
+    })
+    svg.append(poly)
+  }
+  overlay.append(svg)
+}
+
+/** Connect-mode gesture (E4): drag from this node to another to draw an arrow. */
+function wireConnect(
+  handle: HTMLElement,
+  node: PlacedNode,
+  slideEl: HTMLElement,
+  overlay: HTMLElement,
+  actions: CanvasActions,
+): void {
+  const name = node.name!
+  let dragging = false
+
+  handle.addEventListener('pointerdown', (event) => {
+    event.stopPropagation()
+    dragging = true
+    actions.selectConnector(null)
+    handle.setPointerCapture(event.pointerId)
+  })
+
+  handle.addEventListener('pointermove', (event) => {
+    if (!dragging) return
+    const rect = slideEl.getBoundingClientRect()
+    const to: Point = {
+      x: ((event.clientX - rect.left) / rect.width) * SLIDE_W,
+      y: SLIDE_H - ((event.clientY - rect.top) / rect.height) * SLIDE_H,
+    }
+    drawRubberBand(overlay, node.center, to)
+  })
+
+  const end = (event: PointerEvent): void => {
+    if (!dragging) return
+    dragging = false
+    handle.releasePointerCapture(event.pointerId)
+    clearRubberBand(overlay)
+    const target = nodeUnderPointer(event.clientX, event.clientY, name)
+    if (target) actions.connect(name, target)
+  }
+  handle.addEventListener('pointerup', end)
+  handle.addEventListener('pointercancel', end)
+}
+
+/** The name of the node handle under a client point, excluding `self` (or null). */
+function nodeUnderPointer(clientX: number, clientY: number, self: string): string | null {
+  const el = document.elementFromPoint(clientX, clientY)
+  const handle = el instanceof Element ? el.closest<HTMLElement>('.sb-handle') : null
+  const name = handle?.dataset.node ?? null
+  return name && name !== self ? name : null
+}
+
+/** Draw/update the connect-mode rubber band from a node center to the pointer. */
+function drawRubberBand(overlay: HTMLElement, from: Point, to: Point): void {
+  let svg = overlay.querySelector<SVGSVGElement>('svg.sb-rubber')
+  if (!svg) {
+    svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('class', 'sb-rubber')
+    svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+    svg.setAttribute('preserveAspectRatio', 'none')
+    overlay.append(svg)
+  }
+  svg.replaceChildren()
+  const line = document.createElementNS(SVG_NS, 'line')
+  line.setAttribute('x1', String(from.x))
+  line.setAttribute('y1', String(SLIDE_H - from.y))
+  line.setAttribute('x2', String(to.x))
+  line.setAttribute('y2', String(SLIDE_H - to.y))
+  line.setAttribute('class', 'sb-rubber-line')
+  svg.append(line)
+}
+
+function clearRubberBand(overlay: HTMLElement): void {
+  overlay.querySelector('svg.sb-rubber')?.remove()
 }
 
 /** Show (or clear) the relationship badge — e.g. "below 0.6" — at the bound node's
