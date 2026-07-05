@@ -25,6 +25,7 @@ import {
   createConnector,
   deleteConnector,
   updateConnector,
+  setConnectorOptions,
   type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
@@ -39,6 +40,7 @@ import {
   type ConnectorSelection,
 } from './deck'
 import { paintDeckNav, type NavHandle } from './deckNav'
+import { paintProperties, type PropSelection } from './properties'
 import { openCreationMenu, type MenuItem } from './createMenu'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
@@ -126,6 +128,7 @@ function main(): void {
   const status = qs('#status')
   const undoButton = qs<HTMLButtonElement>('#undo')
   const redoButton = qs<HTMLButtonElement>('#redo')
+  const propsHost = qs('#props')
   let currentDoc: SlideDocument | null = null
   let codePane: CodePane
   let deckHandle: DeckHandle | null = null
@@ -153,6 +156,33 @@ function main(): void {
     status.textContent = state.selected
       ? `Selected ${state.selected.name} on slide ${state.selected.frame + 1} — drag to move, double-click to edit, Delete to remove`
       : 'Scroll to move through slides · click to select · double-click to edit or add'
+  }
+
+  /** Repaint the properties panel for the current selection (node or connector). Cheap;
+   *  called on selection (no re-render) and after every render. */
+  const paintPanel = (): void => {
+    const frame = state.selected?.frame ?? state.selectedConnector?.frame ?? null
+    const selection: PropSelection = state.selected
+      ? { kind: 'node', name: state.selected.name }
+      : state.selectedConnector
+        ? { kind: 'connector', index: state.selectedConnector.index }
+        : null
+    const picture = frame !== null ? (currentDoc?.frames[frame]?.picture ?? null) : null
+    paintProperties(propsHost, {
+      selection,
+      picture,
+      actions: {
+        moveNode: (name, center) => frame !== null && actions.move(frame, name, center),
+        bindNode: (name, binding) => frame !== null && actions.bind(frame, name, binding),
+        setConnectorOptions: (index, options) => {
+          const target = frame !== null ? currentDoc?.frames[frame] : undefined
+          if (currentDoc && target && frame !== null)
+            commit(
+              withFrame(currentDoc, frame, setConnectorOptions(target.picture, index, options)),
+            )
+        },
+      },
+    })
   }
 
   /** Apply an edit op result: snapshot for undo, re-serialize, sync the code pane, render. */
@@ -211,6 +241,7 @@ function main(): void {
       }
       deckHandle?.showSelection(state.selected)
       setStatus()
+      paintPanel()
     },
     connect(frame, from, to) {
       const target = currentDoc?.frames[frame]
@@ -319,6 +350,7 @@ function main(): void {
     undoButton.disabled = undoStack.length === 0
     redoButton.disabled = redoStack.length === 0
     setStatus()
+    paintPanel()
   }
 
   codePane = createCodePane(qs('#code'), {

@@ -45,6 +45,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `deckHandle.showSelection`; it must not re-render, or it would destroy the
   element a drag started on. Selection is `{ frame, name }` — names are unique per
   slide only.
+- **Properties panel (E5).** `paintPanel` repaints the [inspector](./properties.md) for
+  the current selection — on selection (no deck re-render) and after every render. It
+  edits arrow style (`setConnectorOptions`) and node placement (`move`/`bind`); its actions
+  are bound to the selected frame. Scoped to arrows + placement for now.
 - **Scroll <-> navigator sync.** The deck reports the slide most in view
   (`onActiveChange` -> `state.active` -> `navHandle.setActive`); a navigator click
   (`onSelect`) scrolls the deck (`deckHandle.scrollToSlide`). Neither re-renders.
