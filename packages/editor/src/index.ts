@@ -14,8 +14,10 @@ export {
   role,
   placementToken,
   placement,
+  parseConnector,
+  serializeConnector,
 } from './tikz/index'
-export type { Placement } from './tikz/index'
+export type { Placement, ConnectorPath, Anchor, CurveControls } from './tikz/index'
 export {
   parseContent,
   serializeContent,
@@ -56,5 +58,6 @@ export {
   adjustPlacement,
   createConnector,
   deleteConnector,
+  updateConnector,
 } from './edit/index'
 export type { NodeSpec } from './edit/index'

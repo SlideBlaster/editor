@@ -14,14 +14,15 @@ viewable when mounted.
   layer uses `viewBox="0 0 16 9"` with y flipped to SVG's y-down; content nodes are
   positioned by percentage of the same box. The layers register by construction (no
   two coordinate systems to sync — the ADR 0014 promise).
-- **Arrows.** `\draw` path bodies are parsed here (they were verbatim until now):
-  straight `--`/`-|`/`|-` segments whose `(name)` endpoints resolve to layout node
-  anchors (B1) and `(x,y)` endpoints to points. Arrowheads come from `->`/`<-`/`<->`
-  in the path options. `connectorsOf(picture, layout)` exposes the resolved geometry
-  (`{ index, points, heads }` per drawable path) — the renderer draws from it and the
-  editor hit-tests from it, so they never disagree. Each `<polyline>` carries
-  `data-arrow="<index>"` (index among path statements) so an editor can select/delete a
-  connector (`deleteConnector`); because endpoints are re-resolved every paint, a
+- **Arrows.** `connectorsOf(picture, layout)` resolves every drawable `\draw`. The
+  **editable subset** (straight `--` + cubic `.. controls ..`, via
+  [connector.ts](../tikz/connector.md)) yields both a structured `ConnectorPath`
+  (`editable`, for the canvas) and SVG `pathData` (`M`/`L`/`C`, y flipped); a body
+  outside the subset (`-|`, `to[...]`, …) falls back to a straight polyline path and
+  `editable: null`. `(name)` endpoints resolve to the node's current center, `(x,y)` to
+  points; arrowheads come from `->`/`<-`/`<->`. Each `<path>` carries `data-arrow="<index>"`
+  (index among path statements) so an editor can select / delete / reshape it
+  (`deleteConnector`, `updateConnector`); because endpoints re-resolve every paint, a
   connector re-routes automatically when its nodes move.
 - **Content.** Each node's box holds `renderContent` output (B2); style classes
   become `sb-style-*` classes on both the SVG box and the content div. A named node's

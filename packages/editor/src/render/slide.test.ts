@@ -38,7 +38,7 @@ describe('renderSlide', () => {
   it('renders the arrow between the two node anchors, with a head from ->', () => {
     // intro center (0,-1.7) -> svg (0,10.7); o2 center (10,3) -> svg (10,6)
     expect(html).toContain(
-      '<polyline class="sb-arrow" data-arrow="0" points="0,10.7 10,6" marker-end="url(#sb-arrow-end)"/>',
+      '<path class="sb-arrow" data-arrow="0" d="M 0,10.7 L 10,6" marker-end="url(#sb-arrow-end)"/>',
     )
   })
 
@@ -49,6 +49,7 @@ describe('renderSlide', () => {
     expect(connectors[0]!.heads).toEqual({ start: false, end: true })
     expect(connectors[0]!.points).toHaveLength(2)
     expect(connectors[0]!.points[1]).toEqual({ x: 10, y: 3 }) // o2 center
+    expect(connectors[0]!.editable?.anchors[1]).toEqual({ kind: 'node', name: 'o2' })
   })
 
   it('marks the title box with its style class', () => {

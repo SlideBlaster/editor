@@ -13,6 +13,7 @@
 import type { NodeStatement, PathStatement, Point, TikzPicture } from '../model/tikz'
 import type { NodeContent } from '../model/content'
 import { isPlacementToken, placement, type Placement } from '../tikz/options'
+import { serializeConnector, type ConnectorPath } from '../tikz/connector'
 import { formatNumber } from '../text/scanner'
 
 /** Find a node by its stable identity. */
@@ -170,6 +171,27 @@ export function createConnector(
     body: ` (${from}) -- (${to})`,
   }
   return { statements: [...picture.statements, path] }
+}
+
+/**
+ * Replace the path body of the connector at `index` (position among path statements)
+ * with a reshaped `ConnectorPath` — endpoints, waypoints, and per-segment curves (E4+).
+ * Options (arrowheads, dashing) are untouched. No-op if out of range or the statement
+ * at that index is not a path.
+ */
+export function updateConnector(
+  picture: TikzPicture,
+  index: number,
+  path: ConnectorPath,
+): TikzPicture {
+  let seen = -1
+  return {
+    statements: picture.statements.map((statement) => {
+      if (statement.kind !== 'path') return statement
+      seen++
+      return seen === index ? { ...statement, body: serializeConnector(path) } : statement
+    }),
+  }
 }
 
 /**

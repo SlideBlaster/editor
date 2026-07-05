@@ -13,6 +13,7 @@
 import type { NodeStatement, PathStatement, Point, Statement, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode } from '../model/layout'
 import { findPlaced } from '../layout/resolve'
+import { parseConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { renderContent, type RenderOptions } from './html'
 
 const SLIDE_W = 16
@@ -34,18 +35,28 @@ export function renderSlide(
 }
 
 /** A resolved connector: its identity (`index` among path statements — what
- *  `deleteConnector` targets), the polyline it draws, and its arrowheads. */
+ *  `deleteConnector` targets), the resolved anchor points, the SVG path data it draws
+ *  (with curves), its arrowheads, and the structured `editable` path (`null` when the
+ *  body is outside the editable subset — then it renders straight and can't be reshaped). */
 export interface Connector {
   index: number
   points: Point[]
+  pathData: string
   heads: { start: boolean; end: boolean }
+  editable: ConnectorPath | null
+}
+
+/** Resolve an anchor to a slide point: a node's current center, or the literal point. */
+function resolveAnchor(anchor: Anchor, layout: Layout): Point | null {
+  if (anchor.kind === 'point') return anchor.at
+  return findPlaced(layout, anchor.name)?.center ?? null
 }
 
 /**
- * Resolve every drawable connector against the layout. Endpoints come from `(name)`
- * (the node's current center — so a connector re-routes for free when its node moves)
- * or a literal `(x,y)`. Shared by the renderer and the editor's hit-testing so the two
- * never disagree about where an arrow runs.
+ * Resolve every drawable connector against the layout. Node endpoints resolve to the
+ * node's current center (so a connector re-routes for free when its node moves); the
+ * editable subset (straight + cubic segments) also yields a structured `ConnectorPath`.
+ * Shared by the renderer and the editor so the two never disagree about an arrow.
  */
 export function connectorsOf(picture: TikzPicture, layout: Layout): Connector[] {
   const connectors: Connector[] = []
@@ -54,11 +65,43 @@ export function connectorsOf(picture: TikzPicture, layout: Layout): Connector[] 
     if (!isPath(statement)) continue
     index++ // index among path statements — stable identity for deleteConnector
     if (statement.action !== 'draw' && statement.action !== 'path') continue
+    const heads = arrowHeads(statement.options)
+    const parsed = parseConnector(statement.body)
+    const resolved = parsed?.anchors.map((a) => resolveAnchor(a, layout))
+    if (parsed && resolved && resolved.every((p): p is Point => p !== null)) {
+      connectors.push({
+        index,
+        points: resolved,
+        pathData: curvePathData(resolved, parsed.curves),
+        heads,
+        editable: parsed,
+      })
+      continue
+    }
+    // Fallback: unresolved anchor or a body outside the subset — render straight, no edit.
     const points = connectorPoints(statement.body, layout)
     if (points.length < 2) continue
-    connectors.push({ index, points, heads: arrowHeads(statement.options) })
+    connectors.push({ index, points, pathData: polyPathData(points), heads, editable: null })
   }
   return connectors
+}
+
+/** SVG path data for a (possibly curved) connector, y flipped to the viewBox. */
+function curvePathData(points: Point[], curves: ConnectorPath['curves']): string {
+  let d = `M ${r(points[0]!.x)},${r(SLIDE_H - points[0]!.y)}`
+  for (let i = 1; i < points.length; i++) {
+    const curve = curves[i - 1]
+    const to = `${r(points[i]!.x)},${r(SLIDE_H - points[i]!.y)}`
+    d += curve
+      ? ` C ${r(curve.c1.x)},${r(SLIDE_H - curve.c1.y)} ${r(curve.c2.x)},${r(SLIDE_H - curve.c2.y)} ${to}`
+      : ` L ${to}`
+  }
+  return d
+}
+
+/** SVG path data for a straight polyline (the non-editable fallback). */
+function polyPathData(points: Point[]): string {
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${r(p.x)},${r(SLIDE_H - p.y)}`).join(' ')
 }
 
 function rectSvg(node: PlacedNode): string {
@@ -78,7 +121,6 @@ function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions
 }
 
 function arrowSvg(connector: Connector): string {
-  const svgPoints = connector.points.map((p) => `${r(p.x)},${r(SLIDE_H - p.y)}`).join(' ')
   const markers = [
     connector.heads.start ? 'marker-start="url(#sb-arrow-start)"' : '',
     connector.heads.end ? 'marker-end="url(#sb-arrow-end)"' : '',
@@ -87,7 +129,7 @@ function arrowSvg(connector: Connector): string {
     .join(' ')
   // data-arrow: model identity in the DOM so an editor can hit-test / address it
   // (like data-node). Harmless in the export DOM (ADR 0014).
-  return `<polyline class="sb-arrow" data-arrow="${connector.index}" points="${svgPoints}"${markers ? ' ' + markers : ''}/>`
+  return `<path class="sb-arrow" data-arrow="${connector.index}" d="${connector.pathData}"${markers ? ' ' + markers : ''}/>`
 }
 
 /** Endpoints of a straight-segment connector body: `(name)` -> node center, `(x,y)` -> point. */

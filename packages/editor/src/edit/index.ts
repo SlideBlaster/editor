@@ -10,5 +10,6 @@ export {
   adjustPlacement,
   createConnector,
   deleteConnector,
+  updateConnector,
 } from './ops'
 export type { NodeSpec } from './ops'

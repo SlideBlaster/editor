@@ -3,6 +3,7 @@ import { parsePicture } from '../tikz/parse'
 import { serializePicture } from '../tikz/serialize'
 import { parseContent } from '../content/parse'
 import { serializeBody } from '../content/serialize'
+import { parseConnector, type ConnectorPath } from '../tikz/connector'
 import {
   findNode,
   uniqueName,
@@ -14,6 +15,7 @@ import {
   adjustPlacement,
   createConnector,
   deleteConnector,
+  updateConnector,
 } from './ops'
 
 const SOURCE = [
@@ -198,6 +200,35 @@ describe('createConnector', () => {
   it('is a no-op when an endpoint is missing', () => {
     expect(serializePicture(createConnector(picture(), 'title', 'ghost'))).toBe(SOURCE)
     expect(serializePicture(createConnector(picture(), 'ghost', 'o2'))).toBe(SOURCE)
+  })
+})
+
+describe('updateConnector', () => {
+  it('reshapes the connector body while keeping its options', () => {
+    const reshaped = parseConnector(' (intro) -- (title)')! // move the o2 endpoint to title
+    const out = serializePicture(updateConnector(picture(), 0, reshaped))
+    expect(out).toContain('\\draw[->] (intro) -- (title);')
+    expect(out).not.toContain('-- (o2)') // the old endpoint is gone from the connector
+  })
+
+  it('writes a curved segment and round-trips', () => {
+    const curved: ConnectorPath = {
+      anchors: [
+        { kind: 'node', name: 'intro' },
+        { kind: 'node', name: 'o2' },
+      ],
+      curves: [{ c1: { x: 2, y: 2 }, c2: { x: 4, y: 2 } }],
+    }
+    const edited = updateConnector(picture(), 0, curved)
+    expect(serializePicture(edited)).toContain(
+      '\\draw[->] (intro) .. controls (2,2) and (4,2) .. (o2);',
+    )
+    expect(roundTrips(edited)).toBe(true)
+  })
+
+  it('is a no-op when the index is out of range', () => {
+    const reshaped = parseConnector(' (intro) -- (o2)')!
+    expect(serializePicture(updateConnector(picture(), 5, reshaped))).toBe(SOURCE)
   })
 })
 

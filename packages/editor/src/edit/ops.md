@@ -64,6 +64,10 @@ are the writer.
   among the picture's **path** statements. This is the identity the renderer stamps as
   `data-arrow` (see `render/slide.connectorsOf`), so the editor selects an arrow and
   deletes it by the same index. No-op if out of range.
+- `updateConnector(picture, index, path)` — replace the connector's body with a reshaped
+  `ConnectorPath` (endpoints, waypoints, per-segment curves; see
+  [tikz/connector.md](../tikz/connector.md)). Options (arrowheads, dashing) are kept.
+  No-op if out of range.
 
 Editing an arrow's style (head direction, dashing) is E5 territory; not here yet.
 
