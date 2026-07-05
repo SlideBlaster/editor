@@ -1,9 +1,13 @@
 # layout resolve
 
 `resolveLayout(picture, measurer) -> Layout`: place every node in slide space.
+`resolveLayoutAsync(picture, batchMeasurer) -> Promise<Layout>`: the same, sized by
+an async `BatchMeasurer` (the DOM measurer).
 
 - **size** from the injected measurer (using `text width` and the node's style
-  classes).
+  classes). Sizing is the *only* difference between the sync and async entry points —
+  both feed one shared geometry solve (`solveLayout`), so placement can never drift
+  between them.
 - **position** from `at (x,y)` (absolute), else a relative placement
   (`below/above/left/right=<gap> of <ref>`) resolved edge-to-edge against the
   reference node's box, else the origin.

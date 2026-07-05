@@ -21,6 +21,21 @@ export interface Measurer {
   measure(input: MeasureInput): Size
 }
 
+/**
+ * The async, batched twin of `Measurer`. A real DOM measurer needs to await
+ * (`document.fonts.ready`, math typesetting) and wants ALL of a slide's nodes at
+ * once so it inserts them, forces one reflow, and reads every box together. The
+ * geometry solve (`resolveLayoutAsync`) depends only on this interface.
+ */
+export interface BatchMeasurer {
+  measureAll(inputs: readonly MeasureInput[]): Promise<Size[]>
+}
+
+/** Lift a synchronous `Measurer` to a `BatchMeasurer` (the headless default / fallback). */
+export function asBatch(measurer: Measurer): BatchMeasurer {
+  return { measureAll: (inputs) => Promise.resolve(inputs.map((i) => measurer.measure(i))) }
+}
+
 // Placeholder metrics in slide units — replaced wholesale by the DOM measurer.
 const CHAR_WIDTH = 0.14
 const LINE_HEIGHT = 0.55

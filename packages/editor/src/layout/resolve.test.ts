@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { parsePicture } from '../tikz/parse'
-import { resolveLayout, anchor, findPlaced } from './resolve'
-import { naiveMeasurer, type Measurer } from './measure'
+import { resolveLayout, resolveLayoutAsync, anchor, findPlaced } from './resolve'
+import { asBatch, naiveMeasurer, type Measurer } from './measure'
 
 /** A measurer that gives every node the same fixed box, for exact geometry asserts. */
 const fixed = (width: number, height: number): Measurer => ({ measure: () => ({ width, height }) })
@@ -60,6 +60,36 @@ describe('resolveLayout: totality', () => {
     )
     expect(findPlaced(layout, 'a')!.center).toEqual({ x: 0, y: 0 })
     expect(findPlaced(layout, 'b')!.center).toEqual({ x: 0, y: 0 })
+  })
+})
+
+describe('resolveLayoutAsync: same geometry as the sync solve', () => {
+  const pic = parsePicture(
+    [
+      '\\node[title] (title) {};',
+      '\\node[body, below=0.7 of title, text width=12] (intro) {x};',
+      '\\node[note] (o2) at (10,3) {y};',
+    ].join('\n'),
+  )
+
+  it('matches resolveLayout when the batch measurer lifts the same sync measurer', async () => {
+    const measurer = fixed(2, 1)
+    expect(await resolveLayoutAsync(pic, asBatch(measurer))).toEqual(resolveLayout(pic, measurer))
+  })
+
+  it('awaits async sizes and still preserves picture order', async () => {
+    // A measurer that resolves out of request order must not scramble placement.
+    const shuffled = {
+      measureAll: (inputs: readonly unknown[]) =>
+        Promise.resolve(inputs.map(() => ({ width: 2, height: 1 }))),
+    }
+    const layout = await resolveLayoutAsync(pic, shuffled)
+    expect(layout.nodes.map((n) => n.name)).toEqual(['title', 'intro', 'o2'])
+  })
+
+  it('honors text width through the async path', async () => {
+    const layout = await resolveLayoutAsync(pic, asBatch(naiveMeasurer))
+    expect(findPlaced(layout, 'intro')!.size.width).toBe(12)
   })
 })
 

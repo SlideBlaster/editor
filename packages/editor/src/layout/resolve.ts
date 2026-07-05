@@ -10,20 +10,47 @@
 import type { NodeStatement, Point, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode, Size } from '../model/layout'
 import { placement, styleClasses, textWidth } from '../tikz/options'
-import type { Measurer } from './measure'
+import type { BatchMeasurer, MeasureInput, Measurer } from './measure'
 
 const ORIGIN: Point = { x: 0, y: 0 }
 
+/** The node statements a picture lays out, in picture order. */
+function layoutNodes(picture: TikzPicture): NodeStatement[] {
+  return picture.statements.filter((s): s is NodeStatement => s.kind === 'node')
+}
+
+/** What a `Measurer` needs to size one node (content + its style/width options). */
+function measureInputFor(node: NodeStatement): MeasureInput {
+  const tw = textWidth(node)
+  return {
+    content: node.content,
+    styleClasses: styleClasses(node),
+    ...(tw !== undefined ? { textWidth: tw } : {}),
+  }
+}
+
+/** Sync layout: sizes from a `Measurer`, then the shared geometry solve. */
 export function resolveLayout(picture: TikzPicture, measurer: Measurer): Layout {
-  const nodes = picture.statements.filter((s): s is NodeStatement => s.kind === 'node')
-  const sizes = nodes.map((n) => {
-    const tw = textWidth(n)
-    return measurer.measure({
-      content: n.content,
-      styleClasses: styleClasses(n),
-      ...(tw !== undefined ? { textWidth: tw } : {}),
-    })
-  })
+  const nodes = layoutNodes(picture)
+  const sizes = nodes.map((n) => measurer.measure(measureInputFor(n)))
+  return solveLayout(nodes, sizes)
+}
+
+/**
+ * Async layout: sizes from a `BatchMeasurer` (the DOM measurer), then the same
+ * geometry solve. Only the sizing differs from `resolveLayout`; placement is shared.
+ */
+export async function resolveLayoutAsync(
+  picture: TikzPicture,
+  measurer: BatchMeasurer,
+): Promise<Layout> {
+  const nodes = layoutNodes(picture)
+  const sizes = await measurer.measureAll(nodes.map(measureInputFor))
+  return solveLayout(nodes, sizes)
+}
+
+/** Place already-sized nodes: absolute `at`, relative placement, or origin (total). */
+function solveLayout(nodes: NodeStatement[], sizes: Size[]): Layout {
   const indexByName = new Map<string, number>()
   nodes.forEach((n, i) => {
     if (n.name !== undefined) indexByName.set(n.name, i)
