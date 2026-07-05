@@ -5,46 +5,42 @@
  * The engine, running unchanged in a browser, with a two-way edit loop:
  *   - text -> render: code pane -> fromMarkdown -> resolveLayout -> renderSlide (W2)
  *   - canvas -> text: a gesture -> E1 edit op -> toMarkdown -> code pane (W4)
- * Both directions share one source of truth (the .slideBlaster.md text, A1), so an
- * edit made either way immediately shows in the other.
+ * The canvas is the whole deck in one continuous vertical scroll (deck.ts); a
+ * navigator rail (deckNav.ts) jumps between slides and stays synced to the scroll.
+ * Both edit directions share one source of truth (the .slideBlaster.md text, A1).
  */
 import {
   fromMarkdown,
   toMarkdown,
   getMeta,
-  resolveLayout,
-  naiveMeasurer,
-  renderSlide,
   slideStylesheet,
   moveNodeTo,
   createNode,
   deleteNode,
-  type Frame,
-  type Point,
   type NodeContent,
   type SlideDocument,
   type TikzPicture,
 } from '@slideblaster/editor'
 import initialSource from './sample.slideBlaster.md?raw'
 import { createCodePane, type CodePane } from './codePane'
-import { paintCanvas, type CanvasActions } from './canvas'
+import { paintDeck, type DeckActions, type DeckHandle, type Selection } from './deck'
+import { paintDeckNav, type NavHandle, type NavStyle } from './deckNav'
+import { enableZoomPan } from './zoom'
 import './app.css'
+
+const NAV_STYLE_KEY = 'sb.navStyle'
 
 interface State {
   source: string
-  current: number
-  selected: string | null
+  active: number // the slide most in view; drives the navigator highlight
+  selected: Selection | null
+  navStyle: NavStyle
 }
 
 function qs<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector)
   if (!el) throw new Error(`missing element: ${selector}`)
   return el
-}
-
-/** One frame's layered slide DOM (used for filmstrip thumbnails). */
-function renderFrame(frame: Frame): string {
-  return renderSlide(frame.picture, resolveLayout(frame.picture, naiveMeasurer))
 }
 
 /** Tolerant parse: a malformed edit keeps the last good render instead of blanking. */
@@ -70,60 +66,79 @@ function textContent(value: string): NodeContent {
 }
 
 function main(): void {
-  const state: State = { source: initialSource, current: 0, selected: null }
-  const stage = qs('#stage')
-  const filmstrip = qs('#filmstrip')
+  const savedStyle = localStorage.getItem(NAV_STYLE_KEY)
+  const state: State = {
+    source: initialSource,
+    active: 0,
+    selected: null,
+    navStyle: savedStyle === 'carousel' ? 'carousel' : 'filmstrip',
+  }
+  const deck = qs('#deck')
+  const deckRail = qs('#deck-rail') // carousel: vertical strip between editor and canvas
+  const deckStrip = qs('#deck-strip') // filmstrip: horizontal rail below the canvas
+  const navToggle = qs('#nav-toggle')
   const errorBanner = qs('#error')
   const docTitle = qs('#doc-title')
   const status = qs('#status')
   let currentDoc: SlideDocument | null = null
   let codePane: CodePane
+  let deckHandle: DeckHandle | null = null
+  let navHandle: NavHandle | null = null
+
+  /** The navigator host for the active style; the other stays hidden. */
+  const navHost = (): HTMLElement => (state.navStyle === 'carousel' ? deckRail : deckStrip)
+
+  /** Show the active navigator in its place, hide the other. */
+  const applyNavPlacement = (): void => {
+    deckRail.hidden = state.navStyle !== 'carousel'
+    deckStrip.hidden = state.navStyle === 'carousel'
+  }
+
+  const markToggle = (): void => {
+    navToggle
+      .querySelectorAll<HTMLButtonElement>('button')
+      .forEach((b) => b.classList.toggle('is-active', b.dataset.view === state.navStyle))
+  }
 
   const setStatus = (): void => {
     status.textContent = state.selected
-      ? `Selected ${state.selected} — drag to move, Delete to remove`
-      : 'Click a node to select — double-click canvas to add'
+      ? `Selected ${state.selected.name} on slide ${state.selected.frame + 1} — drag to move, Delete to remove`
+      : 'Scroll the canvas to move through slides · click a node to select · double-click to add'
   }
 
   /** Apply an edit op result: re-serialize, sync the code pane, re-render. */
   const commit = (doc: SlideDocument): void => {
-    const source = toMarkdown(doc)
-    state.source = source
-    codePane.setValue(source)
+    state.source = toMarkdown(doc)
+    codePane.setValue(state.source)
     render()
   }
 
-  const actions: CanvasActions = {
-    select(name) {
-      state.selected = name
-      stage
-        .querySelectorAll<HTMLElement>('.sb-handle')
-        .forEach((h) => h.classList.toggle('is-selected', h.dataset.node === name))
+  const actions: DeckActions = {
+    select(frame, name) {
+      state.selected = name === null ? null : { frame, name }
+      deckHandle?.showSelection(state.selected)
       setStatus()
     },
-    move(name, center) {
-      if (!currentDoc) return
-      const frame = currentDoc.frames[state.current]
-      if (!frame) return
-      commit(withFrame(currentDoc, state.current, moveNodeTo(frame.picture, name, center)))
+    move(frame, name, center) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      commit(withFrame(currentDoc, frame, moveNodeTo(target.picture, name, center)))
     },
-    create(center: Point) {
-      if (!currentDoc) return
-      const frame = currentDoc.frames[state.current]
-      if (!frame) return
-      const { picture, name } = createNode(frame.picture, {
+    create(frame, center) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      const { picture, name } = createNode(target.picture, {
         at: center,
         content: textContent('Text'),
       })
-      state.selected = name
-      commit(withFrame(currentDoc, state.current, picture))
+      state.selected = { frame, name }
+      commit(withFrame(currentDoc, frame, picture))
     },
-    remove(name) {
-      if (!currentDoc) return
-      const frame = currentDoc.frames[state.current]
-      if (!frame) return
-      if (state.selected === name) state.selected = null
-      commit(withFrame(currentDoc, state.current, deleteNode(frame.picture, name)))
+    remove(frame, name) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      if (state.selected?.frame === frame && state.selected.name === name) state.selected = null
+      commit(withFrame(currentDoc, frame, deleteNode(target.picture, name)))
     },
   }
 
@@ -132,37 +147,34 @@ function main(): void {
     if ('error' in result) {
       errorBanner.textContent = result.error
       errorBanner.hidden = false
-      return // keep the last good stage/filmstrip
+      return // keep the last good canvas/navigator
     }
     errorBanner.hidden = true
 
     const doc = result.doc
     currentDoc = doc
     docTitle.textContent = getMeta(doc.meta, 'title') ?? 'Untitled'
-    state.current = Math.min(state.current, Math.max(0, doc.frames.length - 1))
+    const maxIndex = Math.max(0, doc.frames.length - 1)
+    state.active = Math.min(state.active, maxIndex)
+    if (state.selected && state.selected.frame > maxIndex) state.selected = null
 
-    const frame = doc.frames[state.current]
-    if (frame) {
-      const layout = resolveLayout(frame.picture, naiveMeasurer)
-      paintCanvas(stage, { picture: frame.picture, layout, selected: state.selected, actions })
-    } else {
-      stage.innerHTML = ''
-    }
+    deckHandle = paintDeck(deck, {
+      frames: doc.frames,
+      selected: state.selected,
+      actions,
+      onActiveChange: (index) => {
+        state.active = index
+        navHandle?.setActive(index)
+      },
+    })
+    applyNavPlacement()
+    navHandle = paintDeckNav(navHost(), {
+      frames: doc.frames,
+      active: state.active,
+      style: state.navStyle,
+      onSelect: (index) => deckHandle?.scrollToSlide(index),
+    })
     setStatus()
-
-    filmstrip.replaceChildren(
-      ...doc.frames.map((f, i) => {
-        const thumb = document.createElement('button')
-        thumb.className = i === state.current ? 'thumb is-current' : 'thumb'
-        thumb.innerHTML = renderFrame(f)
-        thumb.addEventListener('click', () => {
-          state.current = i
-          state.selected = null
-          render()
-        })
-        return thumb
-      }),
-    )
   }
 
   codePane = createCodePane(qs('#code'), {
@@ -178,10 +190,46 @@ function main(): void {
     const typing = document.activeElement instanceof HTMLTextAreaElement
     if (!typing && state.selected && (event.key === 'Delete' || event.key === 'Backspace')) {
       event.preventDefault()
-      actions.remove(state.selected)
+      actions.remove(state.selected.frame, state.selected.name)
     }
   })
 
+  // Navigator-style toggle: move the navigator to its slot; the canvas is untouched.
+  navToggle.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+    button.addEventListener('click', () => {
+      const next: NavStyle = button.dataset.view === 'carousel' ? 'carousel' : 'filmstrip'
+      if (next === state.navStyle) return
+      state.navStyle = next
+      localStorage.setItem(NAV_STYLE_KEY, next)
+      markToggle()
+      applyNavPlacement()
+      navHandle = paintDeckNav(navHost(), {
+        frames: currentDoc?.frames ?? [],
+        active: state.active,
+        style: next,
+        onSelect: (index) => deckHandle?.scrollToSlide(index),
+      })
+    })
+  })
+
+  // Zoom & pan the deck canvas (Ctrl/pinch to zoom, middle/Space-drag to pan).
+  const zoomReadout = qs('#zoom-readout')
+  const zoom = enableZoomPan(deck, {
+    onChange: (value) => {
+      zoomReadout.textContent = `${Math.round(value * 100)}%`
+    },
+  })
+  qs('#zoom-control')
+    .querySelectorAll<HTMLButtonElement>('button')
+    .forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.dataset.zoom === 'in') zoom.zoomIn()
+        else if (button.dataset.zoom === 'out') zoom.zoomOut()
+        else zoom.reset()
+      })
+    })
+
+  markToggle()
   render()
 }
 

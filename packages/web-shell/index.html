@@ -10,6 +10,10 @@
       <header class="app-bar">
         <span class="app-name">SlideBlaster</span>
         <span class="app-doc" id="doc-title"></span>
+        <div class="nav-toggle" id="nav-toggle" role="group" aria-label="Deck view">
+          <button type="button" data-view="filmstrip">Filmstrip</button>
+          <button type="button" data-view="carousel">Carousel</button>
+        </div>
         <span class="app-tag">web-shell &middot; M2</span>
       </header>
       <main class="workspace">
@@ -17,13 +21,17 @@
           <div class="editor-head">sample.slideBlaster.md</div>
           <div class="code-host" id="code"></div>
         </section>
+        <nav class="deck-rail" id="deck-rail" aria-label="Slides" hidden></nav>
         <section class="preview">
-          <div class="stage-wrap">
-            <div class="stage" id="stage"></div>
+          <div class="deck" id="deck"></div>
+          <div class="zoom-control" id="zoom-control">
+            <button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>
+            <button type="button" data-zoom="reset" id="zoom-readout">100%</button>
+            <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
           </div>
           <div class="parse-error" id="error" hidden></div>
           <div class="status-bar" id="status"></div>
-          <nav class="filmstrip" id="filmstrip"></nav>
+          <nav class="deck-strip" id="deck-strip" aria-label="Slides"></nav>
         </section>
       </main>
     </div>

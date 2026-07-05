@@ -8,7 +8,13 @@
  * The overlay reuses the layout the controller already computed, so it never
  * re-implements the render — only the ADR-0014 slide(0..16 x 0..9, y-up) -> box map.
  */
-import { renderSlide, type Layout, type PlacedNode, type Point, type TikzPicture } from '@slideblaster/editor'
+import {
+  renderSlide,
+  type Layout,
+  type PlacedNode,
+  type Point,
+  type TikzPicture,
+} from '@slideblaster/editor'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -52,7 +58,8 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     if (event.target === overlay) props.actions.select(null)
   })
   overlay.addEventListener('dblclick', (event) => {
-    if (event.target === overlay) props.actions.create(pointToUnits(slideEl, event.clientX, event.clientY))
+    if (event.target === overlay)
+      props.actions.create(pointToUnits(slideEl, event.clientX, event.clientY))
   })
 
   stage.append(overlay)
@@ -80,7 +87,9 @@ function wireHandle(
     const dx = event.clientX - drag.startX
     const dy = event.clientY - drag.startY
     if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD_PX) drag.moved = true
-    // Live preview: translate both the handle and the rendered content together.
+    // Live preview: translate handle and content together. Zoom scales the slide by
+    // width (no transform/zoom context), so a pixel translate already tracks the
+    // pointer 1:1; the committed position uses the zoomed rect and stays exact.
     const transform = `translate(${dx}px, ${dy}px)`
     handle.style.transform = transform
     const content = stage.querySelector<HTMLElement>(`.sb-node[data-node="${CSS.escape(name)}"]`)
@@ -93,7 +102,11 @@ function wireHandle(
     drag = null
     handle.releasePointerCapture(event.pointerId)
     if (!finished.moved) return // a click, not a drag; selection already happened
-    const delta = pixelsToUnits(slideEl, event.clientX - finished.startX, event.clientY - finished.startY)
+    const delta = pixelsToUnits(
+      slideEl,
+      event.clientX - finished.startX,
+      event.clientY - finished.startY,
+    )
     actions.move(name, { x: center.x + delta.x, y: center.y + delta.y })
   })
 }
