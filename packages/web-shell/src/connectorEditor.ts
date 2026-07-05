@@ -21,6 +21,7 @@ import {
   type ConnectorPath,
   type CurveControls,
   type Layout,
+  type PlacedNode,
   type Point,
 } from '@slideblaster/editor'
 
@@ -106,13 +107,14 @@ export function paintConnectorEditor(
   const draggable = (
     el: SVGElement,
     onMove: (p: Point) => void,
-    onEnd?: (clientX: number, clientY: number) => void,
+    hooks: { onStart?: () => void; onEnd?: () => void } = {},
   ): void => {
     let active = false
     el.addEventListener('pointerdown', (event) => {
       event.stopPropagation()
       active = true
       el.setPointerCapture(event.pointerId)
+      hooks.onStart?.()
     })
     el.addEventListener('pointermove', (event) => {
       if (!active) return
@@ -123,7 +125,7 @@ export function paintConnectorEditor(
       if (!active) return
       active = false
       el.releasePointerCapture(event.pointerId)
-      onEnd?.(event.clientX, event.clientY)
+      hooks.onEnd?.()
       commit()
     }
     el.addEventListener('pointerup', end)
@@ -183,16 +185,58 @@ export function paintConnectorEditor(
     }
   }
 
-  // Anchor handles last (on top). Interior ones delete on double-click.
+  // Snap layer: while an anchor is dragged, a dot marks every node it can attach to;
+  // the one being snapped is highlighted. Dots are indicators only (pointer-events none).
+  const snapLayer = document.createElementNS(SVG_NS, 'g')
+  snapLayer.setAttribute('class', 'sb-snap-layer')
+  svg.append(snapLayer)
+  let snappedNode: string | null = null
+  const showSnapDots = (): void => {
+    snapLayer.replaceChildren()
+    for (const node of layout.nodes) {
+      if (!node.name) continue
+      const d = document.createElementNS(SVG_NS, 'circle')
+      d.setAttribute('cx', String(node.center.x))
+      d.setAttribute('cy', String(flip(node.center.y)))
+      d.setAttribute('r', '0.13')
+      d.setAttribute('class', 'sb-snap-dot')
+      d.dataset.node = node.name
+      snapLayer.append(d)
+    }
+  }
+  const highlightSnap = (name: string | null): void => {
+    for (const child of Array.from(snapLayer.children)) {
+      child.classList.toggle('is-active', (child as SVGElement).dataset.node === name)
+    }
+  }
+
+  // Anchor handles last (on top). Drag snaps to a node's centre when near; on release it
+  // attaches there (`(name)`), else it becomes a free point. Interior anchors delete on
+  // double-click.
   for (let i = 0; i < pts.length; i++) {
     const handle = dot(pts[i]!, 'sb-anchor')
     draggable(
       handle,
       (p) => {
-        pts[i] = p
-        move(handle, p)
+        const snap = nearestNode(p, layout.nodes)
+        snappedNode = snap?.name ?? null
+        const pos = snap ? snap.center : p
+        pts[i] = pos
+        move(handle, pos)
+        highlightSnap(snappedNode)
       },
-      (clientX, clientY) => reattach(i, clientX, clientY),
+      {
+        onStart: () => {
+          snappedNode = null
+          showSnapDots()
+        },
+        onEnd: () => {
+          anchors[i] = snappedNode
+            ? { kind: 'node', name: snappedNode }
+            : { kind: 'point', at: { ...pts[i]! } }
+          snapLayer.replaceChildren()
+        },
+      },
     )
     if (i > 0 && i < pts.length - 1) {
       handle.classList.add('is-waypoint')
@@ -204,16 +248,30 @@ export function paintConnectorEditor(
       })
     }
   }
+}
 
-  // On dropping an anchor, re-attach to the node under the pointer, else a free point.
-  function reattach(i: number, clientX: number, clientY: number): void {
-    svg.style.display = 'none' // reveal the node beneath the handle for hit-testing
-    const target = document.elementFromPoint(clientX, clientY)
-    svg.style.display = ''
-    const node = target instanceof Element ? target.closest<HTMLElement>('.sb-handle') : null
-    const name = node?.dataset.node
-    anchors[i] = name ? { kind: 'node', name } : { kind: 'point', at: { ...pts[i]! } }
+/** The node whose box (with a small margin) contains `p`, nearest centre first — the
+ *  snap target for a dragged connector endpoint. */
+function nearestNode(
+  p: Point,
+  nodes: readonly PlacedNode[],
+): { name: string; center: Point } | null {
+  const MARGIN = 0.3
+  let best: { name: string; center: Point } | null = null
+  let bestD = Infinity
+  for (const node of nodes) {
+    if (!node.name) continue
+    const hw = node.size.width / 2 + MARGIN
+    const hh = node.size.height / 2 + MARGIN
+    if (Math.abs(p.x - node.center.x) <= hw && Math.abs(p.y - node.center.y) <= hh) {
+      const d = Math.hypot(p.x - node.center.x, p.y - node.center.y)
+      if (d < bestD) {
+        bestD = d
+        best = { name: node.name, center: { ...node.center } }
+      }
+    }
   }
+  return best
 }
 
 function cloneAnchor(a: Anchor): Anchor {
