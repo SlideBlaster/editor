@@ -38,13 +38,14 @@ export interface SnapConfig {
 }
 
 /** A guide segment to draw, in slide space (y-up). `align` spans a full edge/center
- *  line; `space` marks one of the two equal gaps of a spacing snap. */
+ *  line; `space` marks one of the two equal gaps of a spacing snap; `bind` is the
+ *  relative-binding connector (drawn by canvas.ts, never emitted by resolveSnap). */
 export interface SnapLine {
   x1: number
   y1: number
   x2: number
   y2: number
-  kind: 'align' | 'space'
+  kind: 'align' | 'space' | 'bind'
 }
 
 export interface SnapResult {

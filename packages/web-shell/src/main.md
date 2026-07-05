@@ -15,7 +15,8 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   ([deckNav.ts](./deckNav.md)) rail jumps between slides. Math renders via KaTeX
   ([math.ts](./math.md)) on every surface. See ux/deck-navigation.md.
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
-  `move -> moveNodeTo`, `create -> createNode`, `remove -> deleteNode`,
+  `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
+  `create -> createNode`, `remove -> deleteNode`,
   `editContent -> parseContent + setNodeContent`. Each applies to the last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.

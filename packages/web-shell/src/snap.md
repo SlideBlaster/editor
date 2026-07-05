@@ -29,7 +29,9 @@ maps its result to a pixel preview and commit. Spec: `design/ux/positioning-snap
   any zoom. Keep `threshold < grid/2` or the grid captures every point and free
   placement is impossible — the pixel-derived threshold satisfies this in practice, and
   the tests assert it.
-- **Scope.** This resolves the **absolute** drop only. Choosing absolute-vs-relative
-  placement (anchor-drop -> `[below=of img]`) is the E2 relative-binding drop and is
-  deferred; `resolveSnap` never touches it. Equal-spacing here is the two-flanker
-  "center in the gap" case, not full N-way distribution (a later refinement).
+- **Scope.** This resolves the **absolute** drop only. The relative-binding drop
+  (anchor-drop -> `[below=of img]`, E2) lives in [binding.ts](./binding.md), which
+  canvas.ts tries first; `resolveSnap` never touches it. `SnapLine.kind` includes
+  `'bind'` for that resolver's connector, but `resolveSnap` only emits `align`/`space`.
+  Equal-spacing here is the two-flanker "center in the gap" case, not full N-way
+  distribution (a later refinement).

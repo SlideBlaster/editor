@@ -370,6 +370,28 @@ body {
   stroke-dasharray: 4 3;
 }
 
+/* Relative-binding connector (E2): a dashed link across the gap to the ref node. */
+.sb-guide-bind {
+  stroke: #a855f7;
+  stroke-width: 2px;
+  stroke-dasharray: 2 2;
+}
+
+/* Relationship badge: floats at the bound node showing the side and gap. */
+.sb-bind-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 0.1em 0.4em;
+  border-radius: 999px;
+  background: #a855f7;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+
 /* Inline content editor: a raw-source textarea over a node, double-click to open.
    Positioned in slide space (percent box) so it scales with zoom; cqw font matches
    the rendered content (via the .deck-slide query container). */

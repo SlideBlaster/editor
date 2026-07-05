@@ -21,10 +21,13 @@ import { paintCanvas, type CanvasActions } from './canvas'
 export interface DeckActions {
   select(frame: number, name: string | null): void
   move(frame: number, name: string, center: Point): void
+  bind(frame: number, name: string, binding: { side: RelativeSide; gap: number; ref: string }): void
   create(frame: number, center: Point): void
   remove(frame: number, name: string): void
   editContent(frame: number, name: string, body: string): void
 }
+
+type RelativeSide = 'above' | 'below' | 'left' | 'right'
 
 /** A selected node, qualified by its slide (node names are unique per slide only). */
 export interface Selection {
@@ -115,6 +118,7 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
   return {
     select: (name) => actions.select(frame, name),
     move: (name, center) => actions.move(frame, name, center),
+    bind: (name, binding) => actions.bind(frame, name, binding),
     create: (center) => actions.create(frame, center),
     remove: (name) => actions.remove(frame, name),
     editContent: (name, body) => actions.editContent(frame, name, body),

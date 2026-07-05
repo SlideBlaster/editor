@@ -20,18 +20,25 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   becomes preserved error content (ADR 0015), never a crash. `keydown` is stopped so
   Delete / Space / zoom shortcuts stay inert while typing. Per-construct (sub-node)
   editing is a later refinement; this replaces the whole node body.
-- **Live drag with snapping.** During a drag the pointer's free target (slide space,
-  y-up) is passed through the [snap resolver](./snap.md) against every other box on the
-  slide; the snapped center drives the preview (handle + `.sb-node[data-node]`
-  translated together) and is what commits on pointer-up via `moveNodeTo`. **Hold Alt**
-  to bypass snapping and place freely (ux/positioning-snapping.md). The re-render after
-  commit clears the transforms. Snapping only adjusts the *absolute* drop point —
-  choosing relative binding (`[below=of img]`) is the E2 drop, deferred.
-- **Snap guides.** While a drag engages a snap, `drawGuides` paints an SVG layer
-  (`svg.sb-guides`, viewBox `0 0 16 9`, stretched, non-scaling strokes) over the slide:
-  solid accent lines for edge/center/slide-guide alignment, dashed segments for the two
-  equal gaps of a spacing snap. The layer is rebuilt each move and removed on pointer-up
-  / cancel. Slide space is y-up, the viewBox y-down, so guide y flips to `9 - y`.
+- **Live drag: bind, snap, or detach.** Each move computes a `DragOutcome`. First it
+  asks the [binding resolver](./binding.md) whether the node should bind relative to a
+  peer (E2); if so the outcome is `bind` and the preview lands at the binding's resolved
+  center. Otherwise it runs the [snap resolver](./snap.md) for an absolute center
+  (`move`). A relative node dragged out of every binding's range therefore falls through
+  to an absolute `move` — that IS the **detach**. On pointer-up a `bind` commits via
+  `placeNodeRelative` and a `move` via `moveNodeTo` (which strips any placement).
+  **Hold Alt** to bypass both for free placement. The re-render after commit clears the
+  preview transforms.
+- **Cycle exclusion.** Binding targets exclude any node that already depends on the
+  dragged one (`dependentsOf` walks the picture's placement chains), so the preview
+  never offers a binding the engine op would refuse.
+- **Guides + badge.** While a drag engages, `drawGuides` paints an SVG layer
+  (`svg.sb-guides`, viewBox `0 0 16 9`, stretched, non-scaling strokes): solid accent
+  lines for alignment, dashed segments for the two equal spacing gaps, and a dashed
+  purple `bind` connector across the gap to the ref. A binding also shows a
+  `.sb-bind-badge` (`"below 0.6"`) at the node. Rebuilt each move, removed on
+  pointer-up / cancel. Slide space is y-up, the viewBox y-down, so guide y flips to
+  `9 - y`.
 - **Zoom-aware.** The whole canvas magnifies by scaling the slide width via
   `--zoom` ([zoom.ts](./zoom.md)). Rect-based conversions (`pointToUnits`, and the
   drag's own px->unit math) stay correct because `getBoundingClientRect` returns the

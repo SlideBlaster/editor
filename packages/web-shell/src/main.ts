@@ -18,6 +18,7 @@ import {
   resolveLayoutAsync,
   parseContent,
   moveNodeTo,
+  placeNodeRelative,
   createNode,
   deleteNode,
   setNodeContent,
@@ -144,6 +145,11 @@ function main(): void {
       const target = currentDoc?.frames[frame]
       if (!currentDoc || !target) return
       commit(withFrame(currentDoc, frame, moveNodeTo(target.picture, name, center)))
+    },
+    bind(frame, name, binding) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      commit(withFrame(currentDoc, frame, placeNodeRelative(target.picture, name, binding)))
     },
     create(frame, center) {
       const target = currentDoc?.frames[frame]
