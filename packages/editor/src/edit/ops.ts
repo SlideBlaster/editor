@@ -194,6 +194,35 @@ export function updateConnector(
   }
 }
 
+/** The option tokens of the connector at `index` (position among path statements), or
+ *  `undefined` if out of range — the properties panel reads arrowheads/dashing from here. */
+export function connectorOptions(picture: TikzPicture, index: number): string[] | undefined {
+  let seen = -1
+  for (const statement of picture.statements) {
+    if (statement.kind !== 'path') continue
+    seen++
+    if (seen === index) return statement.options
+  }
+  return undefined
+}
+
+/** Replace the option tokens of the connector at `index` (arrowheads, dashing, …), keeping
+ *  its path body. No-op if out of range or not a path. */
+export function setConnectorOptions(
+  picture: TikzPicture,
+  index: number,
+  options: string[],
+): TikzPicture {
+  let seen = -1
+  return {
+    statements: picture.statements.map((statement) => {
+      if (statement.kind !== 'path') return statement
+      seen++
+      return seen === index ? { ...statement, options } : statement
+    }),
+  }
+}
+
 /**
  * Remove the connector at `index` — the position among the picture's **path**
  * statements (the identity the renderer stamps as `data-arrow`). No-op if out of range.

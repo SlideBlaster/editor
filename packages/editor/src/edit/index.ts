@@ -11,5 +11,7 @@ export {
   createConnector,
   deleteConnector,
   updateConnector,
+  connectorOptions,
+  setConnectorOptions,
 } from './ops'
 export type { NodeSpec } from './ops'

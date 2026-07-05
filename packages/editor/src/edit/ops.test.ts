@@ -16,6 +16,8 @@ import {
   createConnector,
   deleteConnector,
   updateConnector,
+  connectorOptions,
+  setConnectorOptions,
 } from './ops'
 
 const SOURCE = [
@@ -229,6 +231,22 @@ describe('updateConnector', () => {
   it('is a no-op when the index is out of range', () => {
     const reshaped = parseConnector(' (intro) -- (o2)')!
     expect(serializePicture(updateConnector(picture(), 5, reshaped))).toBe(SOURCE)
+  })
+})
+
+describe('connectorOptions / setConnectorOptions', () => {
+  it('reads the connector option tokens', () => {
+    expect(connectorOptions(picture(), 0)).toEqual(['->'])
+    expect(connectorOptions(picture(), 5)).toBeUndefined()
+  })
+
+  it('replaces the option tokens, keeping the body', () => {
+    const out = serializePicture(setConnectorOptions(picture(), 0, ['<->', 'dashed']))
+    expect(out).toContain('\\draw[<->, dashed] (intro) -- (o2);')
+  })
+
+  it('is a no-op when the index is out of range', () => {
+    expect(serializePicture(setConnectorOptions(picture(), 5, ['->']))).toBe(SOURCE)
   })
 })
 

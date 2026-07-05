@@ -59,5 +59,7 @@ export {
   createConnector,
   deleteConnector,
   updateConnector,
+  connectorOptions,
+  setConnectorOptions,
 } from './edit/index'
 export type { NodeSpec } from './edit/index'
