@@ -52,6 +52,20 @@ describe('renderSlide', () => {
     expect(connectors[0]!.editable?.anchors[1]).toEqual({ kind: 'node', name: 'o2' })
   })
 
+  it('resolves a node border anchor (name.anchor) to that edge, not the centre', () => {
+    const picture = parsePicture(
+      ['\\node[note] (o2) at (10,3) {x};', '\\draw[->] (5,5) -- (o2.north);'].join('\n'),
+    )
+    const connectors = connectorsOf(picture, resolveLayout(picture, fixed(2, 1)))
+    // o2 center (10,3), size 2x1 -> north edge (10, 3.5)
+    expect(connectors[0]!.points[1]).toEqual({ x: 10, y: 3.5 })
+    expect(connectors[0]!.editable?.anchors[1]).toEqual({
+      kind: 'node',
+      name: 'o2',
+      anchor: 'north',
+    })
+  })
+
   it('marks the title box with its style class', () => {
     expect(html).toContain('class="sb-box sb-style-title"')
   })

@@ -12,7 +12,7 @@
  */
 import type { NodeStatement, PathStatement, Point, Statement, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode } from '../model/layout'
-import { findPlaced } from '../layout/resolve'
+import { anchor as nodeAnchor, findPlaced, isAnchorName } from '../layout/resolve'
 import { parseConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { renderContent, type RenderOptions } from './html'
 
@@ -49,7 +49,12 @@ export interface Connector {
 /** Resolve an anchor to a slide point: a node's current center, or the literal point. */
 function resolveAnchor(anchor: Anchor, layout: Layout): Point | null {
   if (anchor.kind === 'point') return anchor.at
-  return findPlaced(layout, anchor.name)?.center ?? null
+  const placed = findPlaced(layout, anchor.name)
+  if (!placed) return null
+  // A border port (`(name.north)`) resolves to that edge; otherwise the node centre.
+  return anchor.anchor && isAnchorName(anchor.anchor)
+    ? nodeAnchor(placed, anchor.anchor)
+    : placed.center
 }
 
 /**

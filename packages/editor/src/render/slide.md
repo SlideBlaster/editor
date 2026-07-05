@@ -19,8 +19,9 @@ viewable when mounted.
   [connector.ts](../tikz/connector.md)) yields both a structured `ConnectorPath`
   (`editable`, for the canvas) and SVG `pathData` (`M`/`L`/`C`, y flipped); a body
   outside the subset (`-|`, `to[...]`, …) falls back to a straight polyline path and
-  `editable: null`. `(name)` endpoints resolve to the node's current center, `(x,y)` to
-  points; arrowheads come from `->`/`<-`/`<->`. Each `<path>` carries `data-arrow="<index>"`
+  `editable: null`. `(name)` endpoints resolve to the node's current center and
+  `(name.north)` to that border anchor (N/S/E/W, corners, or centre); `(x,y)` to points;
+  arrowheads come from `->`/`<-`/`<->`. Each `<path>` carries `data-arrow="<index>"`
   (index among path statements) so an editor can select / delete / reshape it
   (`deleteConnector`, `updateConnector`); because endpoints re-resolve every paint, a
   connector re-routes automatically when its nodes move.
@@ -30,5 +31,4 @@ viewable when mounted.
   it (selection, drag, inline edit); harmless in the export DOM.
 
 Contract: pure, deterministic string output; headless and snapshot-testable. Limits:
-straight segments only (no curves/`controls` yet); endpoints use node centers, not
-border-clipped anchors; the stylesheet is a starting point, not the theme system.
+the stylesheet is a starting point, not the theme system.

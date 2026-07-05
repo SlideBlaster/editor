@@ -33,6 +33,7 @@ export {
   resolveLayoutAsync,
   anchor,
   findPlaced,
+  isAnchorName,
   naiveMeasurer,
   asBatch,
 } from './layout/index'

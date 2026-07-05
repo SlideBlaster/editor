@@ -17,6 +17,14 @@ describe('parseConnector', () => {
     expect(path!.anchors[1]).toEqual({ kind: 'point', at: { x: 3, y: 4 } })
   })
 
+  it('parses a node border anchor (name.anchor)', () => {
+    const path = parseConnector(' (a.north) -- (b.south east)')
+    expect(path!.anchors).toEqual([
+      { kind: 'node', name: 'a', anchor: 'north' },
+      { kind: 'node', name: 'b', anchor: 'south east' },
+    ])
+  })
+
   it('parses waypoints', () => {
     const path = parseConnector(' (a) -- (5,5) -- (b)')
     expect(path!.anchors).toHaveLength(3)
@@ -52,6 +60,10 @@ describe('serializeConnector', () => {
 
   it('round-trips waypoints and points', () => {
     expect(roundTrip(' (a) -- (5,5) -- (b)')).toBe(' (a) -- (5,5) -- (b)')
+  })
+
+  it('round-trips a node border anchor', () => {
+    expect(roundTrip(' (a.north) -- (b.south east)')).toBe(' (a.north) -- (b.south east)')
   })
 
   it('round-trips a cubic segment', () => {

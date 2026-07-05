@@ -14,6 +14,9 @@ import { formatNumber } from '../text/scanner'
 export interface AnchorNode {
   kind: 'node'
   name: string
+  /** An optional border anchor of the node (TikZ `(name.north)`) — `north`, `south east`,
+   *  etc. Absent means the node's default anchor (its centre). */
+  anchor?: string
 }
 export interface AnchorPoint {
   kind: 'point'
@@ -38,9 +41,14 @@ export interface ConnectorPath {
 }
 
 function toAnchor(inner: string): Anchor {
-  const point = /^(-?[\d.]+)\s*,\s*(-?[\d.]+)$/.exec(inner.trim())
+  const trimmed = inner.trim()
+  const point = /^(-?[\d.]+)\s*,\s*(-?[\d.]+)$/.exec(trimmed)
   if (point) return { kind: 'point', at: { x: Number(point[1]), y: Number(point[2]) } }
-  return { kind: 'node', name: inner.trim() }
+  // `name.anchor` (e.g. `box.north east`): the dot splits the node id from its border anchor.
+  const dot = trimmed.indexOf('.')
+  if (dot > 0)
+    return { kind: 'node', name: trimmed.slice(0, dot), anchor: trimmed.slice(dot + 1).trim() }
+  return { kind: 'node', name: trimmed }
 }
 
 export function parseConnector(body: string): ConnectorPath | null {
@@ -102,7 +110,7 @@ export function parseConnector(body: string): ConnectorPath | null {
 
 function anchorText(anchor: Anchor): string {
   return anchor.kind === 'node'
-    ? `(${anchor.name})`
+    ? `(${anchor.name}${anchor.anchor ? `.${anchor.anchor}` : ''})`
     : `(${formatNumber(anchor.at.x)},${formatNumber(anchor.at.y)})`
 }
 

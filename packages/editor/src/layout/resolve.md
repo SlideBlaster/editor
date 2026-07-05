@@ -5,7 +5,7 @@
 an async `BatchMeasurer` (the DOM measurer).
 
 - **size** from the injected measurer (using `text width` and the node's style
-  classes). Sizing is the *only* difference between the sync and async entry points —
+  classes). Sizing is the _only_ difference between the sync and async entry points —
   both feed one shared geometry solve (`solveLayout`), so placement can never drift
   between them.
 - **position** from `at (x,y)` (absolute), else a relative placement
@@ -16,8 +16,9 @@ an async `BatchMeasurer` (the DOM measurer).
   **total**.
 
 `anchor(node, name)` returns a node's compass/center anchor point — the id-anchor of
-ADR 0003, consumed by the arrow/path geometry in B3. `findPlaced(layout, name)` looks
-a node up by its TikZ id.
+ADR 0003, consumed by the arrow/path geometry in B3 (a connector's `(name.north)` port
+resolves through here). `isAnchorName(s)` guards a raw port string before that lookup.
+`findPlaced(layout, name)` looks a node up by its TikZ id.
 
 Contract: total, deterministic, geometry-only (no pixels, no content rendering). Node
 order matches the picture's node statements.

@@ -135,6 +135,23 @@ export type AnchorName =
   | 'south east'
   | 'south west'
 
+const ANCHOR_NAMES: readonly AnchorName[] = [
+  'center',
+  'north',
+  'south',
+  'east',
+  'west',
+  'north east',
+  'north west',
+  'south east',
+  'south west',
+]
+
+/** Whether `s` names a node anchor (so a connector's `(name.anchor)` port is resolvable). */
+export function isAnchorName(s: string): s is AnchorName {
+  return (ANCHOR_NAMES as readonly string[]).includes(s)
+}
+
 /** A named anchor point of a placed node, in slide space (the id-anchor of ADR 0003). */
 export function anchor(node: PlacedNode, name: AnchorName = 'center'): Point {
   const { x, y } = node.center
