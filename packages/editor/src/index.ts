@@ -43,8 +43,8 @@ export type {
   PlacedNode,
   Size,
 } from './layout/index'
-export { renderContent, renderSlide, slideStylesheet } from './render/index'
-export type { RenderOptions } from './render/index'
+export { renderContent, renderSlide, slideStylesheet, connectorsOf } from './render/index'
+export type { RenderOptions, Connector } from './render/index'
 export {
   findNode,
   uniqueName,
@@ -54,5 +54,7 @@ export {
   setNodeContent,
   placeNodeRelative,
   adjustPlacement,
+  createConnector,
+  deleteConnector,
 } from './edit/index'
 export type { NodeSpec } from './edit/index'

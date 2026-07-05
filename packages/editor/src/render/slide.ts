@@ -25,15 +25,40 @@ export function renderSlide(
 ): string {
   const contentNodes = picture.statements.filter(isNode)
   const boxes = layout.nodes.map(rectSvg).join('')
-  const arrows = picture.statements
-    .filter(isPath)
-    .map((path) => arrowSvg(path, layout))
-    .join('')
+  const arrows = connectorsOf(picture, layout).map(arrowSvg).join('')
   const svg = `<svg class="sb-geometry" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}" preserveAspectRatio="none">${MARKER_DEFS}${boxes}${arrows}</svg>`
   const content = layout.nodes
     .map((placed, i) => nodeDiv(placed, contentNodes[i]!, options))
     .join('')
   return `<div class="sb-slide">${svg}<div class="sb-content">${content}</div></div>`
+}
+
+/** A resolved connector: its identity (`index` among path statements — what
+ *  `deleteConnector` targets), the polyline it draws, and its arrowheads. */
+export interface Connector {
+  index: number
+  points: Point[]
+  heads: { start: boolean; end: boolean }
+}
+
+/**
+ * Resolve every drawable connector against the layout. Endpoints come from `(name)`
+ * (the node's current center — so a connector re-routes for free when its node moves)
+ * or a literal `(x,y)`. Shared by the renderer and the editor's hit-testing so the two
+ * never disagree about where an arrow runs.
+ */
+export function connectorsOf(picture: TikzPicture, layout: Layout): Connector[] {
+  const connectors: Connector[] = []
+  let index = -1
+  for (const statement of picture.statements) {
+    if (!isPath(statement)) continue
+    index++ // index among path statements — stable identity for deleteConnector
+    if (statement.action !== 'draw' && statement.action !== 'path') continue
+    const points = connectorPoints(statement.body, layout)
+    if (points.length < 2) continue
+    connectors.push({ index, points, heads: arrowHeads(statement.options) })
+  }
+  return connectors
 }
 
 function rectSvg(node: PlacedNode): string {
@@ -52,19 +77,17 @@ function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions
   return `<div class="${nodeClass(node)}"${id} style="left:${left}%;top:${top}%;width:${width}%">${renderContent(source.content, options)}</div>`
 }
 
-function arrowSvg(path: PathStatement, layout: Layout): string {
-  if (path.action !== 'draw' && path.action !== 'path') return ''
-  const points = connectorPoints(path.body, layout)
-  if (points.length < 2) return ''
-  const svgPoints = points.map((p) => `${r(p.x)},${r(SLIDE_H - p.y)}`).join(' ')
-  const heads = arrowHeads(path.options)
+function arrowSvg(connector: Connector): string {
+  const svgPoints = connector.points.map((p) => `${r(p.x)},${r(SLIDE_H - p.y)}`).join(' ')
   const markers = [
-    heads.start ? 'marker-start="url(#sb-arrow-start)"' : '',
-    heads.end ? 'marker-end="url(#sb-arrow-end)"' : '',
+    connector.heads.start ? 'marker-start="url(#sb-arrow-start)"' : '',
+    connector.heads.end ? 'marker-end="url(#sb-arrow-end)"' : '',
   ]
     .filter(Boolean)
     .join(' ')
-  return `<polyline class="sb-arrow" points="${svgPoints}"${markers ? ' ' + markers : ''}/>`
+  // data-arrow: model identity in the DOM so an editor can hit-test / address it
+  // (like data-node). Harmless in the export DOM (ADR 0014).
+  return `<polyline class="sb-arrow" data-arrow="${connector.index}" points="${svgPoints}"${markers ? ' ' + markers : ''}/>`
 }
 
 /** Endpoints of a straight-segment connector body: `(name)` -> node center, `(x,y)` -> point. */

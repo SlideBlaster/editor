@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parsePicture } from '../tikz/parse'
 import { resolveLayout } from '../layout/resolve'
 import type { Measurer } from '../layout/measure'
-import { renderSlide } from './slide'
+import { renderSlide, connectorsOf } from './slide'
 
 const fixed = (width: number, height: number): Measurer => ({ measure: () => ({ width, height }) })
 
@@ -38,8 +38,17 @@ describe('renderSlide', () => {
   it('renders the arrow between the two node anchors, with a head from ->', () => {
     // intro center (0,-1.7) -> svg (0,10.7); o2 center (10,3) -> svg (10,6)
     expect(html).toContain(
-      '<polyline class="sb-arrow" points="0,10.7 10,6" marker-end="url(#sb-arrow-end)"/>',
+      '<polyline class="sb-arrow" data-arrow="0" points="0,10.7 10,6" marker-end="url(#sb-arrow-end)"/>',
     )
+  })
+
+  it('connectorsOf resolves endpoints to node centers with a forward head', () => {
+    const connectors = connectorsOf(PICTURE, resolveLayout(PICTURE, fixed(2, 1)))
+    expect(connectors).toHaveLength(1)
+    expect(connectors[0]!.index).toBe(0)
+    expect(connectors[0]!.heads).toEqual({ start: false, end: true })
+    expect(connectors[0]!.points).toHaveLength(2)
+    expect(connectors[0]!.points[1]).toEqual({ x: 10, y: 3 }) // o2 center
   })
 
   it('marks the title box with its style class', () => {

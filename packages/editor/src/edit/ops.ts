@@ -10,7 +10,7 @@
  * E1: the foundation the canvas needs — move (absolute), create, delete. Relative
  * placement (E2), content (E3), arrows (E4), and options (E5) build on these.
  */
-import type { NodeStatement, Point, TikzPicture } from '../model/tikz'
+import type { NodeStatement, PathStatement, Point, TikzPicture } from '../model/tikz'
 import type { NodeContent } from '../model/content'
 import { isPlacementToken, placement, type Placement } from '../tikz/options'
 import { formatNumber } from '../text/scanner'
@@ -146,6 +146,43 @@ export function deleteNode(picture: TikzPicture, name: string): TikzPicture {
       if (statement.kind === 'node' && statement.name === name) return false
       if (statement.kind === 'path' && reference.test(statement.body)) return false
       return true
+    }),
+  }
+}
+
+/**
+ * Add a connector `\draw[opts] (from) -- (to);` between two nodes (E4). Endpoints are
+ * node names, so the connector re-routes automatically as the nodes move (the renderer
+ * resolves `(name)` to the current center each paint). No-op if either node is absent.
+ * `options` default to a single forward arrowhead (`->`).
+ */
+export function createConnector(
+  picture: TikzPicture,
+  from: string,
+  to: string,
+  options: string[] = ['->'],
+): TikzPicture {
+  if (findNode(picture, from) === undefined || findNode(picture, to) === undefined) return picture
+  const path: PathStatement = {
+    kind: 'path',
+    action: 'draw',
+    options,
+    body: ` (${from}) -- (${to})`,
+  }
+  return { statements: [...picture.statements, path] }
+}
+
+/**
+ * Remove the connector at `index` — the position among the picture's **path**
+ * statements (the identity the renderer stamps as `data-arrow`). No-op if out of range.
+ */
+export function deleteConnector(picture: TikzPicture, index: number): TikzPicture {
+  let seen = -1
+  return {
+    statements: picture.statements.filter((statement) => {
+      if (statement.kind !== 'path') return true
+      seen++
+      return seen !== index
     }),
   }
 }

@@ -54,9 +54,22 @@ are the writer.
   shell seeds the raw editor with `serializeBody(content)` and re-parses on commit, so
   `setNodeContent(p, name, parseContent(serializeBody(c)))` round-trips.
 
+## E4 — connectors (this file)
+
+- `createConnector(picture, from, to, options?)` — append `\draw[opts] (from) -- (to);`
+  between two nodes. Endpoints are node **names**, so the renderer resolves them to the
+  nodes' current centers each paint and the connector **re-routes for free** as its
+  nodes move. `options` default to `['->']`. No-op if either endpoint is absent.
+- `deleteConnector(picture, index)` — remove the connector at `index`, the position
+  among the picture's **path** statements. This is the identity the renderer stamps as
+  `data-arrow` (see `render/slide.connectorsOf`), so the editor selects an arrow and
+  deletes it by the same index. No-op if out of range.
+
+Editing an arrow's style (head direction, dashing) is E5 territory; not here yet.
+
 ## Not here
 
-Undo/redo (callers keep history / re-derive from source). Arrows (E4) and
-options/style (E5). Per-construct (sub-node) content splicing is a later refinement —
-E3 replaces whole-node content. Document/frame targeting and re-serialization live in
-the shell, not the ops.
+Undo/redo (callers keep history / re-derive from source). Options/style (E5).
+Per-construct (sub-node) content splicing is a later refinement — E3 replaces
+whole-node content. Document/frame targeting and re-serialization live in the shell,
+not the ops.

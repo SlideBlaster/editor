@@ -17,7 +17,12 @@ viewable when mounted.
 - **Arrows.** `\draw` path bodies are parsed here (they were verbatim until now):
   straight `--`/`-|`/`|-` segments whose `(name)` endpoints resolve to layout node
   anchors (B1) and `(x,y)` endpoints to points. Arrowheads come from `->`/`<-`/`<->`
-  in the path options.
+  in the path options. `connectorsOf(picture, layout)` exposes the resolved geometry
+  (`{ index, points, heads }` per drawable path) — the renderer draws from it and the
+  editor hit-tests from it, so they never disagree. Each `<polyline>` carries
+  `data-arrow="<index>"` (index among path statements) so an editor can select/delete a
+  connector (`deleteConnector`); because endpoints are re-resolved every paint, a
+  connector re-routes automatically when its nodes move.
 - **Content.** Each node's box holds `renderContent` output (B2); style classes
   become `sb-style-*` classes on both the SVG box and the content div. A named node's
   content div also carries `data-node="<name>"` so an editor can hit-test and address

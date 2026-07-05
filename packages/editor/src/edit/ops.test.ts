@@ -12,6 +12,8 @@ import {
   setNodeContent,
   placeNodeRelative,
   adjustPlacement,
+  createConnector,
+  deleteConnector,
 } from './ops'
 
 const SOURCE = [
@@ -178,6 +180,44 @@ describe('adjustPlacement', () => {
 
   it('is a no-op on an absolutely-placed node', () => {
     expect(serializePicture(adjustPlacement(picture(), 'o2', { gap: 2 }))).toBe(SOURCE)
+  })
+})
+
+describe('createConnector', () => {
+  it('appends a forward arrow between two nodes', () => {
+    const out = serializePicture(createConnector(picture(), 'title', 'o2'))
+    expect(out).toContain('\\draw[->] (title) -- (o2);')
+    expect(roundTrips(createConnector(picture(), 'title', 'o2'))).toBe(true)
+  })
+
+  it('honours explicit options', () => {
+    const out = serializePicture(createConnector(picture(), 'title', 'o2', ['<->', 'dashed']))
+    expect(out).toContain('\\draw[<->, dashed] (title) -- (o2);')
+  })
+
+  it('is a no-op when an endpoint is missing', () => {
+    expect(serializePicture(createConnector(picture(), 'title', 'ghost'))).toBe(SOURCE)
+    expect(serializePicture(createConnector(picture(), 'ghost', 'o2'))).toBe(SOURCE)
+  })
+})
+
+describe('deleteConnector', () => {
+  it('removes the connector at the given path index', () => {
+    // SOURCE has exactly one path (index 0): the intro -> o2 arrow.
+    const out = serializePicture(deleteConnector(picture(), 0))
+    expect(out).not.toContain('\\draw')
+    expect(out).toContain('(intro)') // nodes untouched
+  })
+
+  it('removes only the addressed connector when several exist', () => {
+    const two = createConnector(picture(), 'title', 'o2') // becomes path index 1
+    const out = serializePicture(deleteConnector(two, 1))
+    expect(out).toContain('\\draw[->] (intro) -- (o2);') // index 0 kept
+    expect(out).not.toContain('(title) -- (o2)') // index 1 removed
+  })
+
+  it('is a no-op when the index is out of range', () => {
+    expect(serializePicture(deleteConnector(picture(), 5))).toBe(SOURCE)
   })
 })
 

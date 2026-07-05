@@ -8,5 +8,7 @@ export {
   setNodeContent,
   placeNodeRelative,
   adjustPlacement,
+  createConnector,
+  deleteConnector,
 } from './ops'
 export type { NodeSpec } from './ops'
