@@ -25,9 +25,9 @@ editor/                         <- this monorepo (pnpm workspace)
     web-shell/         @slideblaster/web-shell         thin Vite app: mounts app + browser adapters
     desktop-shell/     @slideblaster/desktop-shell     thin Tauri app: mounts app + native adapters
   services/
-    auth/       Phoenix: GitHub App, KMS token minting, identity, capabilities   (not a pnpm package)
+    auth/       Phoenix: GitHub App, token minting, identity, capabilities      (built; KMS-swappable key)
     collab/     Phoenix: P2P signaling + premium server sessions + WAL           (not a pnpm package)
-    git-proxy/  first-party CORS proxy for browser git (token transits it)       (runtime TBD)
+    git-proxy/  first-party CORS proxy for browser git (token transits it)       (Cloudflare Worker)
 ```
 
 Sibling repos at the project root: `design/` (ADRs, format, architecture, roadmap),
@@ -87,9 +87,17 @@ the render path is fully client-side.
   working copy needs no preconfigured `origin`); web-shell selects the adapter from
   `VITE_SB_AUTH_URL` and proxies auth routes to the stub same-origin. Proven by a
   real-HTTP adapter↔stub integration test and a live Vite-proxy run.
-- **Next — M4 Phase B (deployment):** stand up the real Phoenix Auth service +
-  isolated KMS minting (choose KMS), register the GitHub App, deploy the git-proxy
-  to Cloudflare, and run real GitHub push/pull end-to-end — replacing the stub with
-  no adapter/app changes. Also still open before M6: Yjs<->AST round-trip (ADR 0011).
+- **M4 Phase B (deployment) — in progress.** Vertical slice first: real GitHub
+  push/pull with KMS deferred behind a swappable seam. **Built:** the real Phoenix
+  Auth service (`services/auth`) — full HTTP contract (drop-in for the stub), real
+  GitHub OAuth, and installation-token minting authorized against the user's own
+  installations; the App private key is held locally behind a KMS-swappable
+  `MintingKey` (RS256 App-JWT signing unit-verified); git-proxy `wrangler.toml`
+  (bundles clean). **User gates cleared:** GitHub App registered, Elixir toolchain.
+  **Remaining:** drop the client secret + `.pem` into `services/auth/.env`, deploy
+  git-proxy to Cloudflare (`wrangler login`), and drive the live sign-in →
+  push/pull. **Then the KMS/hardening pass:** `MintingKey.Kms`, split the minting
+  service, revocation webhooks, durable sessions. Also open before M6: Yjs<->AST
+  round-trip (ADR 0011).
 
 Milestones M0-M8: `../design/roadmap.md`.

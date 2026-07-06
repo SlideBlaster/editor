@@ -1,0 +1,15 @@
+# Cloudflare Worker deploy config for the git CORS proxy (ADR 0013).
+# Deploy: `npx wrangler deploy` (after `npx wrangler login` or CLOUDFLARE_API_TOKEN).
+# Wrangler bundles the TypeScript entry directly — no separate build step.
+name = "slideblaster-git-proxy"
+main = "src/worker.ts"
+compatibility_date = "2024-11-01"
+
+# No logging of request/response bodies or headers: a short-lived repo-scoped
+# token transits this Worker (design/architecture/auth.md). Keep observability
+# to metrics only; never log Authorization.
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = false

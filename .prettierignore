@@ -3,6 +3,9 @@ dist/
 pnpm-lock.yaml
 # Vendored third-party sources are not ours to format.
 **/vendor/**
+# Elixir build artifacts and fetched deps (mix owns Elixir formatting).
+**/deps/**
+**/_build/**
 # Golden fixtures are byte-significant; prettier must not touch them.
 **/fixtures/**
 **/__fixtures__/**
