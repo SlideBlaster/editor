@@ -26,10 +26,14 @@ export function renderSlide(
   layout: Layout,
   options: RenderOptions = {},
 ): string {
+  // Aspect ratio (ADR 0017): height is fixed at 9, width varies (16 = 16:9, 12 = 4:3). The
+  // box coords (viewBox, rect x/y) are already in slide units, so only the width matters here
+  // and in the x-axis percentages (nodeDiv); the vertical math stays anchored to SLIDE_H.
+  const W = options.slideWidth ?? SLIDE_W
   const contentNodes = picture.statements.filter(isNode)
   const boxes = layout.nodes.map(rectSvg).join('')
   const arrows = connectorsOf(picture, layout).map(arrowSvg).join('')
-  const svg = `<svg class="sb-geometry" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}" preserveAspectRatio="none">${MARKER_DEFS}${boxes}${arrows}</svg>`
+  const svg = `<svg class="sb-geometry" viewBox="0 0 ${r(W)} ${SLIDE_H}" preserveAspectRatio="none">${MARKER_DEFS}${boxes}${arrows}</svg>`
   // Per-slide footnotes: each `\citefootnote` marker numbers in reading order across
   // the slide's nodes (the sink `add` returns the 1-based index); the definitions then
   // collect into a band at the slide foot (Beamer-style), so numbering and placement
@@ -40,9 +44,12 @@ export function renderSlide(
     footnotes: { add: (keys) => footnotes.push(keys) },
   }
   const content = layout.nodes
-    .map((placed, i) => nodeDiv(placed, contentNodes[i]!, withFootnotes))
+    .map((placed, i) => nodeDiv(placed, contentNodes[i]!, withFootnotes, W))
     .join('')
-  return `<div class="sb-slide">${svg}<div class="sb-content">${content}</div>${footnoteBand(footnotes, options)}</div>`
+  // Inline aspect-ratio overrides the stylesheet default (16/9) so a themed deck renders in
+  // its own shape everywhere the slide mounts (canvas, thumbnail, export).
+  const shape = W === SLIDE_W ? '' : ` style="aspect-ratio:${r(W)}/${SLIDE_H}"`
+  return `<div class="sb-slide"${shape}>${svg}<div class="sb-content">${content}</div>${footnoteBand(footnotes, options)}</div>`
 }
 
 /** The slide-foot footnote band: each collected `\citefootnote`, numbered in order.
@@ -144,14 +151,19 @@ function rectSvg(node: PlacedNode): string {
   return `<rect class="${boxClass(node)}" x="${r(x)}" y="${r(y)}" width="${r(node.size.width)}" height="${r(node.size.height)}"/>`
 }
 
-function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions): string {
+function nodeDiv(
+  node: PlacedNode,
+  source: NodeStatement,
+  options: RenderOptions,
+  slideWidth: number = SLIDE_W,
+): string {
   const scale = nodeScale(source)
-  const left = pct(node.center.x - node.size.width / 2, SLIDE_W)
+  const left = pct(node.center.x - node.size.width / 2, slideWidth)
   const top = pct(SLIDE_H - node.center.y - node.size.height / 2, SLIDE_H)
   // Content is laid out at its NATURAL width (the box already folds in the scale), then a
   // CSS transform scales it up to fill the box — so text, tables, and images all grow with
   // the box, not just the frame. `size.width / scale.x` recovers the pre-scale width.
-  const width = pct(node.size.width / scale.x, SLIDE_W)
+  const width = pct(node.size.width / scale.x, slideWidth)
   // `minimum height` occupies the box down to that floor while still growing with content
   // (grow-only). In natural units (the transform scales it with everything else).
   const mh = minHeight(source)

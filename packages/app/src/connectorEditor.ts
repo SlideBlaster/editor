@@ -68,6 +68,7 @@ export function paintConnectorEditor(
   layout: Layout,
   actions: ConnectorEditorActions,
   focusedAnchor: number | null = null,
+  slideWidth: number = SLIDE_W,
 ): void {
   // Working copy: anchors stay symbolic (node refs preserved); curves hold absolute
   // control points. `pts` are the live drawing positions — node anchors are fixed at the
@@ -87,7 +88,7 @@ export function paintConnectorEditor(
   const toSlide = (clientX: number, clientY: number): Point => {
     const rect = slideEl.getBoundingClientRect()
     return {
-      x: ((clientX - rect.left) / rect.width) * SLIDE_W,
+      x: ((clientX - rect.left) / rect.width) * slideWidth,
       y: SLIDE_H - ((clientY - rect.top) / rect.height) * SLIDE_H,
     }
   }
@@ -107,7 +108,7 @@ export function paintConnectorEditor(
 
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', 'sb-conn-edit')
-  svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+  svg.setAttribute('viewBox', `0 0 ${slideWidth} ${SLIDE_H}`)
   svg.setAttribute('preserveAspectRatio', 'none')
   overlay.append(svg)
 

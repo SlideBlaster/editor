@@ -40,13 +40,14 @@ export function wireResizeGrips(
   slideEl: HTMLElement,
   stage: HTMLElement,
   actions: ResizeActions,
+  slideWidth: number = SLIDE_W,
 ): void {
   const name = node.name! // caller only wires named nodes
   for (const dir of DIRS) {
     const grip = document.createElement('div')
     grip.className = `sb-resize-grip grip-${dir}`
     handle.append(grip)
-    wireGrip(grip, dir, handle, node, scale, name, slideEl, stage, actions)
+    wireGrip(grip, dir, handle, node, scale, name, slideEl, stage, actions, slideWidth)
   }
 }
 
@@ -60,6 +61,7 @@ function wireGrip(
   slideEl: HTMLElement,
   stage: HTMLElement,
   actions: ResizeActions,
+  slideWidth: number = SLIDE_W,
 ): void {
   const xEdge = dir.includes('e') ? 'e' : dir.includes('w') ? 'w' : null
   const yEdge = dir.includes('n') ? 'n' : dir.includes('s') ? 's' : null
@@ -90,7 +92,7 @@ function wireGrip(
 
     const onMove = (ev: PointerEvent): void => {
       const rect = slideEl.getBoundingClientRect()
-      const dux = ((ev.clientX - startX) / rect.width) * SLIDE_W
+      const dux = ((ev.clientX - startX) / rect.width) * slideWidth
       const duy = -((ev.clientY - startY) / rect.height) * SLIDE_H // slide y is up
 
       // Growth ratio per axis from the dragged edges (1 on an untouched axis).
@@ -130,7 +132,7 @@ function wireGrip(
       // Live preview: scale the content in place, re-anchoring its top-left corner.
       nodeEl.style.transformOrigin = 'top left'
       nodeEl.style.transform = `scale(${sx},${sy})`
-      nodeEl.style.left = pctStr(L, SLIDE_W)
+      nodeEl.style.left = pctStr(L, slideWidth)
       nodeEl.style.top = pctStr(SLIDE_H - T, SLIDE_H)
       // Track the handle to the actual scaled content box.
       const nr = nodeEl.getBoundingClientRect()

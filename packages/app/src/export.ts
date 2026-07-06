@@ -17,23 +17,30 @@ import { slideStylesheet, type RenderedSlide } from '@slideblaster/editor'
 import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
 import { KATEX_CSS } from './katexInlineCss'
 
-/** Standard 16:9 slide page (PowerPoint/Beamer widescreen), used for the print @page. */
-const PAGE = { w: '13.333in', h: '7.5in' }
+/** Print page (ADR 0017 aspect ratio): height fixed at 7.5in (Beamer/PowerPoint widescreen
+ *  is 13.333×7.5), width follows the ratio — 16:9 → 13.333in, 4:3 → 10in. */
+const PAGE_H_IN = 7.5
+const pageDims = (ratio: number): { w: string; h: string } => ({
+  w: `${(PAGE_H_IN * ratio).toFixed(3)}in`,
+  h: `${PAGE_H_IN}in`,
+})
 
 /** A self-contained deck document: on-screen presenter + print-to-PDF pages. `themeCss`
  *  is the active theme's style + furniture stylesheet (so the print matches the canvas);
  *  it defaults to the built-in theme for callers that don't theme. */
 export function toStandaloneHtml(
   slides: RenderedSlide[],
-  opts: { title?: string; themeCss?: string } = {},
+  opts: { title?: string; themeCss?: string; slideWidth?: number } = {},
 ): Promise<string> {
-  return Promise.resolve(buildDeckDocument(slides, opts.title ?? 'Slides', opts.themeCss))
+  return Promise.resolve(
+    buildDeckDocument(slides, opts.title ?? 'Slides', opts.themeCss, opts.slideWidth),
+  )
 }
 
 /** Download the standalone deck as an .html file. */
 export async function downloadDeckHtml(
   slides: RenderedSlide[],
-  opts: { title?: string; filename?: string; themeCss?: string } = {},
+  opts: { title?: string; filename?: string; themeCss?: string; slideWidth?: number } = {},
 ): Promise<void> {
   const html = await toStandaloneHtml(slides, opts)
   const blob = new Blob([html], { type: 'text/html' })
@@ -51,7 +58,7 @@ export async function downloadDeckHtml(
  */
 export async function printDeck(
   slides: RenderedSlide[],
-  opts: { title?: string; themeCss?: string } = {},
+  opts: { title?: string; themeCss?: string; slideWidth?: number } = {},
 ): Promise<void> {
   const html = await toStandaloneHtml(slides, opts)
   const iframe = document.createElement('iframe')
@@ -88,6 +95,7 @@ function buildDeckDocument(
   slides: RenderedSlide[],
   title: string,
   themeCss: string = SLIDE_THEME_CSS,
+  slideWidth: number = 16,
 ): string {
   const ordered = [...slides].sort((a, b) => a.index - b.index)
   const pages = ordered.map((s) => `<section class="export-slide">${s.html}</section>`).join('\n')
@@ -98,7 +106,7 @@ function buildDeckDocument(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
-${DOCUMENT_CSS}
+${documentCss(slideWidth)}
 ${slideStylesheet()}
 ${themeCss}
 ${SLIDE_TYPE_CSS}
@@ -114,24 +122,29 @@ ${pages}
 </html>`
 }
 
-/** Screen presenter chrome + print page rules. Slide type/structure come from the engine. */
-const DOCUMENT_CSS = [
-  '*{box-sizing:border-box;margin:0}',
-  'html,body{height:100%}',
-  'html{scroll-snap-type:y mandatory;scroll-behavior:smooth}',
-  'body{background:#0e0f13;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}',
-  '.export-slide{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:4vh 4vw;scroll-snap-align:start}',
-  // Fit the 16:9 slide to the viewport (letterboxed), pick the limiting dimension.
-  '.export-slide .sb-slide{width:min(92vw, calc(92vh * 16 / 9));box-shadow:0 12px 48px rgba(0,0,0,0.55)}',
-  '@media print{',
-  `  @page{size:${PAGE.w} ${PAGE.h};margin:0}`,
-  '  html{scroll-snap-type:none}',
-  '  body{background:#fff}',
-  `  .export-slide{display:block;min-height:auto;width:${PAGE.w};height:${PAGE.h};padding:0;break-after:page;page-break-after:always}`,
-  '  .export-slide:last-child{break-after:auto;page-break-after:auto}',
-  `  .export-slide .sb-slide{width:${PAGE.w};height:${PAGE.h};box-shadow:none;border:0;border-radius:0}`,
-  '}',
-].join('\n')
+/** Screen presenter chrome + print page rules, sized to the deck's aspect ratio (ADR 0017).
+ *  Slide type/structure come from the engine; `slideWidth` (default 16 = 16:9) sets the shape. */
+function documentCss(slideWidth: number = 16): string {
+  const ratio = slideWidth / 9
+  const page = pageDims(ratio)
+  return [
+    '*{box-sizing:border-box;margin:0}',
+    'html,body{height:100%}',
+    'html{scroll-snap-type:y mandatory;scroll-behavior:smooth}',
+    'body{background:#0e0f13;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}',
+    '.export-slide{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:4vh 4vw;scroll-snap-align:start}',
+    // Fit the slide to the viewport (letterboxed), pick the limiting dimension.
+    `.export-slide .sb-slide{width:min(92vw, calc(92vh * ${ratio.toFixed(4)}));box-shadow:0 12px 48px rgba(0,0,0,0.55)}`,
+    '@media print{',
+    `  @page{size:${page.w} ${page.h};margin:0}`,
+    '  html{scroll-snap-type:none}',
+    '  body{background:#fff}',
+    `  .export-slide{display:block;min-height:auto;width:${page.w};height:${page.h};padding:0;break-after:page;page-break-after:always}`,
+    '  .export-slide:last-child{break-after:auto;page-break-after:auto}',
+    `  .export-slide .sb-slide{width:${page.w};height:${page.h};box-shadow:none;border:0;border-radius:0}`,
+    '}',
+  ].join('\n')
+}
 
 /** Arrow/space/PageUp-Down step through slides on screen (ignored when printing). */
 const PRESENTER_JS = `

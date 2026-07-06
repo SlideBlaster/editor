@@ -69,6 +69,12 @@ export interface RenderOptions {
    * render the maximal, all-visible authoring state — nothing is hidden.
    */
   step?: number
+  /**
+   * Slide-box width in slide units (ADR 0017 aspect ratio); height is fixed at 9, so this
+   * sets the shape: 16 = 16:9 (default), 12 = 4:3, 14.4 = 16:10. Drives the SVG viewBox, the
+   * `.sb-slide` aspect-ratio, and the x-axis percentages. Omit for the 16:9 default.
+   */
+  slideWidth?: number
 }
 
 export function renderContent(content: NodeContent, options: RenderOptions = {}): string {

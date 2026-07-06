@@ -21,6 +21,8 @@ export interface NavProps {
   /** The SAME measurer the canvas uses, so a thumbnail is the exact same render — the naive
    *  estimate mis-sized tables and scaled nodes, drifting the thumbnail off the canvas. */
   measurer: BatchMeasurer
+  /** Slide-box width in slide units (ADR 0017 aspect ratio); default 16 = 16:9. */
+  slideWidth?: number
   onSelect(index: number): void
 }
 
@@ -82,7 +84,7 @@ export async function paintDeckNav(host: HTMLElement, props: NavProps): Promise<
     thumb.className = 'thumb'
     thumb.addEventListener('click', () => props.onSelect(index))
     host.append(thumb) // attach first so fillThumb can measure the thumb's width
-    fillThumb(thumb, renderSlide(frame.picture, layouts[index]!, renderOptions))
+    fillThumb(thumb, renderSlide(frame.picture, layouts[index]!, { ...renderOptions, slideWidth: props.slideWidth }))
     thumbs.push(thumb)
   })
 
@@ -97,7 +99,7 @@ export async function paintDeckNav(host: HTMLElement, props: NavProps): Promise<
     if (!thumb) return
     const layout = await resolveLayoutAsync(frame.picture, props.measurer)
     if (!thumb.isConnected) return // a full nav rebuild superseded this thumbnail
-    fillThumb(thumb, renderSlide(frame.picture, layout, renderOptions))
+    fillThumb(thumb, renderSlide(frame.picture, layout, { ...renderOptions, slideWidth: props.slideWidth }))
   }
 
   return { setActive, repaintThumb }

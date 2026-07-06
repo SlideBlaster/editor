@@ -93,11 +93,19 @@ export interface CanvasProps {
   /** Theme master-layout snap references (slide-space x/y edges + centres, y-up): a drag
    *  snaps to the title/content region bounds and draws them as guides (ADR 0017). */
   snapRefs?: { xs: readonly number[]; ys: readonly number[] }
+  /** Slide-box width in slide units (ADR 0017 aspect ratio; height fixed at 9). Drives the
+   *  render viewBox/shape and every px<->unit map on this surface. Omit for 16:9 (=16). */
+  slideWidth?: number
   actions: CanvasActions
 }
 
 export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
-  const options = props.step !== undefined ? { ...renderOptions, step: props.step } : renderOptions
+  const slideWidth = props.slideWidth ?? SLIDE_W
+  const options = {
+    ...renderOptions,
+    ...(props.step !== undefined ? { step: props.step } : {}),
+    slideWidth,
+  }
   stage.innerHTML = renderSlide(props.picture, props.layout, options)
   const slideEl = stage.querySelector<HTMLElement>('.sb-slide')
   if (!slideEl) return
@@ -108,7 +116,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   // Connector hit-lines (under the handles): a clickable stroke along each arrow so it
   // can be selected and deleted. The visible arrow itself lives in the render's SVG.
   const connectors = connectorsOf(props.picture, props.layout)
-  paintConnectors(overlay, connectors, props.selectedConnector, props.actions)
+  paintConnectors(overlay, connectors, props.selectedConnector, props.actions, slideWidth)
 
   // Reshape the selected connector (endpoints, waypoints, curves) if it is editable.
   const selected = connectors.find((c) => c.index === props.selectedConnector)
@@ -124,6 +132,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
         focusCurve: (focus) => props.actions.focusConnectorCurve(focus),
       },
       props.selectedCurve,
+      slideWidth,
     )
   }
 
@@ -141,12 +150,12 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
       .map((other) => ({ name: other.name!, center: other.center, size: other.size }))
     const handle = document.createElement('div')
     handle.className = name === props.selected ? 'sb-handle is-selected' : 'sb-handle'
-    handle.style.cssText = boxStyle(node)
+    handle.style.cssText = boxStyle(node, slideWidth)
     handle.dataset.node = name
     if (props.connectMode) {
-      wireConnect(handle, node, slideEl, overlay, props.actions)
+      wireConnect(handle, node, slideEl, overlay, props.actions, slideWidth)
     } else {
-      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions, props.snapRefs)
+      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions, props.snapRefs, slideWidth)
       // Resize grips (corners + edges), hidden by CSS until this handle is selected. They
       // scale the node's content, so they need its current scale (from its options).
       const src = findNode(props.picture, name)
@@ -157,6 +166,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
         slideEl,
         stage,
         props.actions,
+        slideWidth,
       )
       // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
       handle.addEventListener('dblclick', (event) => {
@@ -174,7 +184,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   })
   overlay.addEventListener('dblclick', (event) => {
     if (event.target === overlay)
-      props.actions.requestCreate(pointToUnits(slideEl, event.clientX, event.clientY), {
+      props.actions.requestCreate(pointToUnits(slideEl, event.clientX, event.clientY, slideWidth), {
         x: event.clientX,
         y: event.clientY,
       })
@@ -264,6 +274,7 @@ function wireHandle(
   overlay: HTMLElement,
   actions: CanvasActions,
   snapRefs?: { xs: readonly number[]; ys: readonly number[] },
+  slideWidth: number = SLIDE_W,
 ): void {
   const name = node.name! // caller only wires named nodes
   const origin = node.center
@@ -301,7 +312,7 @@ function wireHandle(
     const rect = slideEl.getBoundingClientRect()
     // Free (unsnapped) target the pointer is pointing at, in slide space (y-up).
     const proposed: Point = {
-      x: origin.x + (dxPx / rect.width) * SLIDE_W,
+      x: origin.x + (dxPx / rect.width) * slideWidth,
       y: origin.y - (dyPx / rect.height) * SLIDE_H,
     }
     const dragged = { center: proposed, size: node.size }
@@ -321,11 +332,11 @@ function wireHandle(
         outcome = { kind: 'bind', binding }
         guides = bindGuides(node.size, binding, bindPeers)
       } else {
-        const threshold = (SNAP_PX / rect.width) * SLIDE_W // px radius -> slide units (zoom-independent)
+        const threshold = (SNAP_PX / rect.width) * slideWidth // px radius -> slide units (zoom-independent)
         const snapped = resolveSnap(dragged, peers, {
           threshold,
           grid: SNAP_GRID,
-          slideWidth: SLIDE_W,
+          slideWidth,
           slideHeight: SLIDE_H,
           refXs: snapRefs?.xs,
           refYs: snapRefs?.ys,
@@ -339,7 +350,7 @@ function wireHandle(
 
     // Live preview: translate handle and content by the resolved delta. Zoom scales the
     // slide by width (no transform/zoom context), so a pixel translate tracks 1:1.
-    const txPx = ((target.x - origin.x) / SLIDE_W) * rect.width
+    const txPx = ((target.x - origin.x) / slideWidth) * rect.width
     const tyPx = (-(target.y - origin.y) / SLIDE_H) * rect.height
     const transform = `translate(${txPx}px, ${tyPx}px)`
     handle.style.transform = transform
@@ -347,8 +358,8 @@ function wireHandle(
     // Compose with the node's own scale so a scaled node (table/image) stays scaled while it
     // moves, instead of snapping to natural size for the duration of the drag.
     if (content) content.style.transform = `${transform} ${drag.contentScale}`.trim()
-    drawGuides(overlay, guides)
-    setBindBadge(overlay, outcome.kind === 'bind' ? outcome.binding : null)
+    drawGuides(overlay, guides, slideWidth)
+    setBindBadge(overlay, outcome.kind === 'bind' ? outcome.binding : null, slideWidth)
   })
 
   const end = (event: PointerEvent): void => {
@@ -395,7 +406,7 @@ function bindGuides(size: SnapSize, binding: Binding, bindPeers: readonly BindBo
 
 /** Draw the snap guides into a dedicated SVG layer over the slide (rebuilt each move).
  *  Guides are in slide space (y-up); the SVG viewBox is y-down, so y flips to SLIDE_H - y. */
-function drawGuides(overlay: HTMLElement, guides: readonly SnapLine[]): void {
+function drawGuides(overlay: HTMLElement, guides: readonly SnapLine[], slideWidth = SLIDE_W): void {
   let svg = overlay.querySelector<SVGSVGElement>('svg.sb-guides')
   if (guides.length === 0) {
     svg?.remove()
@@ -404,7 +415,7 @@ function drawGuides(overlay: HTMLElement, guides: readonly SnapLine[]): void {
   if (!svg) {
     svg = document.createElementNS(SVG_NS, 'svg')
     svg.setAttribute('class', 'sb-guides')
-    svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+    svg.setAttribute('viewBox', `0 0 ${slideWidth} ${SLIDE_H}`)
     svg.setAttribute('preserveAspectRatio', 'none')
     overlay.append(svg)
   }
@@ -433,11 +444,12 @@ function paintConnectors(
   connectors: readonly ReturnType<typeof connectorsOf>[number][],
   selectedConnector: number | null,
   actions: CanvasActions,
+  slideWidth = SLIDE_W,
 ): void {
   if (connectors.length === 0) return
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', 'sb-connectors')
-  svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+  svg.setAttribute('viewBox', `0 0 ${slideWidth} ${SLIDE_H}`)
   svg.setAttribute('preserveAspectRatio', 'none')
   for (const connector of connectors) {
     const hit = document.createElementNS(SVG_NS, 'path')
@@ -463,6 +475,7 @@ function wireConnect(
   slideEl: HTMLElement,
   overlay: HTMLElement,
   actions: CanvasActions,
+  slideWidth = SLIDE_W,
 ): void {
   const name = node.name!
   let dragging = false
@@ -478,10 +491,10 @@ function wireConnect(
     if (!dragging) return
     const rect = slideEl.getBoundingClientRect()
     const to: Point = {
-      x: ((event.clientX - rect.left) / rect.width) * SLIDE_W,
+      x: ((event.clientX - rect.left) / rect.width) * slideWidth,
       y: SLIDE_H - ((event.clientY - rect.top) / rect.height) * SLIDE_H,
     }
-    drawRubberBand(overlay, node.center, to)
+    drawRubberBand(overlay, node.center, to, slideWidth)
   })
 
   const end = (event: PointerEvent): void => {
@@ -505,12 +518,12 @@ function nodeUnderPointer(clientX: number, clientY: number, self: string): strin
 }
 
 /** Draw/update the connect-mode rubber band from a node center to the pointer. */
-function drawRubberBand(overlay: HTMLElement, from: Point, to: Point): void {
+function drawRubberBand(overlay: HTMLElement, from: Point, to: Point, slideWidth = SLIDE_W): void {
   let svg = overlay.querySelector<SVGSVGElement>('svg.sb-rubber')
   if (!svg) {
     svg = document.createElementNS(SVG_NS, 'svg')
     svg.setAttribute('class', 'sb-rubber')
-    svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
+    svg.setAttribute('viewBox', `0 0 ${slideWidth} ${SLIDE_H}`)
     svg.setAttribute('preserveAspectRatio', 'none')
     overlay.append(svg)
   }
@@ -530,7 +543,7 @@ function clearRubberBand(overlay: HTMLElement): void {
 
 /** Show (or clear) the relationship badge — e.g. "below 0.6" — at the bound node's
  *  resolved center while a binding is engaged. */
-function setBindBadge(overlay: HTMLElement, binding: Binding | null): void {
+function setBindBadge(overlay: HTMLElement, binding: Binding | null, slideWidth = SLIDE_W): void {
   let badge = overlay.querySelector<HTMLElement>('.sb-bind-badge')
   if (!binding) {
     badge?.remove()
@@ -542,7 +555,7 @@ function setBindBadge(overlay: HTMLElement, binding: Binding | null): void {
     overlay.append(badge)
   }
   badge.textContent = `${binding.side} ${binding.gap}`
-  badge.style.left = `${(binding.center.x / SLIDE_W) * 100}%`
+  badge.style.left = `${(binding.center.x / slideWidth) * 100}%`
   badge.style.top = `${((SLIDE_H - binding.center.y) / SLIDE_H) * 100}%`
 }
 
@@ -571,19 +584,24 @@ function dependentsOf(picture: TikzPicture, name: string): Set<string> {
 }
 
 /** Node box as CSS percentages of the slide, mirroring renderSlide's mapping (y-up). */
-function boxStyle(node: PlacedNode): string {
-  const left = ((node.center.x - node.size.width / 2) / SLIDE_W) * 100
+function boxStyle(node: PlacedNode, slideWidth = SLIDE_W): string {
+  const left = ((node.center.x - node.size.width / 2) / slideWidth) * 100
   const top = ((SLIDE_H - node.center.y - node.size.height / 2) / SLIDE_H) * 100
-  const width = (node.size.width / SLIDE_W) * 100
+  const width = (node.size.width / slideWidth) * 100
   const height = (node.size.height / SLIDE_H) * 100
   return `left:${left}%;top:${top}%;width:${width}%;height:${height}%`
 }
 
 /** Client pixel point -> slide-space coordinates (y-up). */
-function pointToUnits(slideEl: HTMLElement, clientX: number, clientY: number): Point {
+function pointToUnits(
+  slideEl: HTMLElement,
+  clientX: number,
+  clientY: number,
+  slideWidth = SLIDE_W,
+): Point {
   const rect = slideEl.getBoundingClientRect()
   return {
-    x: ((clientX - rect.left) / rect.width) * SLIDE_W,
+    x: ((clientX - rect.left) / rect.width) * slideWidth,
     y: SLIDE_H - ((clientY - rect.top) / rect.height) * SLIDE_H,
   }
 }

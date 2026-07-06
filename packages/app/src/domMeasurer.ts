@@ -26,7 +26,6 @@ const SLIDE_W = 16
 /** Reference slide width in px. Larger = finer sub-pixel precision; the unit result
  *  is width-invariant (type is cqw), so any value is correct — 1600 gives 100px/unit. */
 const REF_PX = 1600
-const PER_UNIT = REF_PX / SLIDE_W
 /** Floors so an empty or whitespace node still has a grabbable box (mirrors the naive measurer). */
 const MIN_W = 1
 const MIN_H = 0.6
@@ -46,11 +45,18 @@ export interface DomMeasurer extends BatchMeasurer {
    *  deferred table finishes compiling: its content key is unchanged but its true
    *  size is now larger than the placeholder that was measured. */
   reset(): void
+  /** Set the slide-box width in slide units (ADR 0017 aspect ratio); default 16. A `text
+   *  width` of N units then measures against N/width of the slide, so a node in a 4:3 deck
+   *  (width 12) wraps differently than in 16:9. Clears the cache, since unit sizes shift. */
+  setSlideWidth(width: number): void
   dispose(): void
 }
 
 export function createDomMeasurer(): DomMeasurer {
   ensureStyle()
+  // px per slide unit: a `text width` of N units is N*perUnit px wide. Follows the slide-box
+  // width so measurement matches the render at any aspect ratio (REF_PX stays the cqw base).
+  let perUnit = REF_PX / SLIDE_W
   const root = document.createElement('div')
   root.className = 'sb-measure-root'
   const slide = document.createElement('div')
@@ -74,10 +80,10 @@ export function createDomMeasurer(): DomMeasurer {
       // Fixed `text width` wraps to that width (read the height); otherwise take the
       // node's natural width (widest line) with `max-content`.
       el.style.width =
-        input.textWidth !== undefined ? `${input.textWidth * PER_UNIT}px` : 'max-content'
+        input.textWidth !== undefined ? `${input.textWidth * perUnit}px` : 'max-content'
       // `minimum height` is a grow-only floor: the box reads at least this tall, but taller
       // content still wins (CSS min-height never clips), matching the naive measurer.
-      if (input.minHeight !== undefined) el.style.minHeight = `${input.minHeight * PER_UNIT}px`
+      if (input.minHeight !== undefined) el.style.minHeight = `${input.minHeight * perUnit}px`
       el.innerHTML = renderContent(input.content, renderOptions)
       content.append(el)
       els.push(el)
@@ -86,8 +92,8 @@ export function createDomMeasurer(): DomMeasurer {
     inputs.forEach((input, i) => {
       const rect = els[i]!.getBoundingClientRect()
       cache.set(keyOf(input), {
-        width: Math.max(MIN_W, rect.width / PER_UNIT),
-        height: Math.max(MIN_H, rect.height / PER_UNIT),
+        width: Math.max(MIN_W, rect.width / perUnit),
+        height: Math.max(MIN_H, rect.height / perUnit),
       })
     })
     content.replaceChildren()
@@ -103,6 +109,11 @@ export function createDomMeasurer(): DomMeasurer {
     },
     reset() {
       cache.clear()
+    },
+    setSlideWidth(width) {
+      if (!(width > 0) || width === REF_PX / perUnit) return
+      perUnit = REF_PX / width
+      cache.clear() // unit sizes are relative to the box width, so old boxes are stale
     },
     dispose() {
       root.remove()

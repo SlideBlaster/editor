@@ -121,3 +121,19 @@ describe('slideStylesheet: base layout for structured content blocks', () => {
     expect(css).toContain('text-align:center')
   })
 })
+
+describe('renderSlide aspect ratio (ADR 0017 slideWidth)', () => {
+  it('defaults to 16:9: viewBox 0 0 16 9 and no inline shape', () => {
+    const html = renderSlide(PICTURE, resolveLayout(PICTURE, fixed(2, 1)))
+    expect(html).toContain('viewBox="0 0 16 9"')
+    expect(html).toContain('<div class="sb-slide">') // no aspect-ratio style override at 16:9
+  })
+
+  it('renders a 4:3 deck (slideWidth 12): viewBox, aspect-ratio, and x% against 12', () => {
+    const html = renderSlide(PICTURE, resolveLayout(PICTURE, fixed(2, 1)), { slideWidth: 12 })
+    expect(html).toContain('<svg class="sb-geometry" viewBox="0 0 12 9"')
+    expect(html).toContain('<div class="sb-slide" style="aspect-ratio:12/9">')
+    // o2 at (10,3) size 2x1: left = (10-1)/12 = 75%, width = 2/12 = 16.6667%, top unchanged (y=9)
+    expect(html).toContain('left:75%;top:61.1111%;width:16.6667%')
+  })
+})
