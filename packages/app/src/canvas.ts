@@ -11,6 +11,7 @@
 import {
   findNode,
   placement,
+  nodeScale,
   renderSlide,
   connectorsOf,
   serializeBody,
@@ -23,9 +24,10 @@ import {
 } from '@slideblaster/editor'
 import { renderOptions } from './tableCompiler'
 import { paintColumnEditors } from './columnEditor'
+import { wireResizeGrips } from './resizeHandles'
 import { resolveSnap, type SnapBox, type SnapLine, type SnapSize } from './snap'
 import { findBinding, type BindBox, type Binding } from './binding'
-import { paintConnectorEditor } from './connectorEditor'
+import { paintConnectorEditor, type CurveFocus } from './connectorEditor'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -51,12 +53,26 @@ export interface CanvasActions {
   editContent(name: string, body: string): void
   /** Commit a structured content edit (grid affordance): the new node content directly. */
   editContentModel(name: string, content: NodeContent): void
+  /** Resize a node: `scaleX`/`scaleY` scale the content (drag), `textWidth`/`minHeight` set
+   *  the natural box (panel). `center` re-anchors an absolute node's opposite edge. */
+  resize(
+    name: string,
+    patch: {
+      textWidth?: number | null
+      minHeight?: number | null
+      scaleX?: number | null
+      scaleY?: number | null
+      center?: Point
+    },
+  ): void
   /** E4: draw a connector from one node to another (connect mode). */
   connect(from: string, to: string): void
   /** Select an existing connector by its index (or clear with null). */
   selectConnector(index: number | null): void
   /** E4+: replace a connector's shape (endpoints, waypoints, curves). */
   updateConnector(index: number, path: ConnectorPath): void
+  /** E4+: focus a curved segment for angle editing in the properties panel (null clears). */
+  focusConnectorCurve(focus: CurveFocus | null): void
 }
 
 export interface CanvasProps {
@@ -65,15 +81,20 @@ export interface CanvasProps {
   selected: string | null
   /** The selected connector's index, if any (mutually exclusive with a node selection). */
   selectedConnector: number | null
+  /** Which anchor (dot) of the selected connector the panel is editing (highlighted). */
+  selectedCurve: number | null
   /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
   connectMode: boolean
   /** A just-created node to open in edit mode on this paint (W5), or null. */
   autoEdit: string | null
+  /** Overlay step to render (ADR 0018); omit for the all-visible authoring state. */
+  step?: number
   actions: CanvasActions
 }
 
 export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
-  stage.innerHTML = renderSlide(props.picture, props.layout, renderOptions)
+  const options = props.step !== undefined ? { ...renderOptions, step: props.step } : renderOptions
+  stage.innerHTML = renderSlide(props.picture, props.layout, options)
   const slideEl = stage.querySelector<HTMLElement>('.sb-slide')
   if (!slideEl) return
 
@@ -88,9 +109,18 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   // Reshape the selected connector (endpoints, waypoints, curves) if it is editable.
   const selected = connectors.find((c) => c.index === props.selectedConnector)
   if (selected?.editable) {
-    paintConnectorEditor(overlay, slideEl, selected.index, selected.editable, props.layout, {
-      update: (index, path) => props.actions.updateConnector(index, path),
-    })
+    paintConnectorEditor(
+      overlay,
+      slideEl,
+      selected.index,
+      selected.editable,
+      props.layout,
+      {
+        update: (index, path) => props.actions.updateConnector(index, path),
+        focusCurve: (focus) => props.actions.focusConnectorCurve(focus),
+      },
+      props.selectedCurve,
+    )
   }
 
   for (const node of props.layout.nodes) {
@@ -113,6 +143,17 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
       wireConnect(handle, node, slideEl, overlay, props.actions)
     } else {
       wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions)
+      // Resize grips (corners + edges), hidden by CSS until this handle is selected. They
+      // scale the node's content, so they need its current scale (from its options).
+      const src = findNode(props.picture, name)
+      wireResizeGrips(
+        handle,
+        node,
+        src ? nodeScale(src) : { x: 1, y: 1 },
+        slideEl,
+        stage,
+        props.actions,
+      )
       // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
       handle.addEventListener('dblclick', (event) => {
         event.stopPropagation() // don't let the empty-overlay dblclick create a node
@@ -221,16 +262,26 @@ function wireHandle(
   const name = node.name! // caller only wires named nodes
   const origin = node.center
   // The pending outcome for this drag, recomputed each move and committed on pointerup.
-  let drag: { startX: number; startY: number; moved: boolean; outcome: DragOutcome } | null = null
+  // `contentScale` is the node's own `scale(...)` transform (if any), preserved so the move
+  // preview composes translate WITH it — otherwise a scaled node would flash to natural size.
+  let drag: {
+    startX: number
+    startY: number
+    moved: boolean
+    outcome: DragOutcome
+    contentScale: string
+  } | null = null
 
   handle.addEventListener('pointerdown', (event) => {
     event.stopPropagation()
     actions.select(name)
+    const content = stage.querySelector<HTMLElement>(`.sb-node[data-node="${CSS.escape(name)}"]`)
     drag = {
       startX: event.clientX,
       startY: event.clientY,
       moved: false,
       outcome: { kind: 'move', center: origin },
+      contentScale: content?.style.transform ?? '',
     }
     handle.setPointerCapture(event.pointerId)
   })
@@ -285,7 +336,9 @@ function wireHandle(
     const transform = `translate(${txPx}px, ${tyPx}px)`
     handle.style.transform = transform
     const content = stage.querySelector<HTMLElement>(`.sb-node[data-node="${CSS.escape(name)}"]`)
-    if (content) content.style.transform = transform
+    // Compose with the node's own scale so a scaled node (table/image) stays scaled while it
+    // moves, instead of snapping to natural size for the duration of the drag.
+    if (content) content.style.transform = `${transform} ${drag.contentScale}`.trim()
     drawGuides(overlay, guides)
     setBindBadge(overlay, outcome.kind === 'bind' ? outcome.binding : null)
   })
@@ -364,7 +417,9 @@ function clearGuides(overlay: HTMLElement): void {
 }
 
 /** Render a clickable hit-line along each connector so arrows can be selected/deleted.
- *  The visible arrow is drawn by the engine's SVG; this is only the interaction target. */
+ *  The stroke traces the arrow's *actual* path (`pathData`, curves and all), so a curved
+ *  arrow is grabbed on the curve you see — not on a phantom straight baseline. The visible
+ *  arrow is drawn by the engine's SVG; this is only the interaction target. */
 function paintConnectors(
   overlay: HTMLElement,
   connectors: readonly ReturnType<typeof connectorsOf>[number][],
@@ -377,18 +432,18 @@ function paintConnectors(
   svg.setAttribute('viewBox', `0 0 ${SLIDE_W} ${SLIDE_H}`)
   svg.setAttribute('preserveAspectRatio', 'none')
   for (const connector of connectors) {
-    const poly = document.createElementNS(SVG_NS, 'polyline')
-    poly.setAttribute('points', connector.points.map((p) => `${p.x},${SLIDE_H - p.y}`).join(' '))
-    poly.dataset.connector = String(connector.index)
-    poly.setAttribute(
+    const hit = document.createElementNS(SVG_NS, 'path')
+    hit.setAttribute('d', connector.pathData)
+    hit.dataset.connector = String(connector.index)
+    hit.setAttribute(
       'class',
       connector.index === selectedConnector ? 'sb-hit is-selected' : 'sb-hit',
     )
-    poly.addEventListener('pointerdown', (event) => {
+    hit.addEventListener('pointerdown', (event) => {
       event.stopPropagation()
       actions.selectConnector(connector.index)
     })
-    svg.append(poly)
+    svg.append(hit)
   }
   overlay.append(svg)
 }

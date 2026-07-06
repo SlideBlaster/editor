@@ -14,8 +14,11 @@ import type {
   ListItem,
   MarkdownMarker,
   NodeContent,
+  OverlayCommand,
+  OverlaySpec,
   TextRun,
 } from '../model/content'
+import { isValidSpec } from './overlay'
 import { readGroup, skipWhitespace } from '../text/scanner'
 
 /** Raised when a construct is outside the supported subset; carries a message. */
@@ -40,7 +43,9 @@ const LATEX_LIST_BEGIN = /^\\begin\{(itemize|enumerate)\}/
 const LATEX_LIST_END = /^\\end\{(itemize|enumerate)\}/
 const HTML_LIST_OPEN = /^<(ul|ol)>/i
 const HTML_FRAGMENT = /^<appear>/i
-const FRAGMENT = /^\\(appear|pause|only)(?:\[=(\d+)\])?/
+const FRAGMENT = /^\\(appear|pause)(?:<([^>]*)>)?/
+const OVERLAY = /^\\(only|uncover|visible|invisible|alert)(?:<([^>]*)>)?\{/
+const ITEM_SPEC = /^<([^>]*)>/
 const COLUMNS_BEGIN = /^\\begin\{columns\}/
 const TABULAR_BEGIN = /^\\begin\{tabular\}/
 const MATRIX = /^\\matrix\b/
@@ -50,6 +55,13 @@ const CITEFOOTNOTE = /^\\citefootnote\{/
 const CITE = /^\\cite\{/
 const PRINTBIB = /^\\printbibliography(\{[^}]*\})?/
 const MD_IMAGE = /^!\[([^\]]*)\]\(([^)]*)\)/
+
+/** Validate an optional `<spec>` capture into an OverlaySpec; malformed -> out-of-subset. */
+function overlaySpec(raw: string | undefined): OverlaySpec | undefined {
+  if (raw === undefined) return undefined
+  if (!isValidSpec(raw)) throw new OutOfSubsetError(`invalid overlay spec <${raw}>`)
+  return { raw }
+}
 
 /** Split a `\cite{…}` argument into trimmed, non-empty keys (`a, b` -> ['a','b']). */
 function citeKeys(inner: string): string[] {
@@ -175,15 +187,31 @@ function parseRuns(s: string): TextRun[] {
         emit({ kind: 'printbibliography' }, i + printbib[0].length)
         continue
       }
+      const overlay = OVERLAY.exec(rest)
+      if (overlay) {
+        const spec = overlaySpec(overlay[2])
+        // The trailing `{` is the last matched char; read its group from there.
+        const group = readGroup(s, i + overlay[0].length - 1, '{', '}')
+        emit(
+          {
+            kind: 'overlay',
+            command: overlay[1] as OverlayCommand,
+            children: parseRuns(group.inner),
+            ...(spec ? { spec } : {}),
+          },
+          group.end,
+        )
+        continue
+      }
       const fragment = FRAGMENT.exec(rest)
       if (fragment) {
-        const at = fragment[2] !== undefined ? Number(fragment[2]) : undefined
+        const spec = overlaySpec(fragment[2])
         emit(
           {
             kind: 'fragment',
             name: fragment[1] as FragmentName,
             dialect: 'latex',
-            ...(at !== undefined ? { at } : {}),
+            ...(spec ? { spec } : {}),
           },
           i + fragment[0].length,
         )
@@ -258,9 +286,11 @@ function parseLatexList(s: string, start: number): { run: TextRun; end: number }
   const ordered = m[1] === 'enumerate'
   const bodyStart = start + m[0].length
   const close = findLatexListEnd(s, bodyStart)
-  const items = splitLatexItems(s.slice(bodyStart, close.start)).map((c) => ({
-    children: parseRuns(c),
-  }))
+  const items = splitLatexItems(s.slice(bodyStart, close.start)).map((it) => {
+    const children = parseRuns(it.content.trim())
+    const spec = overlaySpec(it.specRaw)
+    return spec ? { children, spec } : { children }
+  })
   return { run: { kind: 'list', ordered, dialect: 'latex', items }, end: close.end }
 }
 
@@ -287,13 +317,24 @@ function findLatexListEnd(s: string, from: number): { start: number; end: number
   throw new OutOfSubsetError('unclosed \\begin{itemize|enumerate}')
 }
 
-/** Split a list-env body into item contents at top-level `\item` (trimmed). */
-function splitLatexItems(inner: string): string[] {
-  const items: string[] = []
+/** One raw list item: its verbatim content plus an optional `\item<spec>` overlay text. */
+interface RawItem {
+  content: string
+  specRaw?: string
+}
+
+/** Split a list-env body into items at top-level `\item`, capturing `\item<spec>` overlays.
+ *  Content is returned verbatim (the caller trims and parses); nested list envs are skipped. */
+function splitLatexItems(inner: string): RawItem[] {
+  const items: RawItem[] = []
   let brace = 0
   let envDepth = 0
   let start = -1
+  let specRaw: string | undefined
   let i = 0
+  const flush = (end: number): void => {
+    if (start !== -1) items.push(specRaw !== undefined ? { content: inner.slice(start, end), specRaw } : { content: inner.slice(start, end) })
+  }
   while (i < inner.length) {
     const ch = inner[i]!
     if (ch === '{') {
@@ -321,16 +362,19 @@ function splitLatexItems(inner: string): string[] {
         continue
       }
       if (envDepth === 0 && /^\\item\b/.test(rest)) {
-        if (start !== -1) items.push(inner.slice(start, i))
+        flush(i)
         i += '\\item'.length
+        const specM = ITEM_SPEC.exec(inner.slice(i))
+        specRaw = specM ? specM[1] : undefined
+        if (specM) i += specM[0].length
         start = i
         continue
       }
     }
     i += 1
   }
-  if (start !== -1) items.push(inner.slice(start))
-  return items.map((c) => c.trim())
+  flush(inner.length)
+  return items
 }
 
 /** `<ul>`/`<ol>` containing `<li>` items; nested lists recurse. */

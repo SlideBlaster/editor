@@ -23,14 +23,18 @@ import {
   getMeta,
   slideStylesheet,
   renderSlide,
+  slideStepCount,
   resolveLayoutAsync,
   parseContent,
   findNode,
+  placement,
   moveNodeTo,
+  resizeNode,
   placeNodeRelative,
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeOverlay,
   createConnector,
   deleteConnector,
   updateConnector,
@@ -51,12 +55,13 @@ import {
   type Selection,
   type ConnectorSelection,
 } from './deck'
+import type { CurveFocus } from './connectorEditor'
 import { paintDeckNav, type NavHandle } from './deckNav'
 import { paintProperties, type PropSelection } from './properties'
 import { openCreationMenu, type MenuItem } from './createMenu'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
-import { SLIDE_TYPE_CSS } from './slideType'
+import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
 import {
   renderOptions,
   installTableCompiler,
@@ -97,8 +102,13 @@ interface State {
   active: number // the slide most in view; drives the navigator highlight
   selected: Selection | null
   selectedConnector: ConnectorSelection | null
+  // E4+: the anchor/dot (of the selected connector) whose tangent angles the panel edits. Set
+  // by the connector editor on paint, carrying the live geometry the panel works against.
+  focusedCurve: (CurveFocus & { frame: number }) | null
   connectMode: boolean // E4: dragging a node draws an arrow instead of moving it
   autoEdit: Selection | null // W5: a just-created node to open in edit mode next paint
+  // ADR 0018: overlay-step preview for the active slide (null = all-visible authoring view).
+  preview: { frame: number; step: number } | null
 }
 
 /** The creation-menu catalogue (W5): each entry maps to a createNode spec. `body` is
@@ -182,8 +192,10 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     active: 0,
     selected: null,
     selectedConnector: null,
+    focusedCurve: null,
     connectMode: false,
     autoEdit: null,
+    preview: null,
   }
   // Source-history undo/redo: each committed canvas edit snapshots the prior source.
   const undoStack: string[] = []
@@ -251,18 +263,34 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         ? { kind: 'connector', index: state.selectedConnector.index }
         : null
     const picture = frame !== null ? (currentDoc?.frames[frame]?.picture ?? null) : null
+    // Curve-angle editing is offered only when the focused curve belongs to the arrow that
+    // is actually selected (a stale focus from a since-deselected connector is ignored).
+    const curveFocus =
+      state.selectedConnector &&
+      state.focusedCurve &&
+      state.focusedCurve.frame === state.selectedConnector.frame &&
+      state.focusedCurve.index === state.selectedConnector.index
+        ? state.focusedCurve
+        : null
     paintProperties(propsHost, {
       selection,
       picture,
+      curveFocus,
       actions: {
         moveNode: (name, center) => frame !== null && actions.move(frame, name, center),
         bindNode: (name, binding) => frame !== null && actions.bind(frame, name, binding),
+        resizeNode: (name, patch) => frame !== null && actions.resize(frame, name, patch),
         setConnectorOptions: (index, options) => {
           const target = frame !== null ? currentDoc?.frames[frame] : undefined
           if (currentDoc && target && frame !== null)
             commit(
               withFrame(currentDoc, frame, setConnectorOptions(target.picture, index, options)),
             )
+        },
+        updateConnectorPath: (index, path) => {
+          const target = frame !== null ? currentDoc?.frames[frame] : undefined
+          if (currentDoc && target && frame !== null)
+            commit(withFrame(currentDoc, frame, updateConnector(target.picture, index, path)))
         },
       },
     })
@@ -317,6 +345,9 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     const ctx = {
       selected: state.selected,
       selectedConnector: state.selectedConnector,
+      selectedCurve: state.focusedCurve
+        ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+        : null,
       connectMode: state.connectMode,
     }
     void deckHandle?.repaintFrame(frame, doc.frames[frame]!, ctx)
@@ -331,6 +362,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     codePane.setValue(source)
     state.selected = null
     state.selectedConnector = null
+    state.focusedCurve = null
     persist()
     void render()
   }
@@ -368,6 +400,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const actions: DeckActions = {
     select(frame, name) {
       state.selected = name === null ? null : { frame, name }
+      state.focusedCurve = null // leaving a connector drops any curve-angle focus
       if (state.selectedConnector) {
         // Selecting a node clears any connector selection — needs a re-render (which
         // mounts the column affordance via paintCanvas).
@@ -389,7 +422,14 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     selectConnector(frame, index) {
       state.selectedConnector = index === null ? null : { frame, index }
       if (index !== null) state.selected = null // connector and node selection are exclusive
+      state.focusedCurve = null // the editor re-emits fresh focus for the new arrow on paint
       void render() // cheap re-render to reflect the connector highlight (no drag in flight)
+    },
+    focusConnectorCurve(frame, focus) {
+      // Fired by the connector editor (on paint, and when a control handle is grabbed): pin
+      // the segment the panel edits, carrying its live geometry. Panel-only, never a render.
+      state.focusedCurve = focus ? { ...focus, frame } : null
+      paintPanel()
     },
     updateConnector(frame, index, path) {
       const target = currentDoc?.frames[frame]
@@ -400,6 +440,23 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       const target = currentDoc?.frames[frame]
       if (!currentDoc || !target) return
       commit(withFrame(currentDoc, frame, moveNodeTo(target.picture, name, center)))
+    },
+    resize(frame, name, patch) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target) return
+      let picture = resizeNode(target.picture, name, {
+        ...(patch.textWidth !== undefined ? { textWidth: patch.textWidth } : {}),
+        ...(patch.minHeight !== undefined ? { minHeight: patch.minHeight } : {}),
+        ...(patch.scaleX !== undefined ? { scaleX: patch.scaleX } : {}),
+        ...(patch.scaleY !== undefined ? { scaleY: patch.scaleY } : {}),
+      })
+      // Keep the dragged edge's opposite side anchored — but only for absolute nodes; a
+      // relatively-placed node keeps its binding and re-resolves its own center.
+      const node = findNode(picture, name)
+      if (patch.center && node && placement(node) === undefined) {
+        picture = moveNodeTo(picture, name, patch.center)
+      }
+      commit(withFrame(currentDoc, frame, picture))
     },
     bind(frame, name, binding) {
       const target = currentDoc?.frames[frame]
@@ -463,6 +520,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (state.selected && state.selected.frame > maxIndex) state.selected = null
     if (state.selectedConnector && state.selectedConnector.frame > maxIndex)
       state.selectedConnector = null
+    if (!state.selectedConnector) state.focusedCurve = null // no arrow selected -> no curve focus
 
     const seq = ++renderSeq
     const autoEdit = state.autoEdit
@@ -471,14 +529,22 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       frames: doc.frames,
       selected: state.selected,
       selectedConnector: state.selectedConnector,
+      selectedCurve: state.focusedCurve
+        ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+        : null,
       connectMode: state.connectMode,
       autoEdit,
+      preview: state.preview,
       actions,
       measurer,
       isStale: () => seq !== renderSeq,
       onActiveChange: (index) => {
+        const changed = index !== state.active
         state.active = index
         navHandle?.setActive(index)
+        // Overlay preview is per active slide; scrolling to another returns it to all-visible.
+        if (changed && state.preview && state.preview.frame !== index) clearPreview()
+        updateStepControl()
       },
     })
     if (handle === null) return // a newer render superseded this one
@@ -492,6 +558,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     redoButton.disabled = redoStack.length === 0
     setStatus()
     paintPanel()
+    updateStepControl()
   }
 
   // Compile port (latexml tables): compile out of band, then drop the placeholder
@@ -736,6 +803,6 @@ function injectGlobalStyles(): void {
   if (document.getElementById('sb-global-styles')) return
   const style = document.createElement('style')
   style.id = 'sb-global-styles'
-  style.textContent = `${slideStylesheet()}\n${SLIDE_TYPE_CSS}\n${KATEX_CSS}`
+  style.textContent = `${slideStylesheet()}\n${SLIDE_THEME_CSS}\n${SLIDE_TYPE_CSS}\n${KATEX_CSS}`
   document.head.append(style)
 }

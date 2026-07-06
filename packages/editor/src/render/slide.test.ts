@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parsePicture } from '../tikz/parse'
 import { resolveLayout } from '../layout/resolve'
 import type { Measurer } from '../layout/measure'
-import { renderSlide, connectorsOf, slideStylesheet } from './slide'
+import { renderSlide, connectorsOf, slideStylesheet, slideStepCount } from './slide'
 
 const fixed = (width: number, height: number): Measurer => ({ measure: () => ({ width, height }) })
 
@@ -73,6 +73,37 @@ describe('renderSlide', () => {
   it('tags content nodes with their model identity (data-node)', () => {
     expect(html).toContain('data-node="intro"')
     expect(html).toContain('data-node="o2"')
+  })
+})
+
+describe('overlays: step count and whole-node reveal (ADR 0018)', () => {
+  const deck = parsePicture(
+    [
+      '\\node[title] (title) {A};',
+      '\\node[overlay={2-}] (later) at (4,4) {shows from step 2};',
+      '\\node (build) at (8,4) {intro \\pause more};',
+    ].join('\n'),
+  )
+
+  it('slideStepCount is the max step referenced by node overlays and inline content', () => {
+    expect(slideStepCount(deck)).toBe(2)
+    expect(slideStepCount(parsePicture('\\node (a) {plain};'))).toBe(1)
+    expect(slideStepCount(parsePicture('\\node[overlay={4-}] (a) {x};'))).toBe(4)
+  })
+
+  it('a node with an inactive overlay is hidden with space reserved at that step', () => {
+    const at1 = renderSlide(deck, resolveLayout(deck, fixed(2, 1)), { step: 1 })
+    const at2 = renderSlide(deck, resolveLayout(deck, fixed(2, 1)), { step: 2 })
+    // The `overlay={2-}` node carries its spec and is hidden on step 1, shown on step 2.
+    expect(at1).toContain('data-overlay="2-"')
+    expect(at1).toMatch(/class="sb-node sb-ov-hidden"[^>]*data-node="later"/)
+    expect(at2).not.toContain('sb-ov-hidden')
+  })
+
+  it('authoring render (no step) shows every node, none hidden', () => {
+    const all = renderSlide(deck, resolveLayout(deck, fixed(2, 1)))
+    expect(all).toContain('data-node="later"')
+    expect(all).not.toContain('sb-ov-hidden')
   })
 })
 

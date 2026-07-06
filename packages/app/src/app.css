@@ -620,6 +620,14 @@ button.tree-row {
   color: var(--ink);
 }
 
+/* Section divider inside a panel (e.g. the "Curve" angle block under an arrow's style). */
+.props-subtitle {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+
 .props-mode {
   font-size: 0.68rem;
   text-transform: uppercase;
@@ -805,6 +813,71 @@ button.tree-row {
   cursor: grabbing;
 }
 
+/* Resize grips (resizeHandles.ts): eight drag squares on the selected node's handle.
+   Hidden until the handle is selected, so they ride the repaint-free selection toggle. */
+.sb-resize-grip {
+  display: none;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 2px;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.sb-handle.is-selected > .sb-resize-grip {
+  display: block;
+}
+
+.grip-n {
+  top: -5px;
+  left: 50%;
+  margin-left: -5px;
+  cursor: ns-resize;
+}
+.grip-s {
+  bottom: -5px;
+  left: 50%;
+  margin-left: -5px;
+  cursor: ns-resize;
+}
+.grip-e {
+  right: -5px;
+  top: 50%;
+  margin-top: -5px;
+  cursor: ew-resize;
+}
+.grip-w {
+  left: -5px;
+  top: 50%;
+  margin-top: -5px;
+  cursor: ew-resize;
+}
+.grip-nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+.grip-ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+.grip-se {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+.grip-sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
 /* Column grid affordance (columnEditor.ts, ADR 0016): shown over the selected node.
    The layer is inert; only the divider grips and the "+" capture pointer events. */
 .sb-col-edit {
@@ -919,10 +992,10 @@ button.tree-row {
   pointer-events: none;
 }
 
-/* Selection target: a forgiving straight stroke along the connector's anchor chord — the
-   "original straight line", never the curved path — so a curved arrow is selected by its
-   baseline (which, with border anchors, runs edge-to-edge in the open) rather than by
-   chasing the bulge of the curve. */
+/* Selection target: a forgiving stroke that traces the connector's actual path (curves and
+   all), so a curved arrow is selected by grabbing the curve you see rather than a phantom
+   straight baseline. `fill:none` keeps only the stroke clickable, not the area a curve
+   encloses. */
 .sb-hit {
   fill: none;
   stroke: transparent;
@@ -1001,9 +1074,28 @@ button.tree-row {
   fill: var(--accent);
 }
 
+/* The dot (endpoint or split-point) whose angles the properties panel is editing: ringed
+   so you can see which point the In/Out angle fields belong to. */
+.sb-anchor.is-focused {
+  stroke: var(--accent);
+  stroke-width: 0.08;
+}
+
 .sb-ctrl {
   fill: #a855f7;
   stroke: #fff;
+  stroke-width: 0.03;
+}
+
+/* The control handles of the segment the properties panel is editing: bigger, ringed, so
+   you can see which curve the angle fields belong to. */
+.sb-ctrl.is-focused {
+  stroke: var(--accent);
+  stroke-width: 0.05;
+}
+
+.sb-ctrl-line.is-focused {
+  stroke-dasharray: none;
   stroke-width: 0.03;
 }
 
@@ -1011,6 +1103,12 @@ button.tree-row {
   fill: #fff;
   stroke: #a855f7;
   stroke-width: 0.045;
+}
+
+/* The bend of the straight segment whose angles the panel is editing. */
+.sb-bend.is-focused {
+  stroke: var(--accent);
+  stroke-width: 0.06;
 }
 
 /* Snap targets shown while dragging a connector endpoint; the active one is solid. */
@@ -1081,6 +1179,130 @@ button.tree-row {
 
 .sb-create-item.is-active .sb-create-hint {
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* Modal dialogs (dialog.ts): confirm / prompt / alert in the native top layer. */
+.sb-dialog {
+  margin: auto; /* center in the top layer */
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  max-width: min(26rem, calc(100vw - 2rem));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.32);
+}
+
+.sb-dialog::backdrop {
+  background: rgba(10, 12, 18, 0.45);
+}
+
+.sb-dialog[open] {
+  animation: sb-dialog-in 0.12s ease;
+}
+
+@keyframes sb-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-dialog[open] {
+    animation: none;
+  }
+}
+
+.sb-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.15rem 1.25rem 1.1rem;
+  font-family: var(--font-ui);
+}
+
+.sb-dialog-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.sb-dialog-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap; /* honour \n in messages */
+}
+
+.sb-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sb-dialog-field-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.sb-dialog-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  padding: 0.5rem 0.66rem;
+}
+
+.sb-dialog-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.sb-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.sb-dialog-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 550;
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+}
+
+.sb-dialog-cancel {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.sb-dialog-cancel:hover {
+  border-color: var(--muted);
+}
+
+.sb-dialog-confirm {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.sb-dialog-confirm:hover {
+  filter: brightness(1.05);
+}
+
+.sb-dialog-confirm.is-danger {
+  border-color: var(--danger);
+  background: var(--danger);
 }
 
 /* Relationship badge: floats at the bound node showing the side and gap. */

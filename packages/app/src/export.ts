@@ -14,7 +14,7 @@
  * `toStandaloneHtml` (port-conformant) plus `downloadDeckHtml` and `printDeck`.
  */
 import { slideStylesheet, type RenderedSlide } from '@slideblaster/editor'
-import { SLIDE_TYPE_CSS } from './slideType'
+import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
 import { KATEX_CSS } from './katexInlineCss'
 
 /** Standard 16:9 slide page (PowerPoint/Beamer widescreen), used for the print @page. */
@@ -93,6 +93,7 @@ function buildDeckDocument(slides: RenderedSlide[], title: string): string {
 <style>
 ${DOCUMENT_CSS}
 ${slideStylesheet()}
+${SLIDE_THEME_CSS}
 ${SLIDE_TYPE_CSS}
 ${KATEX_CSS}
 </style>

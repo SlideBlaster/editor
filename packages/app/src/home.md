@@ -12,7 +12,8 @@ creation and passes them in as callbacks.
   a delete).
 - **Create:** a name field + button; submitting calls `onCreate(name)` (the shell
   creates the project and opens it). **Open:** each project card calls
-  `onOpen(id)`. **Delete:** a per-card button, confirmed, calls `onDelete(id)`.
+  `onOpen(id)`. **Delete:** a per-card button, confirmed via an in-app
+  [dialog](./dialog.md), calls `onDelete(id)`.
 - Empty state prompts the user to create their first project. Cards show the name
   and a coarse "opened … ago".
 - Styling: `home.css`, using the design tokens `app.css` defines on `:root`, so

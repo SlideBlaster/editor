@@ -50,6 +50,83 @@ export function moveNodeTo(picture: TikzPicture, name: string, at: Point): TikzP
   }))
 }
 
+const TEXT_WIDTH_RE = /^text\s+width\s*=/
+const MIN_HEIGHT_RE = /^minimum\s+height\s*=/
+const OVERLAY_RE = /^overlay\s*=/
+const SCALE_RE = /^scale\s*=/
+const XSCALE_RE = /^xscale\s*=/
+const YSCALE_RE = /^yscale\s*=/
+
+/**
+ * Resize a node by setting (or clearing) its size option tokens. Two independent levers:
+ *  - `scaleX` / `scaleY`: the content scale (drag-resize) — the rendered content (text,
+ *    tables, images) grows with the box. Written as a single `scale=<k>` when the axes are
+ *    equal, else `xscale`/`yscale`; `1` on both axes clears them (natural size).
+ *  - `textWidth` / `minHeight`: the natural box before scaling — `text width=<n>` wraps the
+ *    text; `minimum height=<n>` floors the height. A number sets, `null` clears.
+ * Any key left `undefined` is untouched. A no-op if the node is not found. Position (`at` /
+ * placement) is untouched — the caller updates `at` when a resize should keep the opposite
+ * edge anchored (only meaningful for absolutely-positioned nodes).
+ */
+export function resizeNode(
+  picture: TikzPicture,
+  name: string,
+  patch: {
+    textWidth?: number | null
+    minHeight?: number | null
+    scaleX?: number | null
+    scaleY?: number | null
+  },
+): TikzPicture {
+  return mapNode(picture, name, (node) => {
+    let options = node.options
+    if (patch.textWidth !== undefined) {
+      options = withSizeToken(
+        options,
+        TEXT_WIDTH_RE,
+        patch.textWidth === null ? null : `text width=${formatNumber(patch.textWidth)}`,
+      )
+    }
+    if (patch.minHeight !== undefined) {
+      options = withSizeToken(
+        options,
+        MIN_HEIGHT_RE,
+        patch.minHeight === null ? null : `minimum height=${formatNumber(patch.minHeight)}`,
+      )
+    }
+    if (patch.scaleX !== undefined || patch.scaleY !== undefined) {
+      options = withScaleTokens(options, patch.scaleX ?? 1, patch.scaleY ?? 1)
+    }
+    return { ...node, options }
+  })
+}
+
+/** Rewrite a node's scale tokens: drop `scale`/`xscale`/`yscale`, then re-add the minimal
+ *  form — nothing at 1×1, `scale=<k>` when the axes match, else `xscale`/`yscale`. */
+function withScaleTokens(options: string[], sx: number, sy: number): string[] {
+  const without = options.filter(
+    (t) => !SCALE_RE.test(t) && !XSCALE_RE.test(t) && !YSCALE_RE.test(t),
+  )
+  const eq = (a: number, b: number): boolean => Math.abs(a - b) < 1e-6
+  if (eq(sx, 1) && eq(sy, 1)) return without
+  if (eq(sx, sy)) return [...without, `scale=${formatNumber(sx)}`]
+  return [...without, `xscale=${formatNumber(sx)}`, `yscale=${formatNumber(sy)}`]
+}
+
+/**
+ * Set (or clear, when `spec` is null/blank) a node's `overlay=<spec>` reveal option — the
+ * whole-node half of the two-level overlay model (ADR 0018). The raw spec is stored
+ * brace-wrapped (`overlay={1,3}`) so its commas survive tikz option tokenizing. Placement,
+ * size, and content are untouched. A no-op if the node is not found.
+ */
+export function setNodeOverlay(picture: TikzPicture, name: string, spec: string | null): TikzPicture {
+  const raw = spec?.trim() ?? ''
+  return mapNode(picture, name, (node) => ({
+    ...node,
+    options: withSizeToken(node.options, OVERLAY_RE, raw === '' ? null : `overlay={${raw}}`),
+  }))
+}
+
 /**
  * Replace a node's body content (E3: inline content editing). A no-op if the node is
  * not found. Content is the parsed result of the edited raw body, so an out-of-subset
@@ -236,6 +313,17 @@ export function deleteConnector(picture: TikzPicture, index: number): TikzPictur
       return seen !== index
     }),
   }
+}
+
+/** Replace the first option token matching `re` in place (or append when none matched),
+ *  or drop it entirely when `token` is null. Mirrors `withPlacementToken`. */
+function withSizeToken(options: string[], re: RegExp, token: string | null): string[] {
+  const idx = options.findIndex((t) => re.test(t))
+  const without = options.filter((t) => !re.test(t))
+  if (token === null) return without
+  if (idx === -1) return [...without, token]
+  without.splice(Math.min(idx, without.length), 0, token)
+  return without
 }
 
 /** Replace the first placement token in place (or append), dropping any others. */

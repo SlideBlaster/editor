@@ -19,6 +19,8 @@ export type {
   LatexCommand,
   MarkdownMarker,
   FragmentName,
+  OverlaySpec,
+  OverlayCommand,
   DeferredFeature,
   Dialect,
 } from './content'

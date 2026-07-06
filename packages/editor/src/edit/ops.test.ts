@@ -4,13 +4,16 @@ import { serializePicture } from '../tikz/serialize'
 import { parseContent } from '../content/parse'
 import { serializeBody } from '../content/serialize'
 import { parseConnector, type ConnectorPath } from '../tikz/connector'
+import { nodeOverlay } from '../tikz/options'
 import {
   findNode,
   uniqueName,
   moveNodeTo,
+  resizeNode,
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeOverlay,
   placeNodeRelative,
   adjustPlacement,
   createConnector,
@@ -42,6 +45,80 @@ describe('findNode / uniqueName', () => {
   it('mints a name that avoids existing ones', () => {
     expect(uniqueName(picture())).toBe('n1')
     expect(uniqueName(parsePicture('\\node (n1) at (0,0) {};'))).toBe('n2')
+  })
+})
+
+describe('resizeNode', () => {
+  it('replaces an existing text width in place, keeping other options', () => {
+    const out = serializePicture(resizeNode(picture(), 'intro', { textWidth: 8 }))
+    expect(out).toContain('\\node[body, below=0.7 of title, text width=8] (intro) {hi};')
+  })
+
+  it('adds a text width to a node that had none', () => {
+    const out = serializePicture(resizeNode(picture(), 'o2', { textWidth: 5 }))
+    expect(out).toContain('\\node[note, text width=5] (o2) at (10,3) {x};')
+  })
+
+  it('adds and later clears a minimum height (null resets to auto)', () => {
+    const sized = resizeNode(picture(), 'o2', { minHeight: 2.5 })
+    expect(serializePicture(sized)).toContain(
+      '\\node[note, minimum height=2.5] (o2) at (10,3) {x};',
+    )
+    const cleared = resizeNode(sized, 'o2', { minHeight: null })
+    expect(serializePicture(cleared)).toContain('\\node[note] (o2) at (10,3) {x};')
+  })
+
+  it('sets width and height together and round-trips', () => {
+    const out = resizeNode(picture(), 'o2', { textWidth: 6, minHeight: 3 })
+    expect(serializePicture(out)).toContain(
+      '\\node[note, text width=6, minimum height=3] (o2) at (10,3) {x};',
+    )
+    expect(roundTrips(out)).toBe(true)
+  })
+
+  it('leaves an omitted axis untouched', () => {
+    const out = serializePicture(resizeNode(picture(), 'intro', { minHeight: 1 }))
+    // width stays at its original 12; height token is appended
+    expect(out).toContain('text width=12')
+    expect(out).toContain('minimum height=1')
+  })
+
+  it('writes a single scale token when the axes are equal', () => {
+    const out = serializePicture(resizeNode(picture(), 'o2', { scaleX: 1.5, scaleY: 1.5 }))
+    expect(out).toContain('\\node[note, scale=1.5] (o2) at (10,3) {x};')
+  })
+
+  it('writes xscale/yscale when the axes differ, and round-trips', () => {
+    const out = resizeNode(picture(), 'o2', { scaleX: 2, scaleY: 1.25 })
+    expect(serializePicture(out)).toContain(
+      '\\node[note, xscale=2, yscale=1.25] (o2) at (10,3) {x};',
+    )
+    expect(roundTrips(out)).toBe(true)
+  })
+
+  it('clears scale tokens at 1x1 (natural size)', () => {
+    const scaled = resizeNode(picture(), 'o2', { scaleX: 2, scaleY: 1.25 })
+    const reset = resizeNode(scaled, 'o2', { scaleX: 1, scaleY: 1 })
+    expect(serializePicture(reset)).toContain('\\node[note] (o2) at (10,3) {x};')
+  })
+
+  it('replaces a prior scale form (xscale/yscale -> scale) rather than stacking', () => {
+    const uneven = resizeNode(picture(), 'o2', { scaleX: 2, scaleY: 1.25 })
+    const even = serializePicture(resizeNode(uneven, 'o2', { scaleX: 1.5, scaleY: 1.5 }))
+    expect(even).toContain('scale=1.5')
+    expect(even).not.toContain('xscale')
+    expect(even).not.toContain('yscale')
+  })
+
+  it('is a serialization no-op for an unknown node', () => {
+    expect(serializePicture(resizeNode(picture(), 'ghost', { textWidth: 3 }))).toBe(SOURCE)
+  })
+
+  it('is local: other statements are untouched', () => {
+    const out = serializePicture(resizeNode(picture(), 'intro', { textWidth: 8 })).split('\n')
+    expect(out[0]).toBe('\\node[title] (title) at (8,8) {T};')
+    expect(out[2]).toBe('\\node[note] (o2) at (10,3) {x};')
+    expect(out[3]).toBe('\\draw[->] (intro) -- (o2);')
   })
 })
 
@@ -267,6 +344,29 @@ describe('deleteConnector', () => {
 
   it('is a no-op when the index is out of range', () => {
     expect(serializePicture(deleteConnector(picture(), 5))).toBe(SOURCE)
+  })
+})
+
+describe('setNodeOverlay', () => {
+  it('sets a brace-wrapped overlay option (commas survive tokenizing) and round-trips', () => {
+    const out = serializePicture(setNodeOverlay(picture(), 'o2', '1,3'))
+    expect(out).toContain('overlay={1,3}')
+    expect(roundTrips(setNodeOverlay(picture(), 'o2', '1,3'))).toBe(true)
+    expect(nodeOverlay(findNode(setNodeOverlay(picture(), 'o2', '1,3'), 'o2')!)).toEqual({
+      raw: '1,3',
+    })
+  })
+
+  it('replaces an existing overlay in place and clears it on null/blank', () => {
+    const set = setNodeOverlay(picture(), 'o2', '2-')
+    expect(serializePicture(setNodeOverlay(set, 'o2', '3-'))).toContain('overlay={3-}')
+    expect(serializePicture(setNodeOverlay(set, 'o2', '3-'))).not.toContain('overlay={2-}')
+    expect(serializePicture(setNodeOverlay(set, 'o2', null))).not.toContain('overlay=')
+    expect(serializePicture(setNodeOverlay(set, 'o2', '  '))).not.toContain('overlay=')
+  })
+
+  it('is a no-op when the node is not found', () => {
+    expect(serializePicture(setNodeOverlay(picture(), 'nope', '2-'))).toBe(SOURCE)
   })
 })
 

@@ -19,6 +19,7 @@ import {
 } from '@slideblaster/editor'
 import { paintCanvas, type CanvasActions } from './canvas'
 import { paintColumnEditors } from './columnEditor'
+import type { CurveFocus } from './connectorEditor'
 
 /** Frame-addressed edit intents: the frame you touched is an explicit argument. */
 export interface DeckActions {
@@ -31,9 +32,24 @@ export interface DeckActions {
   /** Commit a structured content edit (grid affordance): the new node content directly,
    *  taking the node-scoped delta path (ADR 0016) instead of a whole-doc round-trip. */
   editContentModel(frame: number, name: string, content: NodeContent): void
+  /** Resize a node: `scaleX`/`scaleY` scale the content (drag), `textWidth`/`minHeight` set
+   *  the natural box (panel), optionally re-anchoring an absolute node via `center`. */
+  resize(
+    frame: number,
+    name: string,
+    patch: {
+      textWidth?: number | null
+      minHeight?: number | null
+      scaleX?: number | null
+      scaleY?: number | null
+      center?: Point
+    },
+  ): void
   connect(frame: number, from: string, to: string): void
   selectConnector(frame: number, index: number | null): void
   updateConnector(frame: number, index: number, path: ConnectorPath): void
+  /** E4+: focus an anchor (dot) for angle editing in the properties panel (null clears). */
+  focusConnectorCurve(frame: number, focus: CurveFocus | null): void
 }
 
 type RelativeSide = 'above' | 'below' | 'left' | 'right'
@@ -54,10 +70,14 @@ export interface DeckProps {
   frames: Frame[]
   selected: Selection | null
   selectedConnector: ConnectorSelection | null
+  /** Which anchor (dot) of the selected connector the panel edits (frame-qualified). */
+  selectedCurve: { frame: number; anchor: number } | null
   /** When true, dragging a node draws an arrow to the node under the pointer (E4). */
   connectMode: boolean
   /** A just-created node to open in edit mode, qualified by its slide (W5). */
   autoEdit: Selection | null
+  /** Overlay-step preview for one slide (ADR 0018); every other slide renders all-visible. */
+  preview: { frame: number; step: number } | null
   actions: DeckActions
   /** Sizes node boxes; the DOM measurer in the browser, naive in tests. */
   measurer: BatchMeasurer
@@ -92,7 +112,10 @@ export interface DeckHandle {
 interface RepaintCtx {
   selected: Selection | null
   selectedConnector: ConnectorSelection | null
+  selectedCurve: { frame: number; anchor: number } | null
   connectMode: boolean
+  /** Overlay-step preview for this frame (ADR 0018); undefined renders all-visible. */
+  step?: number
 }
 
 /** One IntersectionObserver per deck host, disconnected before each rebuild. */
@@ -126,14 +149,18 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
     const selectedName = props.selected?.frame === index ? props.selected.name : null
     const selectedConnector =
       props.selectedConnector?.frame === index ? props.selectedConnector.index : null
+    const selectedCurve = props.selectedCurve?.frame === index ? props.selectedCurve.anchor : null
     const autoEdit = props.autoEdit?.frame === index ? props.autoEdit.name : null
+    const step = props.preview?.frame === index ? props.preview.step : undefined
     paintCanvas(card, {
       picture: frame.picture,
       layout: layouts[index]!,
       selected: selectedName,
       selectedConnector,
+      selectedCurve,
       connectMode: props.connectMode,
       autoEdit,
+      ...(step !== undefined ? { step } : {}),
       actions: bindFrame(props.actions, index),
     })
     canvas.append(card)
@@ -168,8 +195,10 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
         selected: ctx.selected?.frame === index ? ctx.selected.name : null,
         selectedConnector:
           ctx.selectedConnector?.frame === index ? ctx.selectedConnector.index : null,
+        selectedCurve: ctx.selectedCurve?.frame === index ? ctx.selectedCurve.anchor : null,
         connectMode: ctx.connectMode,
         autoEdit: null,
+        ...(ctx.step !== undefined ? { step: ctx.step } : {}),
         actions: bindFrame(props.actions, index),
       })
       return true
@@ -206,9 +235,11 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     remove: (name) => actions.remove(frame, name),
     editContent: (name, body) => actions.editContent(frame, name, body),
     editContentModel: (name, content) => actions.editContentModel(frame, name, content),
+    resize: (name, patch) => actions.resize(frame, name, patch),
     connect: (from, to) => actions.connect(frame, from, to),
     selectConnector: (index) => actions.selectConnector(frame, index),
     updateConnector: (index, path) => actions.updateConnector(frame, index, path),
+    focusConnectorCurve: (focus) => actions.focusConnectorCurve(frame, focus),
   }
 }
 

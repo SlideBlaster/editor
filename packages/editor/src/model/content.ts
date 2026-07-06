@@ -3,7 +3,9 @@
  *
  * Scope so far: inline runs (text, opaque math, provenance-faithful emphasis in
  * every dialect); lists (md / LaTeX itemize+enumerate / HTML ul+ol, nestable);
- * reveal fragments (`\appear`/`\pause`/`\only`, optional `[=N]` step, `<appear>`);
+ * overlays — point fragments (`\pause`/`\appear`, `<appear>`) and wrapping commands
+ * (`\only`/`\uncover`/`\visible`/`\invisible`/`\alert`), each carrying an optional
+ * Beamer `<spec>`, step-gated at render (ADR 0018, `../content/overlay`);
  * images (`\image`, `![alt](src)`); and `columns`/`matrix` groups (fully structured
  * — only their visual layout is the render track). Two constructs parse but need a
  * port to render: `table` (`tabular` -> Compile, kept opaque as `deferred`) and
@@ -35,7 +37,8 @@ export type TextRun =
   | { kind: 'list'; ordered: boolean; dialect: Dialect; items: ListItem[] }
   | { kind: 'columns'; columns: Column[] }
   | { kind: 'matrix'; options: string; rows: MatrixCell[][] }
-  | { kind: 'fragment'; name: FragmentName; dialect: 'latex' | 'html'; at?: number }
+  | { kind: 'fragment'; name: FragmentName; dialect: 'latex' | 'html'; spec?: OverlaySpec }
+  | { kind: 'overlay'; command: OverlayCommand; children: TextRun[]; spec?: OverlaySpec }
   | { kind: 'image'; src: string; alt: string; dialect: 'latex' | 'md' }
   | { kind: 'include'; path: string }
   | { kind: 'deferred'; feature: DeferredFeature; source: string }
@@ -43,9 +46,11 @@ export type TextRun =
   | { kind: 'citefootnote'; keys: string[] }
   | { kind: 'printbibliography' }
 
-/** A list item: its inline content, which may itself contain a nested `list` run. */
+/** A list item: its inline content, which may itself contain a nested `list` run.
+ *  `spec` is a LaTeX `\item<spec>` overlay (the item appears on those steps). */
 export interface ListItem {
   children: TextRun[]
+  spec?: OverlaySpec
 }
 
 /** A column in a `columns` group; `width` is the raw `\column{…}` argument. */
@@ -65,8 +70,27 @@ export type LatexCommand = 'textbf' | 'emph' | 'textit' | 'underline'
 /** Markdown emphasis delimiters modeled in A3a. */
 export type MarkdownMarker = '*' | '**'
 
-/** Reveal markers; `\appear`/`\only` take an optional `[=N]` step, `<appear>` is html. */
-export type FragmentName = 'appear' | 'pause' | 'only'
+/** Point reveal markers: `\pause`/`\appear` (opt. `<spec>`) and the html `<appear>`.
+ *  They raise the reading-order step floor — content after them appears later. */
+export type FragmentName = 'appear' | 'pause'
+
+/**
+ * A Beamer overlay specification — the raw text inside `<…>` (e.g. `2-`, `2-4`, `1,3`).
+ * Stored verbatim so it round-trips byte-for-byte; `../content/overlay` interprets it
+ * (`activeAt(spec, step)`, `specMaxStep`, `specMinStep`). A malformed spec never reaches
+ * the model — the parser rejects it as out-of-subset (ADR 0015/0018).
+ */
+export interface OverlaySpec {
+  raw: string
+}
+
+/**
+ * Overlay-aware wrapping commands: `\command<spec>{ … }`. Visibility at a step:
+ * `only`/`uncover`/`visible` show when the spec is active (hide otherwise);
+ * `invisible` hides when active; `alert` always shows but highlights when active.
+ * Under fixed geometry (ADR 0018) `only` and `uncover` reserve the same space.
+ */
+export type OverlayCommand = 'only' | 'uncover' | 'visible' | 'invisible' | 'alert'
 
 /**
  * A supported construct parsed but not renderable without an external port, so its

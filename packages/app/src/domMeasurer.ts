@@ -19,7 +19,7 @@ import {
   type MeasureInput,
   type Size,
 } from '@slideblaster/editor'
-import { SLIDE_TYPE_CSS } from './slideType'
+import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
 import { renderOptions } from './tableCompiler'
 
 const SLIDE_W = 16
@@ -75,6 +75,9 @@ export function createDomMeasurer(): DomMeasurer {
       // node's natural width (widest line) with `max-content`.
       el.style.width =
         input.textWidth !== undefined ? `${input.textWidth * PER_UNIT}px` : 'max-content'
+      // `minimum height` is a grow-only floor: the box reads at least this tall, but taller
+      // content still wins (CSS min-height never clips), matching the naive measurer.
+      if (input.minHeight !== undefined) el.style.minHeight = `${input.minHeight * PER_UNIT}px`
       el.innerHTML = renderContent(input.content, renderOptions)
       content.append(el)
       els.push(el)
@@ -107,9 +110,14 @@ export function createDomMeasurer(): DomMeasurer {
   }
 }
 
-/** Cache key: same content + style + fixed width ⇒ same box. */
+/** Cache key: same content + style + fixed width + height floor ⇒ same box. */
 function keyOf(input: MeasureInput): string {
-  return JSON.stringify([input.content, input.styleClasses, input.textWidth ?? null])
+  return JSON.stringify([
+    input.content,
+    input.styleClasses,
+    input.textWidth ?? null,
+    input.minHeight ?? null,
+  ])
 }
 
 /** Drop repeats within a batch so identical nodes are measured once. */
@@ -129,6 +137,6 @@ function ensureStyle(): void {
   styleInjected = true
   const style = document.createElement('style')
   style.dataset.sb = 'measure'
-  style.textContent = `${SLIDE_TYPE_CSS}\n${MEASURE_CSS}`
+  style.textContent = `${SLIDE_THEME_CSS}\n${SLIDE_TYPE_CSS}\n${MEASURE_CSS}`
   document.head.append(style)
 }

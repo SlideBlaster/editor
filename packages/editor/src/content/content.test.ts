@@ -171,7 +171,10 @@ describe('A3c: images, includes, columns, matrix, richer fragments, deferred tab
     '\\image{figures/plot.png}', // LaTeX image
     '![a caption](figures/plot.png)', // markdown image
     '\\cat{shared/defs.tex}', // include (Storage port deferred)
-    'reveal \\only[=2] this and \\appear[=1] that', // fragments with steps
+    'reveal \\only<2>{this} and \\appear that', // wrapping overlay + point fragment
+    'build \\uncover<2->{more} then \\pause rest', // uncover range + pause
+    '\\alert<3>{hot} and \\visible<1,3>{v} and \\invisible<2>{i}', // alert / visible / invisible
+    '\\begin{itemize}\\item<2-> staged\\item plain\\end{itemize}', // \item<spec> overlay
     'html <appear> marker',
     '\\begin{columns}\\column{0.5}left\\column{0.5}**right**\\end{columns}', // columns (structured)
     '\\matrix{a & b \\\\ c & d}', // matrix (structured)
@@ -203,7 +206,13 @@ describe('A3c: images, includes, columns, matrix, richer fragments, deferred tab
       dialect: 'md',
     })
     expect(runOf('\\cat{p.tex}')).toEqual({ kind: 'include', path: 'p.tex' })
-    expect(runOf('\\only[=2]')).toEqual({ kind: 'fragment', name: 'only', dialect: 'latex', at: 2 })
+    expect(runOf('\\only<2>{x}')).toEqual({
+      kind: 'overlay',
+      command: 'only',
+      children: [{ kind: 'text', value: 'x' }],
+      spec: { raw: '2' },
+    })
+    expect(runOf('\\pause')).toEqual({ kind: 'fragment', name: 'pause', dialect: 'latex' })
   })
 
   it('columns and matrix parse into a real structure (only their layout is deferred to B)', () => {

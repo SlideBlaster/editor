@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { parseContent } from '../content/parse'
 import { renderContent } from './html'
 
-const html = (body: string) => renderContent(parseContent(body))
+const html = (body: string, step?: number) =>
+  renderContent(parseContent(body), step !== undefined ? { step } : {})
 
 describe('renderContent: inline', () => {
   it('renders markdown bold', () => {
@@ -97,9 +98,49 @@ describe('renderContent: port-gated payloads are labelled, not dropped', () => {
     )
   })
 
-  it('a fragment is an empty marker carrying its step', () => {
-    expect(html('\\only[=2]')).toBe(
-      '<span class="sb-fragment" data-fragment="only" data-at="2"></span>',
+  it('a point fragment renders as an empty marker', () => {
+    expect(html('a \\pause b')).toBe(
+      'a <span class="sb-fragment" data-fragment="pause"></span> b',
+    )
+  })
+})
+
+describe('renderContent: overlays (ADR 0018)', () => {
+  it('show-all (no step) renders overlay children with an addressable marker, never hidden', () => {
+    expect(html('\\only<2>{hi}')).toBe(
+      '<span class="sb-overlay" data-ov="only" data-overlay="2">hi</span>',
+    )
+  })
+
+  it('at a step, an inactive overlay is hidden with its space reserved', () => {
+    expect(html('\\only<2>{hi}', 1)).toBe(
+      '<span class="sb-overlay sb-ov-hidden" data-ov="only" data-overlay="2">hi</span>',
+    )
+    expect(html('\\only<2>{hi}', 2)).toBe(
+      '<span class="sb-overlay" data-ov="only" data-overlay="2">hi</span>',
+    )
+  })
+
+  it('\\pause hides the following content until its step (space reserved)', () => {
+    expect(html('a \\pause b', 1)).toBe(
+      'a <span class="sb-fragment" data-fragment="pause"></span>' +
+        '<span class="sb-overlay sb-ov-hidden" data-appear="2"> b</span>',
+    )
+    expect(html('a \\pause b', 2)).toBe(
+      'a <span class="sb-fragment" data-fragment="pause"></span> b',
+    )
+  })
+
+  it('\\alert highlights only on its step; \\invisible inverts', () => {
+    expect(html('\\alert<2>{x}', 1)).not.toContain('sb-ov-alert')
+    expect(html('\\alert<2>{x}', 2)).toContain('sb-ov-alert')
+    expect(html('\\invisible<2>{x}', 1)).not.toContain('sb-ov-hidden')
+    expect(html('\\invisible<2>{x}', 2)).toContain('sb-ov-hidden')
+  })
+
+  it('a hidden \\pause tail with a block child wraps in a div, not a span', () => {
+    expect(html('intro \\pause \\begin{itemize}\\item a\\end{itemize}', 1)).toContain(
+      '<div class="sb-overlay sb-ov-hidden" data-appear="2">',
     )
   })
 })

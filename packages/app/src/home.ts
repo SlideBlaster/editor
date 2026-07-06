@@ -7,6 +7,7 @@
  * this view is shared by both shells. Opening a project hands off to `createApp`.
  */
 import type { Project } from './projects'
+import { confirmDialog } from './dialog'
 import './app.css'
 import './home.css'
 
@@ -93,10 +94,14 @@ function buildCard(project: Project, deps: HomeDeps): HTMLElement {
   remove.className = 'home-card-delete'
   remove.textContent = 'Delete'
   remove.title = `Delete ${project.name}`
-  remove.addEventListener('click', () => {
-    if (confirm(`Delete project "${project.name}"? This removes it from your list.`)) {
-      deps.onDelete(project.id)
-    }
+  remove.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Delete project',
+      message: `Delete "${project.name}"?\nThis removes it from your list.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) deps.onDelete(project.id)
   })
 
   item.append(open, remove)

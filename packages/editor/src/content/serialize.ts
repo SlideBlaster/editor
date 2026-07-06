@@ -59,7 +59,9 @@ function serializeRun(run: TextRun): string {
     case 'fragment':
       return run.dialect === 'html'
         ? `<${run.name}>`
-        : `\\${run.name}${run.at !== undefined ? `[=${run.at}]` : ''}`
+        : `\\${run.name}${run.spec ? `<${run.spec.raw}>` : ''}`
+    case 'overlay':
+      return `\\${run.command}${run.spec ? `<${run.spec.raw}>` : ''}{${serializeRuns(run.children)}}`
     case 'image':
       return run.dialect === 'md' ? `![${run.alt}](${run.src})` : `\\image{${run.src}}`
     case 'include':
@@ -87,7 +89,9 @@ function serializeList(run: {
       return bodies.map((b, i) => (run.ordered ? `${i + 1}. ${b}` : `- ${b}`)).join('\n')
     case 'latex': {
       const env = run.ordered ? 'enumerate' : 'itemize'
-      return `\\begin{${env}}${bodies.map((b) => `\\item ${b}`).join('')}\\end{${env}}`
+      return `\\begin{${env}}${run.items
+        .map((item) => `\\item${item.spec ? `<${item.spec.raw}>` : ''} ${serializeRuns(item.children)}`)
+        .join('')}\\end{${env}}`
     }
     case 'html': {
       const tag = run.ordered ? 'ol' : 'ul'

@@ -14,6 +14,10 @@ export {
   role,
   placementToken,
   placement,
+  textWidth,
+  minHeight,
+  nodeScale,
+  nodeOverlay,
   parseConnector,
   serializeConnector,
 } from './tikz/index'
@@ -28,9 +32,20 @@ export {
   setColumnWidths,
   insertColumn,
   removeColumn,
+  parseTabular,
+  setTabularCell,
+  insertTabularRow,
+  removeTabularRow,
+  setDeferredSource,
+  deferredTableSources,
+  activeAt,
+  isValidSpec,
+  specMaxStep,
+  specMinStep,
+  contentMaxStep,
   OutOfSubsetError,
 } from './content/index'
-export type { InlineStyle } from './content/index'
+export type { InlineStyle, TabularGrid, TabularRow, TabularCell } from './content/index'
 export {
   resolveLayout,
   resolveLayoutAsync,
@@ -42,6 +57,7 @@ export {
 } from './layout/index'
 export type {
   AnchorName,
+  LayoutOptions,
   Measurer,
   MeasureInput,
   BatchMeasurer,
@@ -49,15 +65,56 @@ export type {
   PlacedNode,
   Size,
 } from './layout/index'
-export { renderContent, renderSlide, slideStylesheet, connectorsOf } from './render/index'
+export { renderContent, renderSlide, slideStylesheet, connectorsOf, slideStepCount } from './render/index'
 export type { RenderOptions, Connector } from './render/index'
+export {
+  defaultTheme,
+  themeStylesheet,
+  regionRects,
+  regionAt,
+  regionGuides,
+  DEFAULT_SLIDE_BOX,
+  serializeTheme,
+  parseTheme,
+  ThemeParseError,
+  furnitureHtml,
+  furnitureCss,
+} from './theme/index'
+export type {
+  RegionRect,
+  RegionGuides,
+  SlideBox,
+  FurnitureContext,
+  Theme,
+  StyleLayer,
+  StyleDecls,
+  Palette,
+  TypeScale,
+  Border,
+  Color,
+  Align,
+  Weight,
+  LayoutLayer,
+  Region,
+  RelRect,
+  Anchor9,
+  FurnitureLayer,
+  SafeArea,
+  PageNumberFurniture,
+  LogoFurniture,
+  BandFurniture,
+  Aspect,
+  AspectOverride,
+} from './theme/index'
 export {
   findNode,
   uniqueName,
   moveNodeTo,
+  resizeNode,
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeOverlay,
   placeNodeRelative,
   adjustPlacement,
   createConnector,

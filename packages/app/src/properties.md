@@ -2,13 +2,21 @@
 
 A small inspector for the current selection (E5, scoped to arrow style + node placement;
 style classes and colours are deferred). `paintProperties(host, { selection, picture,
-actions })` renders into a floating panel; the controller repaints it on every selection
-change and after every render.
+curveFocus, actions })` renders into a floating panel; the controller repaints it on every
+selection change and after every render.
 
 - **Selected connector -> Arrow.** Reads the connector's option tokens
   (`connectorOptions`), shows a head-direction segmented control (none / → / ← / ↔) and a
   dashed toggle, and writes changes with `setConnectorOptions`. `withDirection` swaps the
   `->`/`<-`/`<->` token (keeping every other token); `withDashed` toggles `dashed`.
+- **Curve angles.** When a `curveFocus` accompanies the selected arrow (the controller sets
+  it from the [connector editor](./connectorEditor.md) — selecting an arrow focuses a segment;
+  clicking a curve point or bend focuses that one), a **Curve** block appears: each cubic
+  control point in polar form as an **angle** (0° right, 90° up — slide space is y-up) and a
+  **pull** (control-arm reach). A **straight** segment shows the chord's own direction with a
+  default pull, so editing an angle bends it. Editing a field rebuilds only that segment's
+  controls (the other point + segments stay byte-identical, symbolic node anchors preserved)
+  and commits via `updateConnectorPath` -> `updateConnector`.
 - **Selected node -> Placement.** Reads `node.at` / `placement(node)`. Absolute nodes show
   editable X/Y (commit via `moveNode` -> `moveNodeTo`); relative nodes show an editable
   side, gap, and a read-only ref (commit via `bindNode` -> `placeNodeRelative`). A badge

@@ -3,4 +3,14 @@ export { parseContent, OutOfSubsetError } from './parse'
 export { serializeContent, serializeBody, serializeRuns } from './serialize'
 export { inlineStyleOf, dialectOf } from './styles'
 export type { InlineStyle } from './styles'
+export { activeAt, isValidSpec, specMaxStep, specMinStep, contentMaxStep } from './overlay'
 export { setColumnWidths, insertColumn, removeColumn } from './columns'
+export {
+  parseTabular,
+  setTabularCell,
+  insertTabularRow,
+  removeTabularRow,
+  setDeferredSource,
+  deferredTableSources,
+} from './tabular'
+export type { TabularGrid, TabularRow, TabularCell } from './tabular'

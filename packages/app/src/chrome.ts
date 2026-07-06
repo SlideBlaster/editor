@@ -20,6 +20,11 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
         <button type="button" id="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
         <button type="button" id="connect-toggle" aria-pressed="false">&rarr; Connect</button>
       </div>
+      <div class="step-actions" id="step-control" role="group" aria-label="Overlay step" hidden>
+        <button type="button" data-step="prev" aria-label="Previous step" title="Previous step (,)">&lsaquo;</button>
+        <span id="step-readout" title="Overlay step of the active slide">All</span>
+        <button type="button" data-step="next" aria-label="Next step" title="Next step (.)">&rsaquo;</button>
+      </div>
       <div class="export-actions" id="export-actions" role="group" aria-label="Export">
         <button type="button" data-export="print">Print / PDF</button>
         <button type="button" data-export="html">Export HTML</button>

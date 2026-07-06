@@ -9,10 +9,23 @@
  */
 import type { NodeStatement, Point, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode, Size } from '../model/layout'
-import { placement, styleClasses, textWidth } from '../tikz/options'
+import {
+  DEFAULT_PLACEMENT_GAP,
+  minHeight,
+  nodeScale,
+  placement,
+  styleClasses,
+  textWidth,
+} from '../tikz/options'
 import type { BatchMeasurer, MeasureInput, Measurer } from './measure'
 
 const ORIGIN: Point = { x: 0, y: 0 }
+
+/** Layout tuning the theme supplies (ADR 0017). */
+export interface LayoutOptions {
+  /** Default relative-placement gap (the theme's node distance); omitted -> DEFAULT_PLACEMENT_GAP. */
+  nodeDistance?: number
+}
 
 /** The node statements a picture lays out, in picture order. */
 function layoutNodes(picture: TikzPicture): NodeStatement[] {
@@ -22,18 +35,29 @@ function layoutNodes(picture: TikzPicture): NodeStatement[] {
 /** What a `Measurer` needs to size one node (content + its style/width options). */
 function measureInputFor(node: NodeStatement): MeasureInput {
   const tw = textWidth(node)
+  const mh = minHeight(node)
   return {
     content: node.content,
     styleClasses: styleClasses(node),
     ...(tw !== undefined ? { textWidth: tw } : {}),
+    ...(mh !== undefined ? { minHeight: mh } : {}),
   }
 }
 
-/** Sync layout: sizes from a `Measurer`, then the shared geometry solve. */
-export function resolveLayout(picture: TikzPicture, measurer: Measurer): Layout {
+/** Multiply a natural (measured) content size by the node's content scale. */
+function scaleSize(size: Size, scale: { x: number; y: number }): Size {
+  return { width: size.width * scale.x, height: size.height * scale.y }
+}
+
+/** Sync layout: sizes from a `Measurer` (scaled by each node's content scale), then solve. */
+export function resolveLayout(
+  picture: TikzPicture,
+  measurer: Measurer,
+  opts: LayoutOptions = {},
+): Layout {
   const nodes = layoutNodes(picture)
-  const sizes = nodes.map((n) => measurer.measure(measureInputFor(n)))
-  return solveLayout(nodes, sizes)
+  const sizes = nodes.map((n) => scaleSize(measurer.measure(measureInputFor(n)), nodeScale(n)))
+  return solveLayout(nodes, sizes, opts.nodeDistance)
 }
 
 /**
@@ -43,14 +67,20 @@ export function resolveLayout(picture: TikzPicture, measurer: Measurer): Layout 
 export async function resolveLayoutAsync(
   picture: TikzPicture,
   measurer: BatchMeasurer,
+  opts: LayoutOptions = {},
 ): Promise<Layout> {
   const nodes = layoutNodes(picture)
-  const sizes = await measurer.measureAll(nodes.map(measureInputFor))
-  return solveLayout(nodes, sizes)
+  const natural = await measurer.measureAll(nodes.map(measureInputFor))
+  const sizes = natural.map((size, i) => scaleSize(size, nodeScale(nodes[i]!)))
+  return solveLayout(nodes, sizes, opts.nodeDistance)
 }
 
 /** Place already-sized nodes: absolute `at`, relative placement, or origin (total). */
-function solveLayout(nodes: NodeStatement[], sizes: Size[]): Layout {
+function solveLayout(
+  nodes: NodeStatement[],
+  sizes: Size[],
+  nodeDistance: number = DEFAULT_PLACEMENT_GAP,
+): Layout {
   const indexByName = new Map<string, number>()
   nodes.forEach((n, i) => {
     if (n.name !== undefined) indexByName.set(n.name, i)
@@ -72,7 +102,7 @@ function solveLayout(nodes: NodeStatement[], sizes: Size[]): Layout {
   const tryResolve = (i: number): PlacedNode | undefined => {
     const node = nodes[i]!
     if (node.at !== undefined) return place(i, node.at)
-    const rel = placement(node)
+    const rel = placement(node, nodeDistance)
     if (rel === undefined) return place(i, ORIGIN)
     const refIndex = indexByName.get(rel.ref)
     if (refIndex === undefined) return place(i, ORIGIN) // dangling reference

@@ -15,6 +15,15 @@ describe('resolveLayout: positions', () => {
     ].join('\n'),
   )
 
+  it('uses the theme node distance for a placement written without a gap', () => {
+    const p = parsePicture(['\\node (a) at (5,5) {a};', '\\node[below= of a] (b) {b};'].join('\n'))
+    // below: b.center.y = a.y - a.hh - gap - b.hh = 5 - 0.5 - gap - 0.5
+    const dflt = resolveLayout(p, fixed(2, 1)) // gap = DEFAULT_PLACEMENT_GAP (0.5)
+    const themed = resolveLayout(p, fixed(2, 1), { nodeDistance: 1.5 })
+    expect(findPlaced(dflt, 'b')!.center.y).toBeCloseTo(3.5)
+    expect(findPlaced(themed, 'b')!.center.y).toBeCloseTo(2.5)
+  })
+
   it('places absolute, default, and relative nodes (edge-to-edge gap, y-up)', () => {
     const layout = resolveLayout(pic, fixed(2, 1))
     // title: no position -> origin, size 2x1
@@ -44,6 +53,24 @@ describe('resolveLayout: positions', () => {
     const o2 = findPlaced(layout, 'o2')!
     expect(title.center).toEqual({ x: 0, y: 0 })
     expect(o2.center).toEqual({ x: 10, y: 3 })
+  })
+
+  it('the naive measurer honors minimum height as a grow-only floor', () => {
+    const tall = parsePicture('\\node[note, minimum height=4] (a) {x};')
+    const short = parsePicture('\\node[note] (a) {x};')
+    // short content -> the floor wins; without the option the box is much shorter.
+    expect(findPlaced(resolveLayout(tall, naiveMeasurer), 'a')!.size.height).toBe(4)
+    expect(findPlaced(resolveLayout(short, naiveMeasurer), 'a')!.size.height).toBeLessThan(4)
+  })
+
+  it('multiplies the measured box by the node content scale', () => {
+    const plain = findPlaced(resolveLayout(parsePicture('\\node (a) {x};'), fixed(2, 1)), 'a')!.size
+    const scaled = findPlaced(
+      resolveLayout(parsePicture('\\node[xscale=2, yscale=1.5] (a) {x};'), fixed(2, 1)),
+      'a',
+    )!.size
+    expect(plain).toEqual({ width: 2, height: 1 })
+    expect(scaled).toEqual({ width: 4, height: 1.5 })
   })
 })
 

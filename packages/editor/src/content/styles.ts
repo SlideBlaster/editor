@@ -34,6 +34,7 @@ export function dialectOf(run: TextRun): Dialect | undefined {
     case 'image':
     case 'fragment':
       return run.dialect
+    case 'overlay':
     case 'columns':
     case 'matrix':
     case 'include':

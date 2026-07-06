@@ -11,9 +11,14 @@
  *   - anchor dots at every anchor: drag to move; drop on a node re-attaches (`(name)`),
  *     else it becomes a free point `(x,y)`. Double-click an interior anchor to delete it.
  *   - a bend handle at each straight segment's midpoint: drag to curve it (cubic).
- *   - two control handles per curved segment (with guide lines): drag for full control;
- *     double-click one to straighten the segment.
+ *   - two control handles per curved segment (with guide lines): drag for full control
+ *     (control arms soft-snap to 15°, Alt to override); double-click one to straighten.
  *   - double-click the arrow line to insert a waypoint there.
+ *
+ * It also reports one anchor (dot) to the controller via `actions.focusCurve` (on paint, and
+ * when a dot/handle is grabbed), so the properties panel can edit the tangent angle(s) *at
+ * that point*; `focusedAnchor` says which dot the panel is currently editing (for the
+ * highlight). Clicking a dark-blue split point focuses that point.
  */
 import {
   anchor as nodeAnchorPoint,
@@ -34,6 +39,25 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 
 export interface ConnectorEditorActions {
   update(index: number, path: ConnectorPath): void
+  /** Focus an anchor (a dot — endpoint or split-point waypoint) for angle editing in the
+   *  properties panel (null clears). Fires on paint (so the panel tracks the live geometry)
+   *  and when a dot/handle is grabbed. Carries the resolved neighbourhood + the working path
+   *  so the panel can show/set the tangent angle(s) *at that point*. */
+  focusCurve(focus: CurveFocus | null): void
+}
+
+/** An anchor (dot) surfaced for angle editing: its resolved position `point`, its resolved
+ *  neighbours (`prevPoint`/`nextPoint`, null at an end — these bound the arriving/leaving
+ *  segments), and the full working path (symbolic anchors preserved) to rebuild from. The
+ *  panel reads the control arms that meet at `point`: c2 of the incoming segment (`anchor-1`)
+ *  and c1 of the outgoing one (`anchor`). */
+export interface CurveFocus {
+  index: number
+  anchor: number
+  point: Point
+  prevPoint: Point | null
+  nextPoint: Point | null
+  path: ConnectorPath
 }
 
 export function paintConnectorEditor(
@@ -43,6 +67,7 @@ export function paintConnectorEditor(
   source: ConnectorPath,
   layout: Layout,
   actions: ConnectorEditorActions,
+  focusedAnchor: number | null = null,
 ): void {
   // Working copy: anchors stay symbolic (node refs preserved); curves hold absolute
   // control points. `pts` are the live drawing positions — node anchors are fixed at the
@@ -113,7 +138,7 @@ export function paintConnectorEditor(
   // it commits (which re-renders and rebuilds the handles). No rebuild mid-drag.
   const draggable = (
     el: SVGElement,
-    onMove: (p: Point) => void,
+    onMove: (p: Point, event: PointerEvent) => void,
     hooks: { onStart?: () => void; onEnd?: () => void } = {},
   ): void => {
     let active = false
@@ -125,7 +150,7 @@ export function paintConnectorEditor(
     })
     el.addEventListener('pointermove', (event) => {
       if (!active) return
-      onMove(toSlide(event.clientX, event.clientY))
+      onMove(toSlide(event.clientX, event.clientY), event)
       refreshArrow()
     })
     const end = (event: PointerEvent): void => {
@@ -153,28 +178,61 @@ export function paintConnectorEditor(
   })
   svg.append(addLine)
 
-  // Curve guide lines + control handles (curved segments) or a bend handle (straight).
+  // A snapshot of the anchor `i`'s neighbourhood the panel edits its tangent angle(s)
+  // against (symbolic anchors preserved so node attachments survive an angle edit).
+  const anchorPayload = (i: number): CurveFocus => ({
+    index,
+    anchor: i,
+    point: { ...pts[i]! },
+    prevPoint: i > 0 ? { ...pts[i - 1]! } : null,
+    nextPoint: i < pts.length - 1 ? { ...pts[i + 1]! } : null,
+    path: { anchors: anchors.map(cloneAnchor), curves: curves.map(cloneCurve) },
+  })
+  // Which anchor (dot) the panel edits: the requested one (if in range), else the first
+  // split-point waypoint, else the start. So selecting *any* editable arrow lights up its
+  // angles, and clicking a dark-blue split point focuses *that* point.
+  const effective =
+    focusedAnchor !== null && focusedAnchor >= 0 && focusedAnchor < pts.length
+      ? focusedAnchor
+      : pts.length > 2
+        ? 1
+        : 0
+
+  // Curve guide lines + control handles (curved segments) or a bend handle (straight). A
+  // control handle focuses the anchor its arm grows from (c1 -> start, c2 -> end).
   for (let j = 0; j < curves.length; j++) {
     const a = pts[j]!
     const b = pts[j + 1]!
     const curve = curves[j]
     if (curve) {
-      const l1 = seg(a, curve.c1, 'sb-ctrl-line')
-      const l2 = seg(b, curve.c2, 'sb-ctrl-line')
-      const h1 = dot(curve.c1, 'sb-ctrl', 0.12)
-      draggable(h1, (p) => {
-        curve.c1 = p
-        move(h1, p)
-        l1.setAttribute('x2', String(p.x))
-        l1.setAttribute('y2', String(flip(p.y)))
-      })
-      const h2 = dot(curve.c2, 'sb-ctrl', 0.12)
-      draggable(h2, (p) => {
-        curve.c2 = p
-        move(h2, p)
-        l2.setAttribute('x2', String(p.x))
-        l2.setAttribute('y2', String(flip(p.y)))
-      })
+      const on1 = j === effective ? ' is-focused' : ''
+      const on2 = j + 1 === effective ? ' is-focused' : ''
+      const l1 = seg(a, curve.c1, 'sb-ctrl-line' + on1)
+      const l2 = seg(b, curve.c2, 'sb-ctrl-line' + on2)
+      const h1 = dot(curve.c1, 'sb-ctrl' + on1, 0.12)
+      draggable(
+        h1,
+        (p, event) => {
+          const q = snapArm(a, p, event.altKey)
+          curve.c1 = q
+          move(h1, q)
+          l1.setAttribute('x2', String(q.x))
+          l1.setAttribute('y2', String(flip(q.y)))
+        },
+        { onStart: () => actions.focusCurve(anchorPayload(j)) },
+      )
+      const h2 = dot(curve.c2, 'sb-ctrl' + on2, 0.12)
+      draggable(
+        h2,
+        (p, event) => {
+          const q = snapArm(b, p, event.altKey)
+          curve.c2 = q
+          move(h2, q)
+          l2.setAttribute('x2', String(q.x))
+          l2.setAttribute('y2', String(flip(q.y)))
+        },
+        { onStart: () => actions.focusCurve(anchorPayload(j + 1)) },
+      )
       const straighten = (event: Event): void => {
         event.stopPropagation()
         curves[j] = null
@@ -184,11 +242,16 @@ export function paintConnectorEditor(
       h2.addEventListener('dblclick', straighten)
     } else {
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-      const bend = dot(mid, 'sb-bend', 0.12)
-      draggable(bend, (p) => {
-        curves[j] = bendControls(pts[j]!, pts[j + 1]!, p)
-        move(bend, p)
-      })
+      const near = effective === j || effective === j + 1 // either end of this straight segment
+      const bend = dot(mid, near ? 'sb-bend is-focused' : 'sb-bend', 0.12)
+      draggable(
+        bend,
+        (p) => {
+          curves[j] = bendControls(pts[j]!, pts[j + 1]!, p)
+          move(bend, p)
+        },
+        { onStart: () => actions.focusCurve(anchorPayload(j)) },
+      )
     }
   }
 
@@ -225,7 +288,8 @@ export function paintConnectorEditor(
   // the pointer is over; on release it attaches there (`(name.north)`, or `(name)` for the
   // centre), else it becomes a free point. Interior anchors delete on double-click.
   for (let i = 0; i < pts.length; i++) {
-    const handle = dot(pts[i]!, 'sb-anchor')
+    // Grabbing a dot focuses that anchor, so its tangent angle(s) show in the panel.
+    const handle = dot(pts[i]!, i === effective ? 'sb-anchor is-focused' : 'sb-anchor')
     draggable(
       handle,
       (p) => {
@@ -239,6 +303,7 @@ export function paintConnectorEditor(
       {
         onStart: () => {
           snapped = null
+          actions.focusCurve(anchorPayload(i))
           showSnapDots()
         },
         onEnd: () => {
@@ -261,6 +326,30 @@ export function paintConnectorEditor(
       })
     }
   }
+
+  // Publish the focused anchor's live neighbourhood to the panel. Runs after every paint, so
+  // an angle edit / node move / re-split refreshes what the angle fields edit against.
+  actions.focusCurve(anchorPayload(effective))
+}
+
+const ANGLE_STEP = Math.PI / 12 // snap control arms to 15° increments…
+const ANGLE_TOL = (2.5 * Math.PI) / 180 // …but only within 2.5°, so most of the drag is free
+
+/** Snap a control point so its arm out of `anchor` lands on a 15° increment when the drag
+ *  is already close to one (Alt bypasses). The arm length is kept; only the angle clicks. */
+function snapArm(anchor: Point, p: Point, free: boolean): Point {
+  if (free) return p
+  const dx = p.x - anchor.x
+  const dy = p.y - anchor.y
+  const len = Math.hypot(dx, dy)
+  if (len < 1e-4) return p
+  const angle = Math.atan2(dy, dx)
+  const snapped = Math.round(angle / ANGLE_STEP) * ANGLE_STEP
+  let diff = angle - snapped
+  while (diff > Math.PI) diff -= 2 * Math.PI
+  while (diff < -Math.PI) diff += 2 * Math.PI
+  if (Math.abs(diff) > ANGLE_TOL) return p
+  return { x: anchor.x + len * Math.cos(snapped), y: anchor.y + len * Math.sin(snapped) }
 }
 
 /** The node border anchors an endpoint can snap to, in preference order (the centre last

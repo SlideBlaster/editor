@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { NodeStatement } from '../model/tikz'
 import { parsePicture } from './parse'
 import { serializePicture } from './serialize'
-import { role, styleClasses } from './options'
+import { role, styleClasses, textWidth, minHeight, nodeScale } from './options'
 
 const PICTURE = [
   '\\node[title] (title) {};',
@@ -78,5 +78,32 @@ describe('derived option views', () => {
     expect(role(pic.statements[0] as NodeStatement)).toBe('title')
     expect(styleClasses(pic.statements[1] as NodeStatement)).toEqual(['body'])
     expect(role(pic.statements[1] as NodeStatement)).toBeUndefined()
+  })
+
+  it('reads explicit size options (text width, minimum height), else undefined', () => {
+    const pic = parsePicture(
+      ['\\node[body, text width=12, minimum height=3.5] (a) {x};', '\\node[note] (b) {y};'].join(
+        '\n',
+      ),
+    )
+    const a = pic.statements[0] as NodeStatement
+    const b = pic.statements[1] as NodeStatement
+    expect(textWidth(a)).toBe(12)
+    expect(minHeight(a)).toBe(3.5)
+    expect(textWidth(b)).toBeUndefined()
+    expect(minHeight(b)).toBeUndefined()
+  })
+
+  it('reads the content scale from scale / xscale / yscale (default 1)', () => {
+    const pic = parsePicture(
+      [
+        '\\node (plain) {x};',
+        '\\node[scale=1.5] (uniform) {x};',
+        '\\node[xscale=2, yscale=1.25] (skewed) {x};',
+      ].join('\n'),
+    )
+    expect(nodeScale(pic.statements[0] as NodeStatement)).toEqual({ x: 1, y: 1 })
+    expect(nodeScale(pic.statements[1] as NodeStatement)).toEqual({ x: 1.5, y: 1.5 })
+    expect(nodeScale(pic.statements[2] as NodeStatement)).toEqual({ x: 2, y: 1.25 })
   })
 })

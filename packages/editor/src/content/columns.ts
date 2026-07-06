@@ -32,9 +32,13 @@ function transformColumnsGroup(
       case 'latex':
       case 'markdown':
       case 'html':
+      case 'overlay':
         return { ...run, children: mapRuns(run.children) }
       case 'list':
-        return { ...run, items: run.items.map((item) => ({ children: mapRuns(item.children) })) }
+        return {
+          ...run,
+          items: run.items.map((item) => ({ ...item, children: mapRuns(item.children) })),
+        }
       case 'matrix':
         return {
           ...run,

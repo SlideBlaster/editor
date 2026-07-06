@@ -55,10 +55,10 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   `move`/`create`/`remove` re-serialize and re-render.
 - **Connectors (E4).** `paintConnectors` lays a clickable hit-line (`svg.sb-connectors`,
   a thick transparent `.sb-hit` stroke) along each arrow from `connectorsOf(picture,
-layout)`. The stroke follows the **anchor chord** (`connector.points`), i.e. the
-  straight baseline between endpoints — never the curved path — so a curved arrow is
-  selected by its straight line, not by chasing the bulge (and with border anchors that
-  baseline runs edge-to-edge in the open). Clicking one fires `selectConnector(index)`
+layout)`. The stroke traces the arrow's **actual path** (`connector.pathData`, curves and
+  all), so a curved arrow is grabbed on the curve you see — select and split now share the
+  same target line, no phantom straight baseline. `fill:none` keeps only the stroke
+  clickable, not the area a curve encloses. Clicking one fires `selectConnector(index)`
   and a selected line shows a translucent band. The visible arrow itself is the engine's
   render. Delete of a selected connector is a controller keybinding (`deleteConnector`).
 - **Reshaping the selected arrow (E4+).** When the selected connector is editable, its

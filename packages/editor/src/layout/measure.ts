@@ -14,6 +14,8 @@ export interface MeasureInput {
   content: NodeContent
   /** `text width=<n>` when the node fixes its width (content wraps to it). */
   textWidth?: number
+  /** `minimum height=<n>` when the node sets a height floor (grow-only: content may exceed it). */
+  minHeight?: number
   styleClasses: string[]
 }
 
@@ -46,24 +48,26 @@ const TITLE_SCALE = 1.4
 
 /** Deterministic estimate from character/line counts; good enough to lay out, not to render. */
 export const naiveMeasurer: Measurer = {
-  measure({ content, textWidth, styleClasses }): Size {
+  measure({ content, textWidth, minHeight, styleClasses }): Size {
     const scale = styleClasses.includes('title') ? TITLE_SCALE : 1
     const charW = CHAR_WIDTH * scale
     const lineH = LINE_HEIGHT * scale
     const lines = plainText(content).split('\n')
+    // `minimum height` is grow-only: it raises the height floor but never clips content.
+    const floor = Math.max(MIN_HEIGHT, minHeight ?? 0)
 
-    if (content.kind === 'empty') return { width: MIN_WIDTH, height: MIN_HEIGHT }
+    if (content.kind === 'empty') return { width: MIN_WIDTH, height: floor }
 
     if (textWidth !== undefined) {
       const perLine = Math.max(1, Math.floor((textWidth - 2 * PADDING) / charW))
       const rows = lines.reduce((n, line) => n + Math.max(1, Math.ceil(line.length / perLine)), 0)
-      return { width: textWidth, height: Math.max(MIN_HEIGHT, rows * lineH + 2 * PADDING) }
+      return { width: textWidth, height: Math.max(floor, rows * lineH + 2 * PADDING) }
     }
 
     const longest = lines.reduce((m, line) => Math.max(m, line.length), 0)
     return {
       width: Math.max(MIN_WIDTH, longest * charW + 2 * PADDING),
-      height: Math.max(MIN_HEIGHT, lines.length * lineH + 2 * PADDING),
+      height: Math.max(floor, lines.length * lineH + 2 * PADDING),
     }
   },
 }
@@ -89,6 +93,9 @@ function runText(run: TextRun): string {
     case 'latex':
     case 'markdown':
     case 'html':
+      return run.children.map(runText).join('')
+    case 'overlay':
+      // Measured as present (union geometry, ADR 0018) — its box is reserved on every step.
       return run.children.map(runText).join('')
     case 'list':
       return run.items.map((item) => item.children.map(runText).join('')).join('\n')

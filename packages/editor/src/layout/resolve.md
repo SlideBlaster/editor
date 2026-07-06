@@ -1,8 +1,10 @@
 # layout resolve
 
-`resolveLayout(picture, measurer) -> Layout`: place every node in slide space.
-`resolveLayoutAsync(picture, batchMeasurer) -> Promise<Layout>`: the same, sized by
-an async `BatchMeasurer` (the DOM measurer).
+`resolveLayout(picture, measurer, opts?) -> Layout`: place every node in slide space.
+`resolveLayoutAsync(picture, batchMeasurer, opts?) -> Promise<Layout>`: the same, sized
+by an async `BatchMeasurer` (the DOM measurer). `opts.nodeDistance` (a `LayoutOptions`
+field) is the theme's default relative-placement gap (ADR 0017); omitted, gapless
+placements fall back to `DEFAULT_PLACEMENT_GAP`.
 
 - **size** from the injected measurer (using `text width` and the node's style
   classes). Sizing is the _only_ difference between the sync and async entry points —

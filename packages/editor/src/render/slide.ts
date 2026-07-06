@@ -13,6 +13,8 @@
 import type { NodeStatement, PathStatement, Point, Statement, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode } from '../model/layout'
 import { anchor as nodeAnchor, findPlaced, isAnchorName } from '../layout/resolve'
+import { minHeight, nodeOverlay, nodeScale } from '../tikz/options'
+import { activeAt, contentMaxStep, specMaxStep } from '../content/overlay'
 import { parseConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { renderContent, type RenderOptions } from './html'
 
@@ -143,13 +145,48 @@ function rectSvg(node: PlacedNode): string {
 }
 
 function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions): string {
+  const scale = nodeScale(source)
   const left = pct(node.center.x - node.size.width / 2, SLIDE_W)
   const top = pct(SLIDE_H - node.center.y - node.size.height / 2, SLIDE_H)
-  const width = pct(node.size.width, SLIDE_W)
+  // Content is laid out at its NATURAL width (the box already folds in the scale), then a
+  // CSS transform scales it up to fill the box — so text, tables, and images all grow with
+  // the box, not just the frame. `size.width / scale.x` recovers the pre-scale width.
+  const width = pct(node.size.width / scale.x, SLIDE_W)
+  // `minimum height` occupies the box down to that floor while still growing with content
+  // (grow-only). In natural units (the transform scales it with everything else).
+  const mh = minHeight(source)
+  const minH = mh !== undefined ? `;min-height:${pct(mh, SLIDE_H)}%` : ''
+  const scaled =
+    scale.x !== 1 || scale.y !== 1
+      ? `;transform-origin:top left;transform:scale(${r(scale.x)},${r(scale.y)})`
+      : ''
   // Model identity in the DOM: lets an editor hit-test and address this node
   // (selection, drag, inline edit). Harmless in the export DOM (ADR 0014).
   const id = source.name !== undefined ? ` data-node="${source.name}"` : ''
-  return `<div class="${nodeClass(node)}"${id} style="left:${left}%;top:${top}%;width:${width}%">${renderContent(source.content, options)}</div>`
+  // Whole-node overlay (ADR 0018): hidden with space reserved when its spec is inactive at
+  // the rendered step; absent step (authoring) shows every node. `data-overlay` addresses it.
+  const overlay = nodeOverlay(source)
+  const ovHidden = overlay !== undefined && options.step !== undefined && !activeAt(overlay, options.step)
+  const ovClass = ovHidden ? ' sb-ov-hidden' : ''
+  const ovData = overlay !== undefined ? ` data-overlay="${overlay.raw.replace(/"/g, '&quot;')}"` : ''
+  return `<div class="${nodeClass(node)}${ovClass}"${id}${ovData} style="left:${left}%;top:${top}%;width:${width}%${minH}${scaled}">${renderContent(source.content, options)}</div>`
+}
+
+/**
+ * The number of overlay steps a slide plays as (ADR 0018): the largest step any node
+ * references — through its `overlay=<spec>` option or its inline content (`\pause`,
+ * `\only<spec>`, `\item<spec>`, …) — and always at least 1. Drives the step navigator and
+ * the one-page-per-step export.
+ */
+export function slideStepCount(picture: TikzPicture): number {
+  let max = 1
+  for (const statement of picture.statements) {
+    if (statement.kind !== 'node') continue
+    const overlay = nodeOverlay(statement)
+    if (overlay !== undefined) max = Math.max(max, specMaxStep(overlay))
+    max = Math.max(max, contentMaxStep(statement.content))
+  }
+  return max
 }
 
 function arrowSvg(connector: Connector): string {
@@ -202,7 +239,6 @@ export function slideStylesheet(): string {
     '.sb-node{position:absolute;box-sizing:border-box}',
     '.sb-box{fill:transparent;stroke:none}',
     '.sb-arrow{fill:none;stroke:#333;stroke-width:0.03}',
-    '.sb-style-title{font-weight:bold}',
     // columns lay out as a flex row; each `.sb-column` carries an inline `flex:<width>`
     // (from its `\column{…}` argument) so widths are proportional. min-width:0 lets a
     // column shrink and wrap instead of overflowing the node box.
@@ -211,6 +247,9 @@ export function slideStylesheet(): string {
     // a matrix is a spacing-only grid of cells (no rules), matrix-style centred.
     '.sb-matrix{border-collapse:collapse;margin:0.1em 0}',
     '.sb-matrix td{padding:0.1em 0.5em;vertical-align:middle;text-align:center}',
+    // Overlays (ADR 0018): hidden content keeps its space (never reflows); alert highlights.
+    '.sb-ov-hidden{visibility:hidden}',
+    '.sb-ov-alert{color:#c0392b}',
     '.sb-deferred,.sb-include,.sb-error,.sb-table-error{opacity:0.7;font-style:italic}',
     // a compiled table (Compile port) carries its own latexml <style>; keep its box tidy.
     '.sb-table{display:inline-block;font-style:normal}',
