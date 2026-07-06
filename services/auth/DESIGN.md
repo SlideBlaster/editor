@@ -9,20 +9,37 @@ Phoenix/Elixir for the runtime (concurrency/perf). Vertical-slice first: real
 GitHub push/pull with the App key held **locally** behind a swappable `MintingKey`
 seam; KMS is a later pass that replaces `LocalKey` only.
 
-## HTTP contract (must match the stub 1:1)
+## User flow (hosted web shell)
 
-| Route                                    | Behavior                                                                                                                                                                                                                      |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /auth/github?return_to=`            | Begin real GitHub **user-to-server** OAuth. Stash `return_to` (path-only, no open redirect) + a state nonce in a short signed cookie; 302 to `https://github.com/login/oauth/authorize`.                                      |
-| `GET /auth/github/callback?code=&state=` | Verify state; exchange `code` at `https://github.com/login/oauth/access_token`; `GET /user` for identity; create session; set `sb_session` (HttpOnly+Secure+SameSite=Lax) + `sb_csrf` (readable) cookies; 302 to `return_to`. |
-| `GET /me`                                | Session → `Identity` JSON; none → 401.                                                                                                                                                                                        |
-| `POST /mint` `{owner,name,scope}`        | Session (else 401) **and** `x-sb-csrf` == session csrf (else 403). Authorize + mint (below). 200 `{value, expiresAt}`; 403 if the user has no App install granting that repo.                                                 |
-| `GET /capabilities`                      | Session → `CapabilityFlags`; none → 401 (adapter falls back to free tier).                                                                                                                                                    |
-| `POST /signout`                          | Drop session; expire both cookies (Max-Age=0); 204.                                                                                                                                                                           |
-| `OPTIONS *`                              | Credentialed CORS preflight; echo Origin (allowlist the web-shell origin), `Allow-Credentials: true`, allow `x-sb-csrf`.                                                                                                      |
+The shell is served from the internet; the user needs the network only to sync.
 
-`Identity` = `{ login, name, avatarUrl }`. `CapabilityFlags` = free tier for the
-slice (`{ managedStorage:false, premiumCollab:false, seatCap:1 }`).
+1. **Sign in once (SSO).** "Sign in with GitHub" → `GET /auth/github` → user-to-server
+   OAuth → identity + session cookie. That is all sign-in does.
+2. **Work fully offline.** Editing + local git commits run against the browser
+   working copy (M3) with no network and no token.
+3. **Install per repo, on demand.** The first time a commit targets a repo the App
+   is not installed on, `/mint` returns **403** and the shell sends the user to
+   `GET /auth/github/install` → GitHub's repo picker → back to the callback. A
+   one-click grant, not a settings dig.
+4. **Mint on commit.** `/mint` authorizes the user against that repo's installation
+   and returns a single-repo, `contents:write`, ≤1h token; the client pushes/pulls
+   over HTTPS through the git-proxy. Re-minted on expiry/reload; never persisted.
+
+## HTTP contract (matches the stub; adds the install launch)
+
+| Route                                                     | Behavior                                                                                                                                                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /auth/github?return_to=`                             | SSO sign-in: 302 to `login/oauth/authorize` (identity only). Stash `return_to`+nonce in an HttpOnly `sb_flow` cookie (the install flow does not reliably echo `state`).                                     |
+| `GET /auth/github/install?return_to=`                     | 302 to the App's `installations/new` (resolved from `GET /app`), so the user grants repo access. Same `sb_flow` handoff.                                                                                    |
+| `GET /auth/github/callback?code=&state=&installation_id=` | Recover `return_to` (query `state` or `sb_flow`); exchange `code`; `GET /user`; create session; set `sb_session` (HttpOnly) + `sb_csrf` (readable); clear `sb_flow`; 302 to `return_to`. Serves both flows. |
+| `GET /me`                                                 | Session → `Identity` JSON; none → 401.                                                                                                                                                                      |
+| `POST /mint` `{owner,name,scope}`                         | Session (else 401) **and** `x-sb-csrf` == session csrf (else 403). Authorize + mint (below). 200 `{value, expiresAt}`; **403 if the App is not installed on that repo → client launches the install flow**. |
+| `GET /capabilities`                                       | Session → `CapabilityFlags`; none → 401 (adapter falls back to free tier).                                                                                                                                  |
+| `POST /signout`                                           | Drop session; expire both cookies (Max-Age=0); 204.                                                                                                                                                         |
+| `OPTIONS /mint,/signout`                                  | Credentialed CORS preflight; echo the allowlisted web-shell Origin, `Allow-Credentials: true`, allow `x-sb-csrf`.                                                                                           |
+
+`Identity` = `{ login, id, avatarUrl }` (matches `@slideblaster/editor`).
+`CapabilityFlags` = free tier `{ premiumCollab:false, managedStorage:false, collaboratorSeats:0 }`.
 
 ## Mint flow (the security-critical bit)
 

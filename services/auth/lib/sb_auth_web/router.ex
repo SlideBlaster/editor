@@ -10,6 +10,7 @@ defmodule SbAuthWeb.Router do
     pipe_through :api
 
     get "/auth/github", AuthController, :start
+    get "/auth/github/install", AuthController, :install
     get "/auth/github/callback", AuthController, :callback
     get "/me", AuthController, :me
     get "/capabilities", AuthController, :capabilities

@@ -13,24 +13,47 @@ defmodule SbAuthWeb.AuthController do
 
   @session_cookie "sb_session"
   @csrf_cookie "sb_csrf"
+  # Carries the pending-handoff token across the GitHub round-trip. Needed because
+  # the App-installation flow does not reliably echo `state`, so we can't depend on
+  # the query param alone to recover `return_to`.
+  @flow_cookie "sb_flow"
 
-  # GET /auth/github?return_to= — begin real user-to-server OAuth.
+  # GET /auth/github?return_to= — SSO sign-in (user-to-server OAuth, identity only).
   def start(conn, params) do
-    return_to = safe_return_to(params["return_to"])
-    state = SessionStore.put_pending(return_to)
+    state = SessionStore.put_pending(safe_return_to(params["return_to"]))
 
     query =
-      URI.encode_query(%{
-        "client_id" => cfg()[:github_client_id],
-        "state" => state
-      })
+      URI.encode_query(%{"client_id" => cfg()[:github_client_id], "state" => state})
 
-    redirect(conn, external: "https://github.com/login/oauth/authorize?" <> query)
+    conn
+    |> put_flow_cookie(state)
+    |> redirect(external: "https://github.com/login/oauth/authorize?" <> query)
   end
 
-  # GET /auth/github/callback?code=&state= — exchange, identify, open a session.
+  # GET /auth/github/install?return_to= — send the user to GitHub to grant the App
+  # access to a repo (the doc's "install per repo"). Launched on demand when a
+  # commit targets a repo the App is not yet installed on. GitHub redirects back to
+  # our callback with `code` (OAuth-during-install) + `installation_id`.
+  def install(conn, params) do
+    state = SessionStore.put_pending(safe_return_to(params["return_to"]))
+
+    case GitHub.install_url() do
+      {:ok, url} ->
+        conn
+        |> put_flow_cookie(state)
+        |> redirect(external: url)
+
+      {:error, _} ->
+        redirect(conn, external: append_query(web_shell_origin(), "auth=install_unavailable"))
+    end
+  end
+
+  # GET /auth/github/callback?code=&state=&installation_id= — exchange, identify,
+  # open a session. Serves both the sign-in and the install round-trips.
   def callback(conn, params) do
-    return_to = SessionStore.take_pending(params["state"]) || web_shell_origin()
+    conn = fetch_cookies(conn)
+    state = params["state"] || conn.req_cookies[@flow_cookie]
+    return_to = SessionStore.take_pending(state) || web_shell_origin()
 
     with code when is_binary(code) <- params["code"],
          {:ok, user_token} <- GitHub.exchange_code(code),
@@ -39,9 +62,13 @@ defmodule SbAuthWeb.AuthController do
 
       conn
       |> put_session_cookies(session)
+      |> clear_flow_cookie()
       |> redirect(external: return_to)
     else
-      _ -> redirect(conn, external: append_query(web_shell_origin(), "auth=error"))
+      _ ->
+        conn
+        |> clear_flow_cookie()
+        |> redirect(external: append_query(web_shell_origin(), "auth=error"))
     end
   end
 
@@ -57,7 +84,7 @@ defmodule SbAuthWeb.AuthController do
   def capabilities(conn, _params) do
     case current_session(conn) do
       nil -> send_json(conn, 401, %{error: "unauthenticated"})
-      _ -> json(conn, %{managedStorage: false, premiumCollab: false, seatCap: 1})
+      _ -> json(conn, %{premiumCollab: false, managedStorage: false, collaboratorSeats: 0})
     end
   end
 
@@ -118,6 +145,14 @@ defmodule SbAuthWeb.AuthController do
     |> delete_resp_cookie(@csrf_cookie, cookie_opts(false))
   end
 
+  # Short-lived HttpOnly cookie holding the pending-handoff token across the
+  # GitHub round-trip (max_age bounds an abandoned flow).
+  defp put_flow_cookie(conn, state) do
+    put_resp_cookie(conn, @flow_cookie, state, Keyword.put(cookie_opts(true), :max_age, 600))
+  end
+
+  defp clear_flow_cookie(conn), do: delete_resp_cookie(conn, @flow_cookie, cookie_opts(true))
+
   defp cookie_opts(http_only?) do
     [
       http_only: http_only?,
@@ -129,8 +164,8 @@ defmodule SbAuthWeb.AuthController do
 
   # --- misc ---
 
-  defp identity_json(%{login: login, name: name, avatar_url: avatar}) do
-    %{login: login, name: name, avatarUrl: avatar}
+  defp identity_json(%{login: login, id: id, avatar_url: avatar}) do
+    %{login: login, id: id, avatarUrl: avatar}
   end
 
   # Accept a bare path, or an absolute URL whose origin is the allowed web shell;
