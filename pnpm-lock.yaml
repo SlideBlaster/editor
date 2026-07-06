@@ -36,6 +36,9 @@ importers:
         specifier: ^1.27.1
         version: 1.38.6
     devDependencies:
+      '@slideblaster/auth-stub':
+        specifier: workspace:*
+        version: link:../../services/auth-stub
       '@slideblaster/git-proxy':
         specifier: workspace:*
         version: link:../../services/git-proxy
@@ -127,6 +130,9 @@ importers:
       '@slideblaster/adapters-browser':
         specifier: workspace:*
         version: link:../adapters-browser
+      '@slideblaster/adapters-shared':
+        specifier: workspace:*
+        version: link:../adapters-shared
       '@slideblaster/app':
         specifier: workspace:*
         version: link:../app

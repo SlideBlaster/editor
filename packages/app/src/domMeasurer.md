@@ -4,7 +4,7 @@ The browser adapter for the engine's `BatchMeasurer` seam — the Track-0 "async
 measurement" spike made real. Replaces `naiveMeasurer`'s character estimate with the
 node's _actual_ rendered box, so layout matches what you see.
 
-`createDomMeasurer()` returns a `BatchMeasurer` plus `dispose()`.
+`createDomMeasurer()` returns a `BatchMeasurer` plus `reset()` and `dispose()`.
 
 - **Measure offscreen at a reference width.** A hidden `.sb-slide` at `REF_PX` (1600px
   ⇒ 100px per slide unit) holds the nodes. Because the slide type is `cqw`-proportional
@@ -23,6 +23,11 @@ node's _actual_ rendered box, so layout matches what you see.
   a batch are de-duplicated. A `.sb-measure-root` stylesheet supplies only structural
   overrides (offscreen, height:auto, static flow) — never font metrics, so measurement
   can't diverge from display.
+- **`reset()` drops the cache.** The one content-key blind spot is a `deferred` table
+  whose _rendered_ HTML changes without its source changing — it compiles from a
+  placeholder box to the real table asynchronously (see [tableCompiler.md](./tableCompiler.md)).
+  When a table finishes compiling, the shell calls `reset()` so the next paint re-measures
+  at the true size instead of trusting the stale placeholder box.
 - **Floors.** Empty/whitespace nodes still get a min box (1 × 0.6 units) so their handle
   stays grabbable, matching the naive measurer's behaviour.
 

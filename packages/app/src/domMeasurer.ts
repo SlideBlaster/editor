@@ -20,7 +20,7 @@ import {
   type Size,
 } from '@slideblaster/editor'
 import { SLIDE_TYPE_CSS } from './slideType'
-import { mathOptions } from './math'
+import { renderOptions } from './tableCompiler'
 
 const SLIDE_W = 16
 /** Reference slide width in px. Larger = finer sub-pixel precision; the unit result
@@ -42,6 +42,10 @@ const MEASURE_CSS = [
 ].join('\n')
 
 export interface DomMeasurer extends BatchMeasurer {
+  /** Drop all cached boxes so the next measure re-reads the DOM. Called when a
+   *  deferred table finishes compiling: its content key is unchanged but its true
+   *  size is now larger than the placeholder that was measured. */
+  reset(): void
   dispose(): void
 }
 
@@ -71,7 +75,7 @@ export function createDomMeasurer(): DomMeasurer {
       // node's natural width (widest line) with `max-content`.
       el.style.width =
         input.textWidth !== undefined ? `${input.textWidth * PER_UNIT}px` : 'max-content'
-      el.innerHTML = renderContent(input.content, mathOptions)
+      el.innerHTML = renderContent(input.content, renderOptions)
       content.append(el)
       els.push(el)
     }
@@ -93,6 +97,9 @@ export function createDomMeasurer(): DomMeasurer {
       const misses = inputs.filter((i) => !cache.has(keyOf(i)))
       if (misses.length > 0) measureMisses(dedupe(misses))
       return inputs.map((i) => cache.get(keyOf(i))!)
+    },
+    reset() {
+      cache.clear()
     },
     dispose() {
       root.remove()

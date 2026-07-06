@@ -16,11 +16,13 @@ import {
   serializeBody,
   type ConnectorPath,
   type Layout,
+  type NodeContent,
   type PlacedNode,
   type Point,
   type TikzPicture,
 } from '@slideblaster/editor'
-import { mathOptions } from './math'
+import { renderOptions } from './tableCompiler'
+import { paintColumnEditors } from './columnEditor'
 import { resolveSnap, type SnapBox, type SnapLine, type SnapSize } from './snap'
 import { findBinding, type BindBox, type Binding } from './binding'
 import { paintConnectorEditor } from './connectorEditor'
@@ -47,6 +49,8 @@ export interface CanvasActions {
   remove(name: string): void
   /** Commit an inline content edit: `body` is the edited raw node body (re-parsed by the engine). */
   editContent(name: string, body: string): void
+  /** Commit a structured content edit (grid affordance): the new node content directly. */
+  editContentModel(name: string, content: NodeContent): void
   /** E4: draw a connector from one node to another (connect mode). */
   connect(from: string, to: string): void
   /** Select an existing connector by its index (or clear with null). */
@@ -69,7 +73,7 @@ export interface CanvasProps {
 }
 
 export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
-  stage.innerHTML = renderSlide(props.picture, props.layout, mathOptions)
+  stage.innerHTML = renderSlide(props.picture, props.layout, renderOptions)
   const slideEl = stage.querySelector<HTMLElement>('.sb-slide')
   if (!slideEl) return
 
@@ -132,6 +136,18 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
   })
 
   stage.append(overlay)
+
+  // Sub-node grid affordance (ADR 0016): on the selected node, overlay column bounds +
+  // divider grips + an add-column "+". Geometry is DOM-measured, so it runs after paint.
+  if (props.selected) {
+    const node = findNode(props.picture, props.selected)
+    const contentEl = stage.querySelector<HTMLElement>(
+      `.sb-node[data-node="${CSS.escape(props.selected)}"]`,
+    )
+    if (node && contentEl && node.content.kind === 'text') {
+      paintColumnEditors(overlay, slideEl, contentEl, props.selected, node.content, props.actions)
+    }
+  }
 
   // A just-created node opens straight in edit mode with an empty caret (W5).
   if (props.autoEdit) {

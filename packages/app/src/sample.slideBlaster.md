@@ -26,3 +26,38 @@ author: You
 - Arrows connect node anchors
 };
 ```
+
+## Tables {#s3}
+
+```slide
+\node[title] (title) at (8,8) {Tables};
+\node[body, below=0.9 of title] (data) {
+\begin{tabular}{lr}
+\toprule
+Fruit & Qty \\
+\midrule
+Apples & 3 \\
+Pears & 12 \\
+Cherries & 40 \\
+\bottomrule
+\end{tabular}
+};
+\node[note, right=1.2 of data] (src) {compiled by latexml};
+\draw[->] (src) -- (data);
+```
+
+## Columns and matrices {#s4}
+
+```slide
+\node[title] (title) at (8,8) {Columns and matrices};
+\node[body, below=0.9 of title, text width=13] (cols) {
+\begin{columns}
+\column{0.6}
+- Side-by-side content
+- Widths are proportional
+\column{0.4}
+A matrix of cells:
+\matrix{1 & 2 \\ 3 & 4}
+\end{columns}
+};
+```

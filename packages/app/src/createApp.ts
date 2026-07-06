@@ -25,6 +25,7 @@ import {
   renderSlide,
   resolveLayoutAsync,
   parseContent,
+  findNode,
   moveNodeTo,
   placeNodeRelative,
   createNode,
@@ -34,12 +35,14 @@ import {
   deleteConnector,
   updateConnector,
   setConnectorOptions,
+  type NodeContent,
   type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
 } from '@slideblaster/editor'
 import initialSource from './sample.slideBlaster.md?raw'
 import { createCodePane, type CodePane } from './codePane'
+import { minimalDiff } from './sourceDelta'
 import {
   paintDeck,
   type DeckActions,
@@ -62,6 +65,7 @@ import {
 import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import { renderChrome } from './chrome'
+import { enableResizers } from './resizer'
 import {
   bootDocument,
   createAutosave,
@@ -82,6 +86,8 @@ import './app.css'
 export interface CreateAppOptions {
   shellTag?: string
   ports?: AppPorts
+  /** If set, show a "Projects" affordance in the app bar to return to the landing. */
+  onExitToProjects?: () => void
 }
 
 interface State {
@@ -143,6 +149,24 @@ function countErrorNodes(doc: SlideDocument): number {
 export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void {
   renderChrome(root, { shellTag: opts.shellTag ?? 'SlideBlaster' })
   injectGlobalStyles()
+  enableResizers(root) // drag handles between the file tree, editor, and slide canvas
+
+  // A project is one working copy; when the shell can switch projects it passes
+  // `onExitToProjects`, and the app bar gets a back-to-landing button.
+  if (opts.onExitToProjects) {
+    const back = document.createElement('button')
+    back.type = 'button'
+    back.id = 'exit-projects'
+    back.textContent = '← Projects'
+    back.title = 'Back to projects'
+    // Self-contained styling (tokens from app.css) so this needs no app.css edit.
+    back.style.cssText =
+      'margin-right:.5rem;border:1px solid var(--line);border-radius:6px;' +
+      'background:var(--surface);color:var(--ink);font:inherit;font-size:.74rem;' +
+      'padding:.24rem .66rem;cursor:pointer;'
+    back.addEventListener('click', () => opts.onExitToProjects?.())
+    root.querySelector('.app-bar')?.prepend(back)
+  }
 
   // Scope element lookups to the mounted root, so the shell owns nothing but this node.
   const qs = <T extends HTMLElement>(selector: string): T => {
@@ -242,6 +266,17 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     })
   }
 
+  /** Mount (or clear) the selected node's column grid affordance without a repaint — the
+   *  selection-change path, since `select` deliberately does not re-render the canvas. */
+  const mountColumnEditors = (): void => {
+    const sel = state.selected
+    const picture = sel && currentDoc ? currentDoc.frames[sel.frame]?.picture : undefined
+    const node = sel && picture ? findNode(picture, sel.name) : undefined
+    deckHandle?.setColumnEditors(
+      sel && node ? { frame: sel.frame, name: sel.name, content: node.content } : null,
+    )
+  }
+
   /** Apply an edit op result: snapshot for undo, re-serialize, sync the code pane, render. */
   const commit = (doc: SlideDocument): void => {
     undoStack.push(state.source) // the pre-edit source is the undo target
@@ -251,6 +286,40 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     codePane.setValue(state.source)
     persist()
     void render()
+  }
+
+  /**
+   * Node-scoped commit for a content edit (ADR 0016): apply the new node content, then
+   * derive both deltas instead of a whole-scene round-trip — splice the code pane at the
+   * one changed range (`minimalDiff`, caret kept) and re-paint just this frame's card and
+   * thumbnail. Undo/persist are unchanged; only the paint is localized.
+   */
+  const commitContent = (frame: number, name: string, content: NodeContent): void => {
+    const target = currentDoc?.frames[frame]
+    if (!currentDoc || !target) return
+    const doc = withFrame(currentDoc, frame, setNodeContent(target.picture, name, content))
+
+    undoStack.push(state.source)
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
+    redoStack.length = 0
+    const next = toMarkdown(doc)
+    const edit = minimalDiff(state.source, next)
+    codePane.replaceRange(edit.start, edit.end, edit.text)
+    state.source = next
+    currentDoc = doc
+    persist()
+    scheduleTableCompile(doc) // the edit may have introduced a table; keep compilation live
+
+    // Canvas delta: only this frame's card + thumbnail, everything else untouched.
+    const ctx = {
+      selected: state.selected,
+      selectedConnector: state.selectedConnector,
+      connectMode: state.connectMode,
+    }
+    void deckHandle?.repaintFrame(frame, doc.frames[frame]!, ctx)
+    navHandle?.repaintThumb(frame, doc.frames[frame]!)
+    undoButton.disabled = undoStack.length === 0
+    redoButton.disabled = redoStack.length === 0
   }
 
   /** Restore a source from history, syncing the pane and clearing transient selections. */
@@ -296,9 +365,13 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     select(frame, name) {
       state.selected = name === null ? null : { frame, name }
       if (state.selectedConnector) {
-        // Selecting a node clears any connector selection — needs a re-render.
+        // Selecting a node clears any connector selection — needs a re-render (which
+        // mounts the column affordance via paintCanvas).
         state.selectedConnector = null
         void render()
+      } else {
+        // Cheap selection: mount/clear the column grid affordance without a repaint.
+        mountColumnEditors()
       }
       deckHandle?.showSelection(state.selected)
       setStatus()
@@ -358,11 +431,12 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       commit(withFrame(currentDoc, frame, deleteNode(target.picture, name)))
     },
     editContent(frame, name, body) {
-      const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
       // parseContent tolerates out-of-subset input: it lands as error content that
       // re-serializes verbatim (source kept) and renders as a marked error (ADR 0015).
-      commit(withFrame(currentDoc, frame, setNodeContent(target.picture, name, parseContent(body))))
+      commitContent(frame, name, parseContent(body))
+    },
+    editContentModel(frame, name, content) {
+      commitContent(frame, name, content)
     },
   }
 

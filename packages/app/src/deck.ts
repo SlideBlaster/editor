@@ -14,9 +14,11 @@ import {
   type BatchMeasurer,
   type ConnectorPath,
   type Frame,
+  type NodeContent,
   type Point,
 } from '@slideblaster/editor'
 import { paintCanvas, type CanvasActions } from './canvas'
+import { paintColumnEditors } from './columnEditor'
 
 /** Frame-addressed edit intents: the frame you touched is an explicit argument. */
 export interface DeckActions {
@@ -26,6 +28,9 @@ export interface DeckActions {
   requestCreate(frame: number, center: Point, client: Point): void
   remove(frame: number, name: string): void
   editContent(frame: number, name: string, body: string): void
+  /** Commit a structured content edit (grid affordance): the new node content directly,
+   *  taking the node-scoped delta path (ADR 0016) instead of a whole-doc round-trip. */
+  editContentModel(frame: number, name: string, content: NodeContent): void
   connect(frame: number, from: string, to: string): void
   selectConnector(frame: number, index: number | null): void
   updateConnector(frame: number, index: number, path: ConnectorPath): void
@@ -67,6 +72,27 @@ export interface DeckHandle {
   scrollToSlide(index: number): void
   /** Update selection outlines without a re-render (a drag may be in flight). */
   showSelection(selected: Selection | null): void
+  /**
+   * Re-measure and re-paint just one frame's card in place, leaving every other slide's
+   * DOM untouched (ADR 0016 canvas delta). Re-measuring the whole frame is what keeps a
+   * content edit correct when it reflows the node's box and shifts its `below=of` peers.
+   * Returns false if the card is gone (a full re-render superseded this handle).
+   */
+  repaintFrame(index: number, frame: Frame, ctx: RepaintCtx): Promise<boolean>
+  /**
+   * Mount (or clear) the column grid affordance for the selected node without a
+   * repaint — selection is deliberately repaint-free (a drag may be starting), so the
+   * dashed bounds + divider grips are added straight to the live overlay. Pass null to
+   * clear. A full render / `repaintFrame` mounts it via `paintCanvas` instead.
+   */
+  setColumnEditors(target: { frame: number; name: string; content: NodeContent } | null): void
+}
+
+/** Current selection/mode a targeted repaint needs (the handle's own copy is stale). */
+interface RepaintCtx {
+  selected: Selection | null
+  selectedConnector: ConnectorSelection | null
+  connectMode: boolean
 }
 
 /** One IntersectionObserver per deck host, disconnected before each rebuild. */
@@ -131,6 +157,42 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
           .forEach((h) => h.classList.toggle('is-selected', h.dataset.node === name))
       })
     },
+    async repaintFrame(index, frame, ctx) {
+      const card = cards[index]
+      if (!card) return false
+      const layout = await resolveLayoutAsync(frame.picture, props.measurer)
+      if (!card.isConnected) return false // a full re-render replaced the deck under us
+      paintCanvas(card, {
+        picture: frame.picture,
+        layout,
+        selected: ctx.selected?.frame === index ? ctx.selected.name : null,
+        selectedConnector:
+          ctx.selectedConnector?.frame === index ? ctx.selectedConnector.index : null,
+        connectMode: ctx.connectMode,
+        autoEdit: null,
+        actions: bindFrame(props.actions, index),
+      })
+      return true
+    },
+    setColumnEditors(target) {
+      cards.forEach((card) => card.querySelectorAll('.sb-col-edit').forEach((el) => el.remove()))
+      if (!target || target.content.kind !== 'text') return
+      const card = cards[target.frame]
+      const slideEl = card?.querySelector<HTMLElement>('.sb-slide')
+      const overlay = card?.querySelector<HTMLElement>('.sb-overlay')
+      const contentEl = card?.querySelector<HTMLElement>(
+        `.sb-node[data-node="${CSS.escape(target.name)}"]`,
+      )
+      if (!slideEl || !overlay || !contentEl) return
+      paintColumnEditors(
+        overlay,
+        slideEl,
+        contentEl,
+        target.name,
+        target.content,
+        bindFrame(props.actions, target.frame),
+      )
+    },
   }
 }
 
@@ -143,6 +205,7 @@ function bindFrame(actions: DeckActions, frame: number): CanvasActions {
     requestCreate: (center, client) => actions.requestCreate(frame, center, client),
     remove: (name) => actions.remove(frame, name),
     editContent: (name, body) => actions.editContent(frame, name, body),
+    editContentModel: (name, content) => actions.editContentModel(frame, name, content),
     connect: (from, to) => actions.connect(frame, from, to),
     selectConnector: (index) => actions.selectConnector(frame, index),
     updateConnector: (index, path) => actions.updateConnector(frame, index, path),

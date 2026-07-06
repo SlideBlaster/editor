@@ -73,6 +73,24 @@ describe('renderContent: port-gated payloads are labelled, not dropped', () => {
     )
   })
 
+  it('lets a Compile-port adapter inject the compiled table HTML', () => {
+    const out = renderContent(parseContent('\\begin{tabular}{cc}a & b\\end{tabular}'), {
+      renderTable: (src) => `[compiled: ${src}]`,
+    })
+    expect(out).toBe(
+      '<div class="sb-table" data-feature="table">[compiled: \\begin{tabular}{cc}a & b\\end{tabular}]</div>',
+    )
+  })
+
+  it('falls back to the placeholder when the table seam returns undefined', () => {
+    const out = renderContent(parseContent('\\begin{tabular}{cc}a & b\\end{tabular}'), {
+      renderTable: () => undefined,
+    })
+    expect(out).toBe(
+      '<div class="sb-deferred" data-feature="table">table &mdash; render pending</div>',
+    )
+  })
+
   it('an include shows its path (storage pending)', () => {
     expect(html('\\cat{shared/defs.tex}')).toBe(
       '<span class="sb-include" data-path="shared/defs.tex">[include: shared/defs.tex]</span>',

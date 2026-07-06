@@ -7,6 +7,9 @@ both sharing one source of truth (the `.slideBlaster.md` text, A1). On mount it
 renders the [chrome](./chrome.md) into `root` and injects the global stylesheets
 (once), then wires everything below. `opts.shellTag` sets the app-bar badge;
 `opts.ports` (optional) wires the working copy in — see the working-copy bullet.
+`opts.onExitToProjects` (optional) adds a "← Projects" button to the app bar that
+returns to the landing ([home.md](./home.md)) — set by shells that switch between
+projects.
 
 ```
 text -> render (W2):   code pane -> fromMarkdown -> resolveLayoutAsync -> renderSlide
@@ -29,6 +32,13 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.
+- **Node-scoped content commit (ADR 0016).** Content edits (`editContent` from the inline
+  editor, `editContentModel` from the column grid affordance) take `commitContent` instead
+  of the whole-doc `commit`: it swaps the one node's content, then derives both deltas —
+  the code pane is spliced at the single changed range (`minimalDiff`,
+  [sourceDelta.md](./sourceDelta.md), caret kept) and only that frame's card + thumbnail
+  repaint (`deckHandle.repaintFrame` / `navHandle.repaintThumb`). No whole-scene redraw,
+  no divergence (the pane ends up byte-identical to `toMarkdown`). Undo/persist unchanged.
 - **Creation menu (W5).** `requestCreate` opens the cursor-anchored menu
   ([createMenu.ts](./createMenu.md)) with the element `CATALOGUE`; picking inserts a node
   of that kind at the slide point, selects it, and sets `autoEdit` so it opens in edit
@@ -45,6 +55,11 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   verbatim, renders as a marked error — ADR 0015). `setStatus` counts error nodes across
   the deck (`countErrorNodes`) and surfaces the document error state; the git-commit
   gate itself lands with the Git adapter (M4).
+- **Compile port (tables).** `installTableCompiler(ports.compile, …)` wires the latexml
+  Compile port into the shared `renderOptions` ([tableCompiler.md](./tableCompiler.md)).
+  `render` schedules a debounced compile of the doc's tables; when one finishes, the
+  measurer is reset and the deck re-renders so the table appears at its true size.
+  `collectSlides` awaits `ensureTables` first so an export never races the compile.
 - **Working copy (M3).** With `opts.ports` (`AppPorts`: storage/git/auth from
   [workspace.ts](./workspace.md)) the open document lives in the working copy:
   boot seeds/selects via `bootDocument` and every source change persists through
@@ -79,9 +94,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   editor, menu filter) is focused, so those keep their native behaviour. The zoom control
   also has a **Fit** button (`zoom.fitWidth`).
 - **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
-  form, so a canvas edit normalizes source formatting document-wide (fine for the
-  canonical sample; surgical per-frame splicing is a later refinement). `paintDeck`
-  preserves scroll position across the rebuild.
+  form. Coarse ops (`commit`) then push the whole source and rebuild the deck (`paintDeck`
+  preserves scroll). Content edits (`commitContent`) instead splice only the changed range
+  into the code pane and repaint only the touched frame (ADR 0016, above); the canonical
+  form still governs, so non-canonical source normalizes on first touch.
 - **Tolerant parse.** A malformed manual edit shows an error banner and keeps the last
   good render.
 - **DOM measurement (async render).** Node sizes come from the DOM measurer

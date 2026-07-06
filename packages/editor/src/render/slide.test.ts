@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parsePicture } from '../tikz/parse'
 import { resolveLayout } from '../layout/resolve'
 import type { Measurer } from '../layout/measure'
-import { renderSlide, connectorsOf } from './slide'
+import { renderSlide, connectorsOf, slideStylesheet } from './slide'
 
 const fixed = (width: number, height: number): Measurer => ({ measure: () => ({ width, height }) })
 
@@ -73,5 +73,20 @@ describe('renderSlide', () => {
   it('tags content nodes with their model identity (data-node)', () => {
     expect(html).toContain('data-node="intro"')
     expect(html).toContain('data-node="o2"')
+  })
+})
+
+describe('slideStylesheet: base layout for structured content blocks', () => {
+  const css = slideStylesheet()
+
+  it('lays columns out as a flex row (the inline flex:<width> does the proportion)', () => {
+    expect(css).toContain('.sb-columns{display:flex')
+    expect(css).toContain('.sb-column{min-width:0}')
+  })
+
+  it('gives a matrix spacing-only, centred cells', () => {
+    expect(css).toContain('.sb-matrix{border-collapse:collapse')
+    expect(css).toContain('.sb-matrix td{')
+    expect(css).toContain('text-align:center')
   })
 })

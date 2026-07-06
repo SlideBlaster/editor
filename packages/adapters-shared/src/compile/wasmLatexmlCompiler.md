@@ -3,12 +3,15 @@
 The `Compile` port (ADR 0009) implemented with WASM latexml, shared by the browser
 and native shells. Turns a LaTeX table environment into self-contained HTML.
 
-## Status: scaffold (engine not built)
+## Status: built and wired
 
-The Track-0 spike proved full WASM latexml feasible (~5-6 MB gz) and mapped the
-build; the engine itself (`emperl.wasm` + Perl driver) is not built yet. See
-`engine/README.md` and the feasibility record at project-root
-`spikes/wasm-latexml/`. This module is **present but not wired into any shell**.
+The engine is built (`engine/dist/perl-web.{js,wasm,data}`, Git LFS) and wired into
+web-shell: a slide `tabular` renders as compiled HTML in the running product. The
+compiler is injected with a `LatexmlEngine` — `createBrowserLatexmlEngine`
+(in-process; Node/tests) or `createWorkerLatexmlEngine` (off the UI thread; the
+shell). The app bridges the async port to the synchronous render/measure seam and
+caches results ([app/tableCompiler.md](../../../app/src/tableCompiler.md)). Build
+record: `engine/README.md`, project-root `spikes/wasm-latexml/`.
 
 ## Responsibility
 

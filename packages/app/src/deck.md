@@ -32,11 +32,17 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
   slide with the greatest visible area as `onActiveChange`; the controller uses
   it to move the navigator highlight. One observer per host, disconnected before
   each rebuild (`observers` WeakMap) so removed cards are not retained.
-- **Scroll survives rebuild.** An edit re-serializes and re-renders the whole
-  deck; `paintDeck` captures and restores `scrollTop` so the view does not jump.
-  (Surgical single-card repaint is a later optimisation.)
+- **Scroll survives a full rebuild.** A coarse edit re-renders the whole deck;
+  `paintDeck` captures and restores `scrollTop` so the view does not jump.
+- **Surgical single-frame repaint (ADR 0016).** `repaintFrame(index, frame, ctx)`
+  re-measures and re-paints just one card in place (returns false if a full render
+  replaced the deck under it), so a node-scoped content edit never rebuilds the deck.
+  Re-measuring the whole frame is what keeps it correct when the edit reflows the node's
+  box and shifts its `below=of` peers.
 - **Selection is cheap.** `showSelection` toggles handle outlines across all
-  cards without a re-render — a drag may be starting on the element.
+  cards without a re-render — a drag may be starting on the element. On the same
+  repaint-free path, `setColumnEditors` mounts/clears the selected node's column grid
+  affordance ([columnEditor.md](./columnEditor.md)) straight onto the live overlay.
 - **Handle vs scroll.** Only `.sb-handle` sets `touch-action: none`; touching a
   slide's empty area still scrolls the deck.
 

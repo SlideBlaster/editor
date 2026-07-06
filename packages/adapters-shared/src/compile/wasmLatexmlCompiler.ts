@@ -2,11 +2,12 @@
  * Compile port implemented with WASM latexml. Contract: see wasmLatexmlCompiler.md.
  *
  * The adapter is the JS glue around a single in-process conversion primitive,
- * `LatexmlEngine`, which is the compiled `emperl.wasm` + Perl driver
- * (see engine/README.md). The engine is NOT built yet — the Track-0 spike proved
- * it feasible and mapped the build (project-root spikes/wasm-latexml). Until an
- * engine is injected, `supports('table')` is false and `tableToHtml` throws a
- * surfaced error, so the editor degrades gracefully per the port contract.
+ * `LatexmlEngine`, which is the compiled perl-web.wasm + Perl driver (built in
+ * engine/dist; see engine/README.md). The engine is injected — in-process via
+ * createBrowserLatexmlEngine (Node/tests) or worker-hosted via
+ * createWorkerLatexmlEngine (the shell, off the UI thread). With no engine
+ * injected, `supports('table')` is false and `tableToHtml` throws a surfaced
+ * error, so the editor degrades gracefully per the port contract.
  *
  * Everything that does not require the engine — the LaTeX document wrapping that
  * matches the prototype, and the standalone-HTML finalization — is real and

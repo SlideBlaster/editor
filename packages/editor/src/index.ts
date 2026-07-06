@@ -25,6 +25,9 @@ export {
   serializeRuns,
   inlineStyleOf,
   dialectOf,
+  setColumnWidths,
+  insertColumn,
+  removeColumn,
   OutOfSubsetError,
 } from './content/index'
 export type { InlineStyle } from './content/index'

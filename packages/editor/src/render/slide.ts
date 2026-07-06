@@ -176,7 +176,17 @@ export function slideStylesheet(): string {
     '.sb-box{fill:transparent;stroke:none}',
     '.sb-arrow{fill:none;stroke:#333;stroke-width:0.03}',
     '.sb-style-title{font-weight:bold}',
-    '.sb-deferred,.sb-include,.sb-error{opacity:0.7;font-style:italic}',
+    // columns lay out as a flex row; each `.sb-column` carries an inline `flex:<width>`
+    // (from its `\column{…}` argument) so widths are proportional. min-width:0 lets a
+    // column shrink and wrap instead of overflowing the node box.
+    '.sb-columns{display:flex;gap:1em;align-items:flex-start}',
+    '.sb-column{min-width:0}',
+    // a matrix is a spacing-only grid of cells (no rules), matrix-style centred.
+    '.sb-matrix{border-collapse:collapse;margin:0.1em 0}',
+    '.sb-matrix td{padding:0.1em 0.5em;vertical-align:middle;text-align:center}',
+    '.sb-deferred,.sb-include,.sb-error,.sb-table-error{opacity:0.7;font-style:italic}',
+    // a compiled table (Compile port) carries its own latexml <style>; keep its box tidy.
+    '.sb-table{display:inline-block;font-style:normal}',
   ].join('\n')
 }
 

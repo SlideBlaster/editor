@@ -69,3 +69,10 @@ layout)`. The stroke follows the **anchor chord** (`connector.points`), i.e. the
   (`svg.sb-rubber`) to the pointer and, on release over another node
   (`document.elementFromPoint` -> `.sb-handle[data-node]`), fires `connect(from, to)`.
   A release off any node cancels.
+- **Column grid affordance (ADR 0016).** When a node with a `columns` group is selected,
+  `paintColumnEditors` ([columnEditor.md](./columnEditor.md)) overlays dashed column
+  bounds, divider grips (drag to resize neighbours), and an add-column "+". Because
+  selection is repaint-free, it is also mounted straight onto the live overlay by
+  `deckHandle.setColumnEditors` on selection change; a full render / `repaintFrame`
+  mounts it here in `paintCanvas`. Its gestures commit via `editContentModel` (the
+  node-scoped delta path), not the whole-doc `editContent`.

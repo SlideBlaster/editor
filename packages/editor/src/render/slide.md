@@ -30,5 +30,13 @@ viewable when mounted.
   content div also carries `data-node="<name>"` so an editor can hit-test and address
   it (selection, drag, inline edit); harmless in the export DOM.
 
+- **Content block layout.** `slideStylesheet()` also carries the base visual layout for
+  the structured content blocks `renderContent` emits, so a mounted slide is viewable
+  without an app-level sheet: `columns` become a flex row (`.sb-columns`; each
+  `.sb-column` grows by its inline `flex:<width>`), and a `matrix` is a spacing-only,
+  centred grid of cells (`.sb-matrix`). This is the render (B) track of the otherwise
+  fully-structured `columns`/`matrix` runs ([content.md](../model/content.md)). Type
+  scale and richer theming layer on top (the app's `SLIDE_TYPE_CSS`).
+
 Contract: pure, deterministic string output; headless and snapshot-testable. Limits:
 the stylesheet is a starting point, not the theme system.

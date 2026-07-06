@@ -12,9 +12,14 @@ output: `\textbf{x}` / `**x**` / `<b>x</b>` all become `<strong>x</strong>` (bol
 - **Math** goes through a seam: `options.renderMath(source, display)`. The default is
   a marked placeholder (`<span class="sb-math" data-mode=…>source</span>`); a KaTeX
   adapter drops in behind it at shell integration, like the layout Measurer.
-- **Port-gated payloads are labelled, never dropped:** `deferred` (table) renders
-  "table &mdash; render pending" (Compile port); `include` shows `[include: path]`
-  (Storage port); a `fragment` is an empty marker span (reveal is a presentation
+- **Table** goes through a second seam: `options.renderTable(source)` (Compile port,
+  latexml). It returns the compiled HTML fragment wrapped in `<div class="sb-table">`,
+  or `undefined` when the compile is not yet available — then the "render pending"
+  placeholder below shows. Synchronous like `renderMath`; the async compile populates a
+  cache the seam reads.
+- **Port-gated payloads are labelled, never dropped:** an uncompiled `deferred` (table)
+  renders "table &mdash; render pending" (Compile port); `include` shows `[include:
+path]` (Storage port); a `fragment` is an empty marker span (reveal is a presentation
   concern).
 - All text and attributes are HTML-escaped.
 

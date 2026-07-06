@@ -6,8 +6,8 @@ directly to a slide (ux/deck-navigation.md). It edits nothing.
 
 - **Appearance.** A vertical rail (`.deck-rail`); the active thumbnail is centred and
   enlarged, neighbours recede. `setActive` re-centres it (`block: 'center'`).
-- Thumbnails are the same `renderSlide` output as the canvas (math included via the
-  shared `mathOptions`), scaled down by `.thumb` CSS; they use the cheap sync naive
+- Thumbnails are the same `renderSlide` output as the canvas (math and tables included via
+  the shared `renderOptions`), scaled down by `.thumb` CSS; they use the cheap sync naive
   layout since they are static (the editable canvas uses the DOM measurer).
 
 Sync is two-way and lives in the controller:

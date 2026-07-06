@@ -14,3 +14,9 @@ markup in its own `index.html`. The element IDs the controller
 `#git-panel`, `#editor-head`) are defined here and must stay in sync with that
 controller. `#editor-head` shows the path of the open document. `shellTag` is
 the only per-shell text (e.g. "web-shell · M3"); it is HTML-escaped.
+
+Between the panes sit two drag handles — `#side-resizer` (file panel | editor)
+and `#editor-resizer` (editor | slide canvas) — wired by
+[resizer.ts](./resizer.md) to make the widths draggable. They must stay in the
+markup in that sibling order, since the CSS collapses `#side-resizer` with the
+side panel when it is hidden.

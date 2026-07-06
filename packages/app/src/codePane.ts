@@ -9,6 +9,11 @@
 export interface CodePane {
   getValue(): string
   setValue(value: string): void
+  /**
+   * Splice `text` into `[start, end)` without a whole-value reset, preserving the
+   * caret/scroll — the code half of a node-scoped commit (ADR 0016, sourceDelta.ts).
+   */
+  replaceRange(start: number, end: number, text: string): void
 }
 
 export function createCodePane(
@@ -27,6 +32,12 @@ export function createCodePane(
     getValue: () => textarea.value,
     setValue: (value: string) => {
       textarea.value = value
+    },
+    replaceRange: (start: number, end: number, text: string) => {
+      if (start === end && text === '') return // empty no-op edit: leave caret untouched
+      // setRangeText splices in place and keeps the surrounding selection/scroll — the
+      // whole point over `value =` (which collapses the caret to the end).
+      textarea.setRangeText(text, start, end, 'preserve')
     },
   }
 }

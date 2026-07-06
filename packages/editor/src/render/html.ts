@@ -18,6 +18,14 @@ import { inlineStyleOf, type InlineStyle } from '../content/styles'
 export interface RenderOptions {
   /** Render inline/display math to HTML. Defaults to a source-carrying placeholder. */
   renderMath?: (source: string, display: boolean) => string
+  /**
+   * Render a deferred table's LaTeX to HTML via the Compile port. Returns the
+   * compiled fragment, or `undefined` when it is not yet available (not compiled,
+   * compiling, or no engine) — the caller then shows the "render pending"
+   * placeholder. Synchronous by contract: the async compile happens out of band and
+   * populates a cache this reads, exactly like `renderMath` reads KaTeX.
+   */
+  renderTable?: (source: string) => string | undefined
 }
 
 export function renderContent(content: NodeContent, options: RenderOptions = {}): string {
@@ -78,8 +86,12 @@ function renderRun(run: TextRun, options: RenderOptions): string {
       return `<img src="${escapeAttr(run.src)}" alt="${escapeAttr(run.alt)}">`
     case 'include':
       return `<span class="sb-include" data-path="${escapeAttr(run.path)}">[include: ${escape(run.path)}]</span>`
-    case 'deferred':
+    case 'deferred': {
+      const compiled = run.feature === 'table' ? options.renderTable?.(run.source) : undefined
+      if (compiled !== undefined)
+        return `<div class="sb-table" data-feature="${escapeAttr(run.feature)}">${compiled}</div>`
       return `<div class="sb-deferred" data-feature="${escapeAttr(run.feature)}">${escape(run.feature)} &mdash; render pending</div>`
+    }
     case 'fragment':
       return `<span class="sb-fragment" data-fragment="${escapeAttr(run.name)}"${run.at !== undefined ? ` data-at="${run.at}"` : ''}></span>`
   }

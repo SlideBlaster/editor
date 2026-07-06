@@ -4,9 +4,10 @@ Fills the engine's `renderMath` seam ([render/html.md](../../editor/src/render/h
 with KaTeX, so `$…$` and `$$…$$` typeset on every surface instead of rendering as their
 source.
 
-- **One shared `mathOptions`.** The same `RenderOptions` object is passed to every render
-  call — `paintCanvas` ([canvas.ts](./canvas.md)), the DOM measurer
-  ([domMeasurer.ts](./domMeasurer.md)), the navigator thumbnails
+- **Composed into one shared `renderOptions`.** `renderMath` is folded together with the
+  table seam into a single `RenderOptions` object ([tableCompiler.md](./tableCompiler.md))
+  that is passed to every render call — `paintCanvas` ([canvas.ts](./canvas.md)), the DOM
+  measurer ([domMeasurer.ts](./domMeasurer.md)), the navigator thumbnails
   ([deckNav.ts](./deckNav.md)), and the export ([export.ts](./export.md)). Because the
   measurer and the canvas render math identically, measured boxes match what you see.
 - **Self-contained styles.** KaTeX needs its stylesheet; `katexInlineCss.ts` is that CSS

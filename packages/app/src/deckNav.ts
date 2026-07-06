@@ -8,7 +8,7 @@
  * only — it never edits (ux/deck-navigation.md).
  */
 import { renderSlide, resolveLayout, naiveMeasurer, type Frame } from '@slideblaster/editor'
-import { mathOptions } from './math'
+import { renderOptions } from './tableCompiler'
 
 export interface NavProps {
   frames: Frame[]
@@ -18,6 +18,9 @@ export interface NavProps {
 
 export interface NavHandle {
   setActive(index: number): void
+  /** Re-render just one thumbnail after a node-scoped content edit (ADR 0016), so the
+   *  rail stays in sync without rebuilding the whole nav. */
+  repaintThumb(index: number, frame: Frame): void
 }
 
 export function paintDeckNav(host: HTMLElement, props: NavProps): NavHandle {
@@ -33,7 +36,7 @@ export function paintDeckNav(host: HTMLElement, props: NavProps): NavHandle {
     thumb.innerHTML = renderSlide(
       frame.picture,
       resolveLayout(frame.picture, naiveMeasurer),
-      mathOptions,
+      renderOptions,
     )
     thumb.addEventListener('click', () => props.onSelect(index))
     host.append(thumb)
@@ -46,5 +49,15 @@ export function paintDeckNav(host: HTMLElement, props: NavProps): NavHandle {
   }
   setActive(props.active)
 
-  return { setActive }
+  const repaintThumb = (index: number, frame: Frame): void => {
+    const thumb = thumbs[index]
+    if (!thumb) return
+    thumb.innerHTML = renderSlide(
+      frame.picture,
+      resolveLayout(frame.picture, naiveMeasurer),
+      renderOptions,
+    )
+  }
+
+  return { setActive, repaintThumb }
 }

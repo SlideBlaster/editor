@@ -31,10 +31,12 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
         <div class="side-section" id="file-tree"></div>
         <div class="side-section side-section-grow" id="git-panel"></div>
       </aside>
+      <div class="gutter" id="side-resizer" role="separator" aria-orientation="vertical" aria-label="Resize file panel" tabindex="0"></div>
       <section class="editor">
         <div class="editor-head" id="editor-head">sample.slideBlaster.md</div>
         <div class="code-host" id="code"></div>
       </section>
+      <div class="gutter" id="editor-resizer" role="separator" aria-orientation="vertical" aria-label="Resize editor" tabindex="0"></div>
       <nav class="deck-rail" id="deck-rail" aria-label="Slides" hidden></nav>
       <section class="preview">
         <div class="deck" id="deck"></div>
