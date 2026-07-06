@@ -65,7 +65,13 @@ export type {
   PlacedNode,
   Size,
 } from './layout/index'
-export { renderContent, renderSlide, slideStylesheet, connectorsOf, slideStepCount } from './render/index'
+export {
+  renderContent,
+  renderSlide,
+  slideStylesheet,
+  connectorsOf,
+  slideStepCount,
+} from './render/index'
 export type { RenderOptions, Connector } from './render/index'
 export {
   defaultTheme,
@@ -73,6 +79,7 @@ export {
   regionRects,
   regionAt,
   regionGuides,
+  slideBoxFromMeta,
   DEFAULT_SLIDE_BOX,
   serializeTheme,
   parseTheme,

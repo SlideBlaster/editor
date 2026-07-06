@@ -29,6 +29,24 @@ citationStyle: numeric
 };
 ```
 
+## Overlays {#s-overlays}
+
+```slide
+\node[title] (title) at (8,8) {Overlays and steps};
+\node[body, below=0.8 of title, text width=11] (steps) {
+\begin{itemize}
+\item Everything starts on step 1
+\item<2-> Uncovered from step 2
+\item<3-> and this one from step 3
+\end{itemize}
+};
+\node[note, overlay={2-}] (tag) at (13,5) {node reveal: from step 2};
+\node[body, below=0.6 of steps, text width=11] (inline) {
+Inline: \only<2>{only on step 2} and \alert<3>{alert on step 3}
+};
+\draw[->] (tag) -- (steps);
+```
+
 ## Tables {#s3}
 
 ```slide

@@ -119,7 +119,11 @@ function withScaleTokens(options: string[], sx: number, sy: number): string[] {
  * brace-wrapped (`overlay={1,3}`) so its commas survive tikz option tokenizing. Placement,
  * size, and content are untouched. A no-op if the node is not found.
  */
-export function setNodeOverlay(picture: TikzPicture, name: string, spec: string | null): TikzPicture {
+export function setNodeOverlay(
+  picture: TikzPicture,
+  name: string,
+  spec: string | null,
+): TikzPicture {
   const raw = spec?.trim() ?? ''
   return mapNode(picture, name, (node) => ({
     ...node,

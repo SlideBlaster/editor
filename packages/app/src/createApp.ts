@@ -292,6 +292,11 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
           if (currentDoc && target && frame !== null)
             commit(withFrame(currentDoc, frame, updateConnector(target.picture, index, path)))
         },
+        setNodeOverlay: (name, spec) => {
+          const target = frame !== null ? currentDoc?.frames[frame] : undefined
+          if (currentDoc && target && frame !== null)
+            commit(withFrame(currentDoc, frame, setNodeOverlay(target.picture, name, spec)))
+        },
       },
     })
   }
@@ -349,9 +354,10 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
         : null,
       connectMode: state.connectMode,
+      ...(state.preview?.frame === frame ? { step: state.preview.step } : {}),
     }
     void deckHandle?.repaintFrame(frame, doc.frames[frame]!, ctx)
-    navHandle?.repaintThumb(frame, doc.frames[frame]!)
+    void navHandle?.repaintThumb(frame, doc.frames[frame]!)
     undoButton.disabled = undoStack.length === 0
     redoButton.disabled = redoStack.length === 0
   }
@@ -381,20 +387,25 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     restore(next)
   }
 
-  /** Render every frame to self-contained HTML for export — same measurements as the canvas. */
+  /**
+   * Render the deck to self-contained HTML for export — same measurements as the canvas.
+   * One page per overlay step (ADR 0018): a slide with N steps expands to N pages, each
+   * rendered at that step. Geometry is step-invariant, so layout is resolved once per slide
+   * and reused across its steps.
+   */
   const collectSlides = async (doc: SlideDocument): Promise<RenderedSlide[]> => {
     await ensureTables(doc) // the export must not race the async table compile
     await ensureCitations(doc) // resolve \cite numbering + bibliography before export
-    return Promise.all(
-      doc.frames.map(async (frame, index) => ({
-        index,
-        html: renderSlide(
-          frame.picture,
-          await resolveLayoutAsync(frame.picture, measurer),
-          renderOptions,
-        ),
-      })),
+    const perFrame = await Promise.all(
+      doc.frames.map(async (frame) => {
+        const layout = await resolveLayoutAsync(frame.picture, measurer)
+        const steps = slideStepCount(frame.picture)
+        return Array.from({ length: steps }, (_, i) =>
+          renderSlide(frame.picture, layout, { ...renderOptions, step: i + 1 }),
+        )
+      }),
     )
+    return perFrame.flat().map((html, index) => ({ index, html }))
   }
 
   const actions: DeckActions = {
@@ -520,6 +531,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (state.selected && state.selected.frame > maxIndex) state.selected = null
     if (state.selectedConnector && state.selectedConnector.frame > maxIndex)
       state.selectedConnector = null
+    if (state.preview && state.preview.frame > maxIndex) state.preview = null
     if (!state.selectedConnector) state.focusedCurve = null // no arrow selected -> no curve focus
 
     const seq = ++renderSeq
@@ -549,9 +561,10 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     })
     if (handle === null) return // a newer render superseded this one
     deckHandle = handle
-    navHandle = paintDeckNav(deckRail, {
+    navHandle = await paintDeckNav(deckRail, {
       frames: doc.frames,
       active: state.active,
+      measurer,
       onSelect: (index) => deckHandle?.scrollToSlide(index),
     })
     undoButton.disabled = undoStack.length === 0
@@ -607,6 +620,67 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   // Keyboard: undo/redo, Delete, Escape — but never while typing in a field (the code
   // pane, the inline editor, or the creation-menu filter keep their native behaviour,
   // including the textarea's own undo).
+  // Overlay step control (ADR 0018): scrub the active slide through its build steps. The
+  // preview is per active slide; every other slide (and the default) renders all-visible.
+  const stepControl = qs('#step-control')
+  const stepReadout = qs('#step-readout')
+
+  /** The step currently previewed for `frame`, or undefined (all-visible). */
+  const previewStep = (frame: number): number | undefined =>
+    state.preview?.frame === frame ? state.preview.step : undefined
+
+  /** Ctx a single-frame repaint needs: current selection + this frame's preview step. */
+  const repaintCtx = (frame: number) => ({
+    selected: state.selected,
+    selectedConnector: state.selectedConnector,
+    selectedCurve: state.focusedCurve
+      ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+      : null,
+    connectMode: state.connectMode,
+    ...(previewStep(frame) !== undefined ? { step: previewStep(frame) } : {}),
+  })
+
+  /** Repaint one frame's card in place (its preview changed), leaving the rest untouched. */
+  const repaintFrameStep = (frame: number): void => {
+    const f = currentDoc?.frames[frame]
+    if (f) void deckHandle?.repaintFrame(frame, f, repaintCtx(frame))
+  }
+
+  /** Return a previewed slide to its all-visible authoring view. */
+  const clearPreview = (): void => {
+    const prev = state.preview
+    state.preview = null
+    if (prev) repaintFrameStep(prev.frame)
+    updateStepControl()
+  }
+
+  /** Reflect the active slide's step count and current preview in the app-bar control. */
+  function updateStepControl(): void {
+    const picture = currentDoc?.frames[state.active]?.picture
+    const count = picture ? slideStepCount(picture) : 1
+    stepControl.hidden = count <= 1
+    if (count <= 1) return
+    const step = previewStep(state.active)
+    stepReadout.textContent = step === undefined ? `All / ${count}` : `${step} / ${count}`
+  }
+
+  /** Scrub the active slide's preview by `delta` through All -> 1 -> ... -> N (All = 0). */
+  const stepBy = (delta: number): void => {
+    const picture = currentDoc?.frames[state.active]?.picture
+    if (!picture) return
+    const count = slideStepCount(picture)
+    if (count <= 1) return
+    const current = previewStep(state.active) ?? 0
+    const next = Math.max(0, Math.min(count, current + delta))
+    state.preview = next === 0 ? null : { frame: state.active, step: next }
+    repaintFrameStep(state.active)
+    updateStepControl()
+  }
+
+  stepControl.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+    button.addEventListener('click', () => stepBy(button.dataset.step === 'next' ? 1 : -1))
+  })
+
   document.addEventListener('keydown', (event) => {
     const el = document.activeElement
     const typing = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
@@ -648,6 +722,12 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (event.key === 'End') {
       event.preventDefault()
       deckHandle?.scrollToSlide(last)
+      return
+    }
+    // Overlay step scrubbing on the active slide (ADR 0018): `.` forward, `,` back.
+    if (event.key === '.' || event.key === ',') {
+      event.preventDefault()
+      stepBy(event.key === '.' ? 1 : -1)
       return
     }
     if (event.key !== 'Delete' && event.key !== 'Backspace') return

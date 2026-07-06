@@ -99,9 +99,7 @@ describe('renderContent: port-gated payloads are labelled, not dropped', () => {
   })
 
   it('a point fragment renders as an empty marker', () => {
-    expect(html('a \\pause b')).toBe(
-      'a <span class="sb-fragment" data-fragment="pause"></span> b',
-    )
+    expect(html('a \\pause b')).toBe('a <span class="sb-fragment" data-fragment="pause"></span> b')
   })
 })
 

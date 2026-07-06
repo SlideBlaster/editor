@@ -90,7 +90,10 @@ function serializeList(run: {
     case 'latex': {
       const env = run.ordered ? 'enumerate' : 'itemize'
       return `\\begin{${env}}${run.items
-        .map((item) => `\\item${item.spec ? `<${item.spec.raw}>` : ''} ${serializeRuns(item.children)}`)
+        .map(
+          (item) =>
+            `\\item${item.spec ? `<${item.spec.raw}>` : ''} ${serializeRuns(item.children)}`,
+        )
         .join('')}\\end{${env}}`
     }
     case 'html': {

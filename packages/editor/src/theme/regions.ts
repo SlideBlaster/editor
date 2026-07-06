@@ -7,6 +7,7 @@
  * Regions are editor-only affordances — never rendered into output (ADR 0002 holds).
  */
 import type { Point } from '../model/tikz'
+import { getMeta, type DocumentMeta } from '../model/document'
 import type { Anchor9, Theme, Region } from './theme'
 
 /** The slide coordinate box (aspect-ratio-configurable, ADR 0017); y-up. */
@@ -17,6 +18,25 @@ export interface SlideBox {
 
 /** The default 16:9 slide box (matches the render/measure path). */
 export const DEFAULT_SLIDE_BOX: SlideBox = { width: 16, height: 9 }
+
+/** Parse an `aspect`/`aspectRatio` frontmatter value (`16:9`, `4:3`, `16x10`) to a box.
+ *  Height is fixed at 9 so y-coordinates are stable across ratios; only the x extent
+ *  changes (width = ratio * 9). Unparseable values fall back to the default box. */
+function parseAspect(raw: string): SlideBox {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)\s*$/.exec(raw)
+  if (m === null) return DEFAULT_SLIDE_BOX
+  const w = Number(m[1])
+  const h = Number(m[2])
+  if (!(w > 0 && h > 0)) return DEFAULT_SLIDE_BOX
+  return { width: (w / h) * 9, height: 9 }
+}
+
+/** The slide box for a document, from its `aspect`/`aspectRatio` frontmatter (ADR 0017);
+ *  default 16x9. Theme geometry (regions, furniture) resolves against this box. */
+export function slideBoxFromMeta(meta: DocumentMeta): SlideBox {
+  const raw = getMeta(meta, 'aspect') ?? getMeta(meta, 'aspectRatio')
+  return raw !== undefined ? parseAspect(raw) : DEFAULT_SLIDE_BOX
+}
 
 /** A region resolved to slide-space coordinates (y-up: `top` >= `bottom`). */
 export interface RegionRect {

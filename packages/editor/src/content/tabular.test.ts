@@ -63,14 +63,17 @@ describe('parseTabular', () => {
   })
 
   it('flags \\multicolumn / \\multirow tables as spanned', () => {
-    const mc = '\\begin{tabular}{lcc}\n& \\multicolumn{2}{c}{Half} \\\\\nA & 1 & 2 \\\\\n\\end{tabular}'
+    const mc =
+      '\\begin{tabular}{lcc}\n& \\multicolumn{2}{c}{Half} \\\\\nA & 1 & 2 \\\\\n\\end{tabular}'
     expect(parseTabular(mc)!.spanned).toBe(true)
     const mr = '\\begin{tabular}{ll}\n\\multirow{2}{*}{G} & a \\\\\n& b \\\\\n\\end{tabular}'
     expect(parseTabular(mr)!.spanned).toBe(true)
   })
 
   it('protects & inside braces and escaped \\&', () => {
-    const grid = parseTabular('\\begin{tabular}{ll}\n\\textbf{a & b} & c \\\\\nx \\& y & z \\\\\n\\end{tabular}')!
+    const grid = parseTabular(
+      '\\begin{tabular}{ll}\n\\textbf{a & b} & c \\\\\nx \\& y & z \\\\\n\\end{tabular}',
+    )!
     expect(grid.rows[0]!.cells.map((c) => c.text)).toEqual(['\\textbf{a & b}', 'c'])
     expect(grid.rows[1]!.cells.map((c) => c.text)).toEqual(['x \\& y', 'z'])
   })

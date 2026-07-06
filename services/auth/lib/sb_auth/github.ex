@@ -37,10 +37,25 @@ defmodule SbAuth.GitHub do
   def get_user(user_token) do
     case Req.get(@api <> "/user", headers: user_headers(user_token)) do
       {:ok, %{status: 200, body: b}} ->
-        {:ok, %{login: b["login"], name: b["name"], avatar_url: b["avatar_url"]}}
+        {:ok, %{login: b["login"], id: to_string(b["id"]), avatar_url: b["avatar_url"]}}
 
       other ->
         {:error, {:get_user, other}}
+    end
+  end
+
+  @doc """
+  The GitHub App's installation page URL (`.../installations/new`), for sending a
+  user to grant the App access to a repo (the doc's "install per repo" step).
+  Resolved from the App's own metadata (`GET /app`) so no slug config is needed.
+  """
+  def install_url do
+    with {:ok, jwt} <- AppJwt.generate(),
+         {:ok, %{status: 200, body: %{"html_url" => html_url}}} <-
+           Req.get(@api <> "/app", headers: app_headers(jwt)) do
+      {:ok, html_url <> "/installations/new"}
+    else
+      other -> {:error, {:install_url, other}}
     end
   end
 

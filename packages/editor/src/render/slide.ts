@@ -166,9 +166,11 @@ function nodeDiv(node: PlacedNode, source: NodeStatement, options: RenderOptions
   // Whole-node overlay (ADR 0018): hidden with space reserved when its spec is inactive at
   // the rendered step; absent step (authoring) shows every node. `data-overlay` addresses it.
   const overlay = nodeOverlay(source)
-  const ovHidden = overlay !== undefined && options.step !== undefined && !activeAt(overlay, options.step)
+  const ovHidden =
+    overlay !== undefined && options.step !== undefined && !activeAt(overlay, options.step)
   const ovClass = ovHidden ? ' sb-ov-hidden' : ''
-  const ovData = overlay !== undefined ? ` data-overlay="${overlay.raw.replace(/"/g, '&quot;')}"` : ''
+  const ovData =
+    overlay !== undefined ? ` data-overlay="${overlay.raw.replace(/"/g, '&quot;')}"` : ''
   return `<div class="${nodeClass(node)}${ovClass}"${id}${ovData} style="left:${left}%;top:${top}%;width:${width}%${minH}${scaled}">${renderContent(source.content, options)}</div>`
 }
 

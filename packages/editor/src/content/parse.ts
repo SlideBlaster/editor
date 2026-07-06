@@ -333,7 +333,12 @@ function splitLatexItems(inner: string): RawItem[] {
   let specRaw: string | undefined
   let i = 0
   const flush = (end: number): void => {
-    if (start !== -1) items.push(specRaw !== undefined ? { content: inner.slice(start, end), specRaw } : { content: inner.slice(start, end) })
+    if (start !== -1)
+      items.push(
+        specRaw !== undefined
+          ? { content: inner.slice(start, end), specRaw }
+          : { content: inner.slice(start, end) },
+      )
   }
   while (i < inner.length) {
     const ch = inner[i]!

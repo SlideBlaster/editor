@@ -45,7 +45,9 @@ export function isValidSpec(raw: string): boolean {
 export function activeAt(spec: OverlaySpec, step: number): boolean {
   const intervals = parseIntervals(spec.raw)
   if (intervals === null) return false
-  return intervals.some((i) => (i.from === null || step >= i.from) && (i.to === null || step <= i.to))
+  return intervals.some(
+    (i) => (i.from === null || step >= i.from) && (i.to === null || step <= i.to),
+  )
 }
 
 /** The largest finite step the spec names (0 if it names none). Drives the slide's step

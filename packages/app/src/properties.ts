@@ -13,6 +13,8 @@ import {
   placement,
   textWidth,
   minHeight,
+  nodeOverlay,
+  isValidSpec,
   connectorOptions,
   type ConnectorPath,
   type CurveControls,
@@ -34,6 +36,8 @@ export interface PropertiesActions {
   setConnectorOptions(index: number, options: string[]): void
   /** E4+: replace a connector's shape — the panel uses this to write curve angles/pulls. */
   updateConnectorPath(index: number, path: ConnectorPath): void
+  /** ADR 0018: set (raw spec) or clear (null) a node's whole-node `overlay=<spec>` reveal. */
+  setNodeOverlay(name: string, spec: string | null): void
 }
 
 export interface PropertiesProps {
@@ -160,7 +164,13 @@ function paintCurve(
 
   // One control arm at `point`: an angle + pull that rewrite `control` (the `side` of segment
   // `seg`) while `keep` (its other control point) stays put. `side` names which end is edited.
-  const arm = (label: string, seg: number, control: Point, keep: Point, side: 'c1' | 'c2'): void => {
+  const arm = (
+    label: string,
+    seg: number,
+    control: Point,
+    keep: Point,
+    side: 'c1' | 'c2',
+  ): void => {
     const build = (c: Point): CurveControls =>
       side === 'c2' ? { c1: keep, c2: c } : { c1: c, c2: keep }
     const angle = angleInput(degOf(point, control))
@@ -270,6 +280,29 @@ function paintNode(
     actions.resizeNode(name, { minHeight: height.value === '' ? null : Number(height.value) }),
   )
   heightRow.append(height)
+
+  // Overlay reveal (ADR 0018): a Beamer overlay spec for the whole node; blank = always
+  // visible. Committed only when valid (a malformed spec shows a red outline, no write).
+  const revealRow = row(host, 'Reveal')
+  const reveal = document.createElement('input')
+  reveal.type = 'text'
+  reveal.className = 'props-num'
+  reveal.placeholder = 'always'
+  reveal.value = nodeOverlay(node)?.raw ?? ''
+  reveal.title = 'Steps this node appears on, e.g. 2-, 2, or 1,3 (Beamer overlay spec)'
+  reveal.addEventListener('change', () => {
+    const raw = reveal.value.trim()
+    if (raw === '') {
+      reveal.style.outline = ''
+      actions.setNodeOverlay(name, null)
+    } else if (isValidSpec(raw)) {
+      reveal.style.outline = ''
+      actions.setNodeOverlay(name, raw)
+    } else {
+      reveal.style.outline = '1px solid #c0392b' // malformed — keep the value, do not commit
+    }
+  })
+  revealRow.append(reveal)
 
   const place = placement(node)
 

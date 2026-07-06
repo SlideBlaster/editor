@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { defaultTheme } from './theme'
-import { regionRects, regionAt, regionGuides } from './regions'
+import { regionRects, regionAt, regionGuides, slideBoxFromMeta } from './regions'
 
 describe('regionRects (RelRect -> slide space, y-up)', () => {
   const rects = regionRects(defaultTheme)
@@ -29,6 +29,25 @@ describe('regionAt (creation-seeding hit test)', () => {
   })
   it('returns undefined below every region', () => {
     expect(regionAt(defaultTheme, { x: 8, y: 0.1 })).toBeUndefined()
+  })
+})
+
+describe('slideBoxFromMeta (aspect ratio)', () => {
+  const meta = (entries: { key: string; value: string }[]) => ({ entries })
+  it('defaults to 16x9', () => {
+    expect(slideBoxFromMeta(meta([]))).toEqual({ width: 16, height: 9 })
+  })
+  it('parses 4:3 to a 12x9 box (height fixed at 9)', () => {
+    expect(slideBoxFromMeta(meta([{ key: 'aspect', value: '4:3' }]))).toEqual({
+      width: 12,
+      height: 9,
+    })
+  })
+  it('falls back to default on an unparseable value', () => {
+    expect(slideBoxFromMeta(meta([{ key: 'aspect', value: 'wat' }]))).toEqual({
+      width: 16,
+      height: 9,
+    })
   })
 })
 

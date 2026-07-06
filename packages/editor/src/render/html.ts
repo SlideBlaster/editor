@@ -146,7 +146,10 @@ function renderRun(run: TextRun, options: RenderOptions, floor: number): string 
     case 'list': {
       const tag = run.ordered ? 'ol' : 'ul'
       const items = run.items
-        .map((item) => `<li${itemAttrs(item, options.step)}>${renderRuns(item.children, options, floor)}</li>`)
+        .map(
+          (item) =>
+            `<li${itemAttrs(item, options.step)}>${renderRuns(item.children, options, floor)}</li>`,
+        )
         .join('')
       return `<${tag}>${items}</${tag}>`
     }
