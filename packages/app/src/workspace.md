@@ -6,14 +6,21 @@ working copy, the controller edits one of them at a time.
 ## Contract
 
 - `AppPorts` — the bundle a shell passes to `createApp` (`storage`, `git`,
-  `auth`). Optional at the app level: without ports the app runs the in-memory
-  sample exactly as before M3.
+  `auth`, and optional `compile`). Optional at the app level: without ports the
+  app runs the in-memory sample exactly as before M3. `compile` (the latexml
+  Compile port) is itself optional even when ports are present — absent, tables
+  render as "render pending" placeholders ([tableCompiler.md](./tableCompiler.md)).
 - `findDocs(storage)` — every `*.slideBlaster.md` in the working copy,
   recursive, `.git` excluded, sorted.
 - `bootDocument(storage, sampleSource)` — startup document selection: seeds the
   bundled sample into an empty working copy, then prefers the last-opened doc
   (localStorage, best-effort) over the first found.
 - `rememberDoc(path)` — record the last-opened doc.
+- `RemoteConfig` (`{owner, name}`), `remoteUrl(remote)` (the GitHub HTTPS git
+  URL), and `readRemote()` / `writeRemote(remote|null)` — persist the connected
+  repo for M4 push/pull (localStorage, best-effort). The Git port token still
+  comes per-call from the Auth port; only the repo identity is stored, never a
+  credential.
 - `createAutosave(storage, { onWrite?, delayMs? })` — a debounced write-through:
   `schedule(path, source)` supersedes prior pending writes; `flush()` forces the
   pending write (called on doc switch, before commit, and on unload);

@@ -7,14 +7,23 @@
  * real Auth service when it lands (M4); today the dev adapter answers.
  */
 import type { AuthPort, GitPort, GitStatus } from '@slideblaster/editor'
+import { remoteUrl, type RemoteConfig } from './workspace'
 
 export interface GitPanelDeps {
   git: GitPort
   auth: AuthPort
   /** Flush pending edits (autosave) so the commit includes the latest source. */
   beforeCommit(): Promise<void>
+  /** The connected GitHub repo, or null when none is set yet. */
+  getRemote(): RemoteConfig | null
+  /** Persist (or clear) the connected repo. */
+  setRemote(remote: RemoteConfig | null): void
+  /** Reload the working copy after a pull mutated files on disk. */
+  afterPull(): Promise<void>
   /** Surface a failure outside the panel (status bar). */
   onError(message: string): void
+  /** Surface a transient success/progress note (status bar). */
+  onInfo(message: string): void
 }
 
 export interface GitPanelHandle {
@@ -65,6 +74,39 @@ export function createGitPanel(host: HTMLElement, deps: GitPanelDeps): GitPanelH
     }
   }
 
+  /** Mint a token for the connected repo and run one sync op (push or pull). */
+  const sync = async (kind: 'push' | 'pull'): Promise<void> => {
+    const remote = deps.getRemote()
+    const identity = deps.auth.currentIdentity()
+    if (!remote || !identity || busy) return
+    busy = true
+    try {
+      deps.onInfo(
+        `${kind === 'push' ? 'Pushing to' : 'Pulling from'} ${remote.owner}/${remote.name}…`,
+      )
+      if (kind === 'push') await deps.beforeCommit()
+      const token = await deps.auth.getRepoToken({ owner: remote.owner, name: remote.name })
+      const ref = { url: remoteUrl(remote), token }
+      if (kind === 'push') {
+        await deps.git.push(ref)
+        deps.onInfo(`Pushed to ${remote.owner}/${remote.name}`)
+      } else {
+        const result = await deps.git.pull(ref)
+        await deps.afterPull()
+        deps.onInfo(
+          result.conflicts.length > 0
+            ? `Pulled with conflicts: ${result.conflicts.join(', ')}`
+            : `Pulled from ${remote.owner}/${remote.name}`,
+        )
+      }
+    } catch (err) {
+      deps.onError(`${kind} failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      busy = false
+      void refresh()
+    }
+  }
+
   const paint = (status: GitStatus, log: Awaited<ReturnType<GitPort['log']>>): void => {
     host.replaceChildren()
 
@@ -76,9 +118,80 @@ export function createGitPanel(host: HTMLElement, deps: GitPanelDeps): GitPanelH
     host.append(head)
 
     paintIdentity(host)
+    paintSync(host, status)
     paintChanges(host, status)
     paintCommitBox(host, status)
     paintLog(host, log)
+  }
+
+  /** The connect-a-repo + push/pull surface. Hidden until signed in. */
+  const paintSync = (host: HTMLElement, status: GitStatus): void => {
+    const identity = deps.auth.currentIdentity()
+    if (!identity) return
+    const remote = deps.getRemote()
+    const section = document.createElement('div')
+    section.className = 'git-sync'
+
+    if (!remote) {
+      const form = document.createElement('form')
+      form.className = 'git-connect'
+      const owner = document.createElement('input')
+      owner.type = 'text'
+      owner.placeholder = 'owner'
+      owner.autocomplete = 'off'
+      const name = document.createElement('input')
+      name.type = 'text'
+      name.placeholder = 'repo'
+      name.autocomplete = 'off'
+      const connect = document.createElement('button')
+      connect.type = 'submit'
+      connect.textContent = 'Connect repo'
+      form.addEventListener('submit', (event) => {
+        event.preventDefault()
+        const o = owner.value.trim()
+        const n = name.value.trim().replace(/\.git$/, '')
+        if (!o || !n) return
+        deps.setRemote({ owner: o, name: n })
+        void refresh()
+      })
+      form.append(owner, name, connect)
+      section.append(form)
+      host.append(section)
+      return
+    }
+
+    const row = document.createElement('div')
+    row.className = 'git-remote'
+    const label = document.createElement('span')
+    label.textContent = `${remote.owner}/${remote.name}`
+    label.title = remoteUrl(remote)
+    const disconnect = document.createElement('button')
+    disconnect.type = 'button'
+    disconnect.className = 'git-disconnect'
+    disconnect.textContent = '×'
+    disconnect.title = 'Disconnect repo'
+    disconnect.addEventListener('click', () => {
+      deps.setRemote(null)
+      void refresh()
+    })
+    row.append(label, disconnect)
+
+    const actions = document.createElement('div')
+    actions.className = 'git-sync-actions'
+    const pushBtn = document.createElement('button')
+    pushBtn.type = 'button'
+    pushBtn.textContent = status.ahead > 0 ? `Push (${status.ahead})` : 'Push'
+    pushBtn.disabled = busy
+    pushBtn.addEventListener('click', () => void sync('push'))
+    const pullBtn = document.createElement('button')
+    pullBtn.type = 'button'
+    pullBtn.textContent = status.behind > 0 ? `Pull (${status.behind})` : 'Pull'
+    pullBtn.disabled = busy
+    pullBtn.addEventListener('click', () => void sync('pull'))
+    actions.append(pullBtn, pushBtn)
+
+    section.append(row, actions)
+    host.append(section)
   }
 
   const paintIdentity = (host: HTMLElement): void => {

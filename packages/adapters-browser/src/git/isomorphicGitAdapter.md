@@ -14,6 +14,10 @@ the user's GitHub repo (ADR 0001), so no server holds the working copy.
 - **Auth:** remote operations take a `RemoteRef` whose `ScopedToken` is sent as
   GitHub HTTP basic auth (`x-access-token` : token). The adapter never stores the
   token; the caller passes one per call.
+- **Remote URL:** `push`/`pull` target `RemoteRef.url` directly (passed as
+  isomorphic-git's `url`), so they work on an `init`'d working copy with no
+  preconfigured `origin` — the M4 "connect a repo" flow needs no separate remote
+  setup step. `clone` still seeds `origin`.
 - **Proxy:** all remote traffic goes through `corsProxy` (the first-party
   `services/git-proxy`), because GitHub's git-smart-http is not CORS-enabled.
 - **Scope:** `init/clone/status/stage/commit/log/currentBranch/checkout/

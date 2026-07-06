@@ -6,18 +6,52 @@
  * last-opened memory, and a debounced autosave — everything createApp needs to
  * make the working copy the source of truth instead of an in-memory string.
  */
-import type { AuthPort, GitPort, StoragePort } from '@slideblaster/editor'
+import type { AuthPort, CompilePort, GitPort, StoragePort } from '@slideblaster/editor'
 
-/** The port bundle a shell wires in (M3: storage+git+auth; more ports later). */
+/** The port bundle a shell wires in (M3: storage+git+auth; Compile optional). */
 export interface AppPorts {
   storage: StoragePort
   git: GitPort
   auth: AuthPort
+  /** latexml table compile. Absent ⇒ tables render as "render pending" placeholders. */
+  compile?: CompilePort
 }
 
 export const DOC_EXTENSION = '.slideBlaster.md'
 const LAST_DOC_KEY = 'slideblaster.last-doc'
+const REMOTE_KEY = 'slideblaster.remote'
 const AUTOSAVE_DELAY_MS = 400
+
+/** The GitHub repo this working copy syncs with (M4 connect-a-repo). */
+export interface RemoteConfig {
+  owner: string
+  name: string
+}
+
+/** The git HTTPS URL isomorphic-git pushes/pulls against for a connected repo. */
+export function remoteUrl(remote: RemoteConfig): string {
+  return `https://github.com/${remote.owner}/${remote.name}.git`
+}
+
+export function readRemote(): RemoteConfig | null {
+  try {
+    const raw = localStorage.getItem(REMOTE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<RemoteConfig>
+    return parsed.owner && parsed.name ? { owner: parsed.owner, name: parsed.name } : null
+  } catch {
+    return null
+  }
+}
+
+export function writeRemote(remote: RemoteConfig | null): void {
+  try {
+    if (remote) localStorage.setItem(REMOTE_KEY, JSON.stringify(remote))
+    else localStorage.removeItem(REMOTE_KEY)
+  } catch {
+    // storage unavailable (private mode, tests): remote memory is best-effort
+  }
+}
 
 export function isDocPath(path: string): boolean {
   return path.endsWith(DOC_EXTENSION)

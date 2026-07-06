@@ -321,6 +321,81 @@ button.tree-row {
   cursor: pointer;
 }
 
+.git-sync {
+  margin-bottom: 0.6rem;
+}
+
+.git-connect {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.git-connect input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.4rem;
+}
+
+.git-connect button,
+.git-sync-actions button {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.git-sync-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.git-remote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.git-remote span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-disconnect {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  cursor: pointer;
+}
+
+.git-sync-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.git-sync-actions button {
+  flex: 1;
+}
+
 .git-changes,
 .git-log {
   list-style: none;

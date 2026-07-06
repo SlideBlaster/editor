@@ -53,11 +53,23 @@ import { openCreationMenu, type MenuItem } from './createMenu'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
 import { SLIDE_TYPE_CSS } from './slideType'
-import { mathOptions } from './math'
+import {
+  renderOptions,
+  installTableCompiler,
+  scheduleTableCompile,
+  ensureTables,
+} from './tableCompiler'
 import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import { renderChrome } from './chrome'
-import { bootDocument, createAutosave, rememberDoc, type AppPorts } from './workspace'
+import {
+  bootDocument,
+  createAutosave,
+  rememberDoc,
+  readRemote,
+  writeRemote,
+  type AppPorts,
+} from './workspace'
 import { paintFileTree } from './fileTree'
 import { createGitPanel, type GitPanelHandle } from './gitPanel'
 import './app.css'
@@ -266,17 +278,19 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   }
 
   /** Render every frame to self-contained HTML for export — same measurements as the canvas. */
-  const collectSlides = (doc: SlideDocument): Promise<RenderedSlide[]> =>
-    Promise.all(
+  const collectSlides = async (doc: SlideDocument): Promise<RenderedSlide[]> => {
+    await ensureTables(doc) // the export must not race the async table compile
+    return Promise.all(
       doc.frames.map(async (frame, index) => ({
         index,
         html: renderSlide(
           frame.picture,
           await resolveLayoutAsync(frame.picture, measurer),
-          mathOptions,
+          renderOptions,
         ),
       })),
     )
+  }
 
   const actions: DeckActions = {
     select(frame, name) {
@@ -363,6 +377,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
 
     const doc = result.doc
     currentDoc = doc
+    scheduleTableCompile(doc) // compile any new tables out of band; they pop in on onReady
     docTitle.textContent = getMeta(doc.meta, 'title') ?? 'Untitled'
     const maxIndex = Math.max(0, doc.frames.length - 1)
     state.active = Math.min(state.active, maxIndex)
@@ -399,6 +414,15 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     setStatus()
     paintPanel()
   }
+
+  // Compile port (latexml tables): compile out of band, then drop the placeholder
+  // measurement and re-render so the table appears at its true size (tableCompiler.md).
+  installTableCompiler(ports?.compile, {
+    onReady: () => {
+      measurer.reset()
+      void render()
+    },
+  })
 
   codePane = createCodePane(qs('#code'), {
     value: state.source,
@@ -580,7 +604,22 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       git: ports.git,
       auth: ports.auth,
       beforeCommit: () => autosave.flush(),
+      getRemote: () => readRemote(),
+      setRemote: (remote) => writeRemote(remote),
+      // A pull rewrites files on disk; drop any pending edit and reopen so the
+      // canvas/code pane show the pulled content (re-boot if it was removed).
+      afterPull: async () => {
+        autosave.discard()
+        const path =
+          currentPath && (await ports.storage.exists(currentPath))
+            ? currentPath
+            : await bootDocument(ports.storage, initialSource)
+        await openDoc(path)
+      },
       onError: (message) => {
+        status.textContent = message
+      },
+      onInfo: (message) => {
         status.textContent = message
       },
     })
