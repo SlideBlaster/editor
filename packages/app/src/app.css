@@ -662,6 +662,33 @@ button.tree-row {
   color: var(--ink);
 }
 
+/* Angle field + its straight/curved toggle, grouped on the right of a curve row. */
+.props-inline {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.props-inline .props-num {
+  width: 3.6rem;
+}
+
+.props-toggle {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.66rem;
+  padding: 0.12rem 0.4rem;
+  cursor: pointer;
+}
+
+.props-toggle:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
 .props-seg {
   display: inline-flex;
   border: 1px solid var(--line);
@@ -945,6 +972,119 @@ button.tree-row {
   filter: brightness(1.1);
 }
 
+/* Table shallow-edit affordance (tableEditor.ts): over the selected node's compiled
+   tables, a click target per cell, an add-row "+", and a "</>" deep-source toggle. The
+   layer is inert; only the grips take pointer events. Positions are percentages of the
+   slide box, measured from the rendered <td>s (which carry data-sbx/y) after paint. */
+.sb-table-edit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sb-table-cell {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 2px;
+  cursor: text;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.sb-table-cell:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.sb-table-add {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.sb-table-source {
+  position: absolute;
+  transform: translate(-100%, -100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font:
+    600 10px/1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.sb-table-add:hover,
+.sb-table-source:hover {
+  filter: brightness(1.1);
+}
+
+/* Inline cell editor: a textarea sized to cover the cell it edits (percent-positioned
+   like the hotspots), blended into the slide so typing feels in place. */
+.sb-table-cell-editor {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 1px 3px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  resize: none;
+  overflow: hidden;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+/* Deep-edit popup: a wider dialog with a monospace source textarea. */
+.sb-table-source-dialog {
+  max-width: min(48rem, calc(100vw - 2rem));
+}
+
+.sb-table-source-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 8em;
+  padding: 0.55rem 0.66rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    0.82rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
 /* Snap guides: an SVG layer over the slide, drawn while dragging (canvas.ts, snap.ts).
    viewBox is slide-sized and stretched to the box; non-scaling strokes keep lines
    crisp at any zoom. Alignment lines are solid accent; spacing gaps are dashed. */
@@ -1099,16 +1239,23 @@ button.tree-row {
   stroke-width: 0.03;
 }
 
-.sb-bend {
+/* Straight-segment pivot: a square you drag to kink the arrow (it stays straight). Square so
+   it reads apart from the round anchors (blue) and curve controls (purple). */
+.sb-pivot {
   fill: #fff;
-  stroke: #a855f7;
+  stroke: var(--accent);
   stroke-width: 0.045;
+  pointer-events: all;
+  cursor: grab;
 }
 
-/* The bend of the straight segment whose angles the panel is editing. */
-.sb-bend.is-focused {
-  stroke: var(--accent);
-  stroke-width: 0.06;
+.sb-pivot:active {
+  cursor: grabbing;
+}
+
+/* The pivot of the straight segment whose angle the panel is editing. */
+.sb-pivot.is-focused {
+  fill: var(--accent);
 }
 
 /* Snap targets shown while dragging a connector endpoint; the active one is solid. */
@@ -1384,7 +1531,9 @@ button.tree-row {
 
 .thumb {
   flex: 0 0 auto;
+  position: relative; /* the scaled slide is an absolute child; the thumb is its viewport */
   width: 9rem;
+  aspect-ratio: 16 / 9; /* the slide is 16/9; the absolute child no longer sets our height */
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1392,6 +1541,16 @@ button.tree-row {
   cursor: pointer;
   overflow: hidden;
   transition: border-color 0.12s ease;
+}
+
+/* The slide, rendered at THUMB_REF_W (deckNav.ts) and scaled down to fill the thumb — a
+   photographic reduction of the full-size render, so a thumbnail can't round pixels
+   differently from the canvas. width + transform:scale(...) are set inline per thumb. */
+.thumb-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
 }
 
 .thumb:hover {

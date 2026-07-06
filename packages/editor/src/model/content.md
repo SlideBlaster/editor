@@ -40,9 +40,11 @@ track, not stored here.
 ## Scope
 
 Inline runs; lists in all three dialects (`- x` / `itemize` / `enumerate` / `<ul>` /
-`<ol>`, nestable via containers); reveal fragments (`\appear`/`\pause`/`\only`,
-`[=N]` step, `<appear>`); images (`\image`, `![alt](src)`); and `columns`/`matrix`
-groups. Any container run (list, columns, matrix, wrap) is a `TextRun`, so it nests
+`<ol>`, nestable via containers); overlays (ADR 0018) — point **fragment**s
+(`\pause`/`\appear`, `<appear>`) and **overlay** wrapping commands
+(`\only`/`\uncover`/`\visible`/`\invisible`/`\alert`), each carrying an optional Beamer
+`OverlaySpec` (the raw `<…>` text), plus `\item<spec>` on list items; images
+(`\image`, `![alt](src)`); and `columns`/`matrix` groups. Any container run (list, columns, matrix, wrap) is a `TextRun`, so it nests
 freely. Whitespace in lists/columns/matrix is normalized on save (list markers ->
 `-`, ordered lists renumber; cells joined by `&`, rows by `\\`); canonical text
 round-trips byte-exact.

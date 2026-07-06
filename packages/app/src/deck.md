@@ -46,5 +46,10 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
 - **Handle vs scroll.** Only `.sb-handle` sets `touch-action: none`; touching a
   slide's empty area still scrolls the deck.
 
+- **Overlay preview (ADR 0018).** `props.preview` (`{ frame, step } | null`) renders one
+  slide at one build step (via `paintCanvas`'s `step`); every other slide stays
+  all-visible. `repaintFrame`'s ctx carries the same `step`, so a step scrub or a content
+  edit on the previewed slide repaints just that card at its step.
+
 Provisional: all slides render live; large decks will want off-screen slides
 virtualised/snapshotted once the async DOM measurer lands (roadmap Track 0).

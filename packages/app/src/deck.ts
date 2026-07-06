@@ -19,6 +19,7 @@ import {
 } from '@slideblaster/editor'
 import { paintCanvas, type CanvasActions } from './canvas'
 import { paintColumnEditors } from './columnEditor'
+import { paintTableEditors } from './tableEditor'
 import type { CurveFocus } from './connectorEditor'
 
 /** Frame-addressed edit intents: the frame you touched is an explicit argument. */
@@ -204,7 +205,11 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
       return true
     },
     setColumnEditors(target) {
-      cards.forEach((card) => card.querySelectorAll('.sb-col-edit').forEach((el) => el.remove()))
+      cards.forEach((card) =>
+        card
+          .querySelectorAll('.sb-col-edit, .sb-table-edit, .sb-table-cell-editor')
+          .forEach((el) => el.remove()),
+      )
       if (!target || target.content.kind !== 'text') return
       const card = cards[target.frame]
       const slideEl = card?.querySelector<HTMLElement>('.sb-slide')
@@ -213,14 +218,9 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
         `.sb-node[data-node="${CSS.escape(target.name)}"]`,
       )
       if (!slideEl || !overlay || !contentEl) return
-      paintColumnEditors(
-        overlay,
-        slideEl,
-        contentEl,
-        target.name,
-        target.content,
-        bindFrame(props.actions, target.frame),
-      )
+      const actions = bindFrame(props.actions, target.frame)
+      paintColumnEditors(overlay, slideEl, contentEl, target.name, target.content, actions)
+      paintTableEditors(overlay, slideEl, contentEl, target.name, target.content, actions)
     },
   }
 }

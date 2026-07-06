@@ -21,7 +21,17 @@ export const SLIDE_THEME_CSS = themeStylesheet(defaultTheme)
 
 /** Structural, non-theme slide rules shared by every mount context. */
 export const SLIDE_TYPE_CSS = [
-  '.sb-slide{container-type:inline-size}',
-  '.sb-content ul,.sb-content ol{margin:0;padding-left:1.4em}',
+  // A slide must render identically wherever it mounts, so it can't inherit text
+  // properties from its host. `text-align:left` pins the baseline: without it a slide in a
+  // `<button>` thumbnail inherits the button's `text-align:center` and every line centres,
+  // drifting off the left-aligned canvas. Per-role `align` in the theme still overrides.
+  '.sb-slide{container-type:inline-size;text-align:left}',
+  // Lists: markers are `inside` (in the box model) with a hanging indent, NOT the default
+  // `outside`. Outside markers are painted outside layout, and Chromium mispositions them
+  // to the far left under a CSS `transform:scale()` — which the thumbnails use — so an
+  // outside bullet drifts off the canvas in the preview. An inside marker + text-indent
+  // gives the same hanging bullet but scales exactly with the slide, canvas and thumbnail.
+  '.sb-content ul,.sb-content ol{margin:0;padding-left:1.4em;list-style-position:inside}',
+  '.sb-content li{padding-left:1.4em;text-indent:-1.4em}',
   '.sb-content .sb-math{font-style:italic}',
 ].join('\n')

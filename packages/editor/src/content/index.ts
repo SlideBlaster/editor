@@ -8,9 +8,12 @@ export { setColumnWidths, insertColumn, removeColumn } from './columns'
 export {
   parseTabular,
   setTabularCell,
+  resolveTabularCell,
   insertTabularRow,
+  insertTabularColumn,
   removeTabularRow,
   setDeferredSource,
   deferredTableSources,
+  EMPTY_CELL,
 } from './tabular'
-export type { TabularGrid, TabularRow, TabularCell } from './tabular'
+export type { TabularGrid, TabularRow, TabularCell, TabularContent } from './tabular'

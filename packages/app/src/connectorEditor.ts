@@ -198,59 +198,91 @@ export function paintConnectorEditor(
         ? 1
         : 0
 
-  // Curve guide lines + control handles (curved segments) or a bend handle (straight). A
-  // control handle focuses the anchor its arm grows from (c1 -> start, c2 -> end).
+  // Per segment: two curve handles (drag to curve / adjust) plus, on a straight segment, a
+  // midpoint pivot (drag to kink it — insert a free waypoint, both new sides staying straight).
+  // A curve handle focuses the anchor its arm grows from (c1 -> start, c2 -> end).
   for (let j = 0; j < curves.length; j++) {
     const a = pts[j]!
     const b = pts[j + 1]!
     const curve = curves[j]
-    if (curve) {
-      const on1 = j === effective ? ' is-focused' : ''
-      const on2 = j + 1 === effective ? ' is-focused' : ''
-      const l1 = seg(a, curve.c1, 'sb-ctrl-line' + on1)
-      const l2 = seg(b, curve.c2, 'sb-ctrl-line' + on2)
-      const h1 = dot(curve.c1, 'sb-ctrl' + on1, 0.12)
-      draggable(
-        h1,
-        (p, event) => {
-          const q = snapArm(a, p, event.altKey)
-          curve.c1 = q
-          move(h1, q)
-          l1.setAttribute('x2', String(q.x))
-          l1.setAttribute('y2', String(flip(q.y)))
-        },
-        { onStart: () => actions.focusCurve(anchorPayload(j)) },
-      )
-      const h2 = dot(curve.c2, 'sb-ctrl' + on2, 0.12)
-      draggable(
-        h2,
-        (p, event) => {
-          const q = snapArm(b, p, event.altKey)
-          curve.c2 = q
-          move(h2, q)
-          l2.setAttribute('x2', String(q.x))
-          l2.setAttribute('y2', String(flip(q.y)))
-        },
-        { onStart: () => actions.focusCurve(anchorPayload(j + 1)) },
-      )
-      const straighten = (event: Event): void => {
-        event.stopPropagation()
-        curves[j] = null
-        commit()
-      }
-      h1.addEventListener('dblclick', straighten)
-      h2.addEventListener('dblclick', straighten)
-    } else {
+    const on1 = j === effective ? ' is-focused' : ''
+    const on2 = j + 1 === effective ? ' is-focused' : ''
+    // Real controls, or chord-thirds for a straight segment — the handles sit on the line
+    // until you pull them off, and that pull is what turns the segment into a cubic.
+    const c1 = curve ? curve.c1 : third(a, b)
+    const c2 = curve ? curve.c2 : third(b, a)
+    const l1 = seg(a, c1, 'sb-ctrl-line' + on1)
+    const l2 = seg(b, c2, 'sb-ctrl-line' + on2)
+    const h1 = dot(c1, 'sb-ctrl' + on1, 0.12)
+    const h2 = dot(c2, 'sb-ctrl' + on2, 0.12)
+    // Set one control, seeding the other from the current curve (or chord-thirds).
+    const setControl = (which: 'c1' | 'c2', p: Point): void => {
+      const base = curves[j] ?? { c1: third(a, b), c2: third(b, a) }
+      curves[j] = which === 'c1' ? { c1: p, c2: base.c2 } : { c1: base.c1, c2: p }
+    }
+    draggable(
+      h1,
+      (p, event) => {
+        const q = snapArm(a, p, event.altKey)
+        setControl('c1', q)
+        move(h1, q)
+        l1.setAttribute('x2', String(q.x))
+        l1.setAttribute('y2', String(flip(q.y)))
+      },
+      { onStart: () => actions.focusCurve(anchorPayload(j)) },
+    )
+    draggable(
+      h2,
+      (p, event) => {
+        const q = snapArm(b, p, event.altKey)
+        setControl('c2', q)
+        move(h2, q)
+        l2.setAttribute('x2', String(q.x))
+        l2.setAttribute('y2', String(flip(q.y)))
+      },
+      { onStart: () => actions.focusCurve(anchorPayload(j + 1)) },
+    )
+    const straighten = (event: Event): void => {
+      event.stopPropagation()
+      curves[j] = null
+      commit()
+    }
+    h1.addEventListener('dblclick', straighten)
+    h2.addEventListener('dblclick', straighten)
+
+    // Straight segment: a square midpoint pivot. Dragging it inserts a free waypoint there
+    // and moves it — the arrow kinks at a sharp corner, both new segments staying straight.
+    if (!curve) {
+      const S = 0.22
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-      const near = effective === j || effective === j + 1 // either end of this straight segment
-      const bend = dot(mid, near ? 'sb-bend is-focused' : 'sb-bend', 0.12)
+      const near = effective === j || effective === j + 1
+      const pivot = document.createElementNS(SVG_NS, 'rect')
+      pivot.setAttribute('width', String(S))
+      pivot.setAttribute('height', String(S))
+      pivot.setAttribute('class', near ? 'sb-pivot is-focused' : 'sb-pivot')
+      const placePivot = (p: Point): void => {
+        pivot.setAttribute('x', String(p.x - S / 2))
+        pivot.setAttribute('y', String(flip(p.y) - S / 2))
+      }
+      placePivot(mid)
+      svg.append(pivot)
+      let at = -1 // the spliced waypoint's index, once the drag actually moves
       draggable(
-        bend,
+        pivot,
         (p) => {
-          curves[j] = bendControls(pts[j]!, pts[j + 1]!, p)
-          move(bend, p)
+          if (at < 0) {
+            at = j + 1
+            pts.splice(at, 0, { ...p })
+            anchors.splice(at, 0, { kind: 'point', at: { ...p } })
+            curves.splice(j, 1, null, null)
+            actions.focusCurve(anchorPayload(at))
+          } else {
+            pts[at] = p
+            anchors[at] = { kind: 'point', at: { ...p } }
+          }
+          placePivot(p)
         },
-        { onStart: () => actions.focusCurve(anchorPayload(j)) },
+        { onEnd: () => (at = -1) },
       )
     }
   }
@@ -418,15 +450,10 @@ function cloneCurve(c: CurveControls | null): CurveControls | null {
   return c ? { c1: { ...c.c1 }, c2: { ...c.c2 } } : null
 }
 
-/** Cubic controls that bow the segment a->b through the dragged point `m` at t=0.5. */
-function bendControls(a: Point, b: Point, m: Point): CurveControls {
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-  const off = { x: (m.x - mid.x) * (4 / 3), y: (m.y - mid.y) * (4 / 3) }
-  const lerp = (t: number): Point => ({
-    x: a.x + (b.x - a.x) * t + off.x,
-    y: a.y + (b.y - a.y) * t + off.y,
-  })
-  return { c1: lerp(1 / 3), c2: lerp(2 / 3) }
+/** A third of the way from `from` to `to` — a straight segment's control point on that chord
+ *  (the curve handles sit here until pulled off, and the panel seeds straight defaults here). */
+function third(from: Point, to: Point): Point {
+  return { x: from.x + (to.x - from.x) / 3, y: from.y + (to.y - from.y) / 3 }
 }
 
 /** Index of the segment (pts[j]..pts[j+1]) nearest to `p`. */

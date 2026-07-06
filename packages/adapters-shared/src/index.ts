@@ -22,3 +22,9 @@ export type {
 } from './compile/browserLatexmlEngine'
 export { createWorkerLatexmlEngine } from './compile/workerLatexmlEngine'
 export type { LatexmlWorker } from './compile/workerLatexmlEngine'
+export {
+  ANNOTATION_BINDING,
+  installTableAnnotation,
+  patchDriver,
+} from './compile/tableAnnotation'
+export type { AnnotationFs } from './compile/tableAnnotation'

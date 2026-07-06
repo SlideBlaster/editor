@@ -112,3 +112,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
 - **Styling seam.** `slideStylesheet()` supplies the base layered-DOM rules; the shared
   `SLIDE_TYPE_CSS` ([slideType.ts](./slideType.md)) the proportional type scale; `app.css`
   layers the workspace chrome and the interaction overlay.
+- **Overlay step preview (ADR 0018).** `state.preview` (`{ frame, step } | null`) previews
+  one slide at one build step; every other slide renders all-visible. The app-bar
+  `#step-control` (shown only when the active slide has >1 step) and the `,`/`.` keys scrub
+  it through All -> 1 -> … -> N; a scrub repaints just that frame (`repaintFrame` with a
+  `step` in its ctx), and scrolling to another slide clears the preview. Whole-node reveal
+  is edited in the properties panel (`setNodeOverlay`); export expands to one page per step
+  via `slideStepCount` in `collectSlides`.

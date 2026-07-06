@@ -20,3 +20,7 @@ and `#editor-resizer` (editor | slide canvas) — wired by
 [resizer.ts](./resizer.md) to make the widths draggable. They must stay in the
 markup in that sibling order, since the CSS collapses `#side-resizer` with the
 side panel when it is hidden.
+
+The app bar also carries `#step-control` (prev / `#step-readout` / next), the overlay
+step scrubber for the active slide (ADR 0018). The controller shows it only when the
+active slide has more than one build step and drives its readout / preview.

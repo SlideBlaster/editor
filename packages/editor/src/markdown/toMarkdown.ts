@@ -21,6 +21,13 @@ export function toMarkdown(doc: SlideDocument): string {
     parts.push('```slide')
     parts.push(serializePicture(frame.picture))
     parts.push('```')
+    // The presenter-notes sidecar, when present, as a second fenced block (ADR 0019).
+    if (frame.notes) {
+      parts.push('')
+      parts.push('```notes')
+      parts.push(serializePicture(frame.notes))
+      parts.push('```')
+    }
     parts.push('')
   }
 

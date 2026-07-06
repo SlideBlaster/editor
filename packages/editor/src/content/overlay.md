@@ -19,3 +19,7 @@ truth — nothing here is stored or cached.
   overlays, so an open range extends the count to its start.
 - `specMinStep(spec)` — the smallest step named (1 when open at the start). The step
   floor a `\pause<spec>` sets for the content after it.
+- `contentMaxStep(content)` — the highest step a node body references, mirroring the
+  renderer's reading-order model (`\pause`/`\appear` raise a per-level floor; overlay
+  wrappers and `\item<spec>` contribute their spec max; containers recurse). Always >= 1.
+  `render/slide.slideStepCount` combines it with each node's `overlay=<spec>`.

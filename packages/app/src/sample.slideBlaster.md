@@ -29,22 +29,38 @@ citationStyle: numeric
 };
 ```
 
-## Overlays {#s-overlays}
+## Overlays: step reveals {#s-overlays-1}
 
 ```slide
-\node[title] (title) at (8,8) {Overlays and steps};
-\node[body, below=0.8 of title, text width=11] (steps) {
+\node[title] (title) at (8,8) {Overlays: step reveals};
+\node[body, below=0.7 of title, text width=12] (list) {
 \begin{itemize}
-\item Everything starts on step 1
-\item<2-> Uncovered from step 2
-\item<3-> and this one from step 3
+\item Always on (step 1)
+\item<2-> Staged item, appears on step 2
+\item<3-> Staged item, appears on step 3
 \end{itemize}
 };
-\node[note, overlay={2-}] (tag) at (13,5) {node reveal: from step 2};
-\node[body, below=0.6 of steps, text width=11] (inline) {
-Inline: \only<2>{only on step 2} and \alert<3>{alert on step 3}
+\node[body, below=0.4 of list, text width=12] (pause) {
+Pause build: first \pause second \appear third
 };
-\draw[->] (tag) -- (steps);
+\node[note, overlay={2-}] (side) at (13.2,5.2) {Whole-node reveal from step 2 (Reveal field)};
+\draw[->] (side) -- (list);
+```
+
+## Overlays: wrapping commands {#s-overlays-2}
+
+```slide
+\node[title] (title) at (8,8) {Overlays: wrapping commands};
+\node[body, below=0.7 of title, text width=13] (b) {
+\begin{itemize}
+\item Uncover, keeps space: \uncover<2->{shown from step 2}
+\item Only, then gone: \only<3>{visible only on step 3}
+\item Visible on a range: \visible<2-4>{on steps 2 to 4}
+\item Visible on a list: \uncover<1,3>{on steps 1 and 3}
+\item Invisible on cue: \invisible<2>{hidden on step 2}
+\item Alert, highlights: \alert<4>{emphasized on step 4}
+\end{itemize}
+};
 ```
 
 ## Tables {#s3}

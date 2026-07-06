@@ -26,8 +26,15 @@ output: `\textbf{x}` / `**x**` / `<b>x</b>` all become `<strong>x</strong>` (bol
   numbering is per-slide and placement is slide-level.
 - **Port-gated payloads are labelled, never dropped:** an uncompiled `deferred` (table)
   renders "table &mdash; render pending" (Compile port); `include` shows `[include:
-path]` (Storage port); a `fragment` is an empty marker span (reveal is a presentation
-  concern).
+path]` (Storage port).
+- **Overlays are step-gated visibility (ADR 0018), driven by `options.step`.** With no
+  step (authoring), everything renders visible — overlay wrappers still emit an
+  addressable `<span class="sb-overlay" data-ov=… data-overlay=…>` but nothing is hidden.
+  At a step, inactive `only`/`uncover`/`visible` (and active `invisible`) get
+  `sb-ov-hidden` (`visibility:hidden` — space reserved, never reflows); active `alert`
+  gets `sb-ov-alert`. A `\pause`/`\appear` fragment emits an empty marker and wraps the
+  reading-order tail after it in a gated element (a `<div>` if the tail is block-level,
+  else `<span>`) hidden until its step. Interpreted by `../content/overlay` (`activeAt`).
 - All text and attributes are HTML-escaped.
 
 Contract: pure, deterministic, injection-safe (escaped). Geometry/positioning is not

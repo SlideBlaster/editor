@@ -133,13 +133,13 @@ const DEG = 180 / Math.PI
 
 /**
  * Angle editor for the focused **anchor** — the dot (endpoint or dark-blue split point) the
- * user selected on the canvas. It edits the tangent control arm(s) that meet at that point:
- * an **In** arm (from the incoming segment) and/or an **Out** arm (into the outgoing one),
- * each an **angle** (0° right, 90° up — slide space is y-up) and a **pull** (arm reach).
- * Editing a field rewrites only that arm's control point (the segment's other control and all
- * other segments stay byte-identical, symbolic node anchors preserved) and commits via
- * `updateConnectorPath`. A straight neighbour has no controls yet, so its arm shows the
- * chord's own direction with a default pull — set an angle and that segment bends.
+ * user selected on the canvas. It edits the segment(s) meeting at that point: an **In** arm
+ * (arriving) and/or an **Out** arm (leaving), each with an **angle** (0° right, 90° up — slide
+ * space is y-up). A **straight** segment stays straight: setting its angle pivots the free
+ * point (keeps it a sharp corner), and only that — no `pull`. A **curved** segment also shows
+ * a `pull` (arm reach), and its angle bends. A per-arm toggle flips straight↔curved. Every
+ * edit rewrites just that segment (others byte-identical, symbolic node anchors preserved) via
+ * `updateConnectorPath`.
  */
 function paintCurve(
   host: HTMLElement,
@@ -148,55 +148,80 @@ function paintCurve(
   actions: PropertiesActions,
 ): void {
   const { point, prevPoint, nextPoint, path, anchor } = focus
+  // A free-point dot can be moved to angle a straight segment; a node-attached one cannot.
+  const movable = path.anchors[anchor]?.kind === 'point'
 
   const sub = document.createElement('div')
   sub.className = 'props-title props-subtitle'
   sub.textContent = 'Curve'
   host.append(sub)
 
-  // Commit one segment's controls, rounding to renderer precision and leaving the rest as-is.
-  const writeSeg = (seg: number, controls: CurveControls): void => {
-    const curves = path.curves.map((c, i) =>
-      i === seg ? { c1: round4(controls.c1), c2: round4(controls.c2) } : c,
-    )
+  // Replace one segment: bend it (controls) or straighten it (null), leaving the rest as-is.
+  const writeSeg = (seg: number, controls: CurveControls | null): void => {
+    const next = controls && { c1: round4(controls.c1), c2: round4(controls.c2) }
+    const curves = path.curves.map((c, i) => (i === seg ? next : c))
     actions.updateConnectorPath(index, { anchors: path.anchors, curves })
   }
+  // Move the focused free point (keeps every segment's straight/curved state) — how a
+  // straight segment's angle is set without curving it.
+  const moveFocus = (at: Point): void => {
+    const anchors = path.anchors.map((an, i) =>
+      i === anchor ? { kind: 'point' as const, at: round4(at) } : an,
+    )
+    actions.updateConnectorPath(index, { anchors, curves: path.curves })
+  }
 
-  // One control arm at `point`: an angle + pull that rewrite `control` (the `side` of segment
-  // `seg`) while `keep` (its other control point) stays put. `side` names which end is edited.
-  const arm = (
-    label: string,
-    seg: number,
-    control: Point,
-    keep: Point,
-    side: 'c1' | 'c2',
-  ): void => {
+  // One arm meeting at `point`: segment `seg` runs toward `neighbor`; its control is on `side`.
+  const arm = (label: string, seg: number, neighbor: Point, side: 'c1' | 'c2'): void => {
+    const cur = path.curves[seg]
+    const straight = cur == null
+    const control = (side === 'c2' ? cur?.c2 : cur?.c1) ?? third(point, neighbor)
+    const keep = (side === 'c2' ? cur?.c1 : cur?.c2) ?? third(neighbor, point)
     const build = (c: Point): CurveControls =>
       side === 'c2' ? { c1: keep, c2: c } : { c1: c, c2: keep }
-    const angle = angleInput(degOf(point, control))
-    angle.addEventListener('change', () =>
-      writeSeg(seg, build(polar(point, dist(point, control), num(angle, degOf(point, control))))),
-    )
-    const pull = pullInput(dist(point, control))
-    pull.addEventListener('change', () =>
-      writeSeg(seg, build(polar(point, num(pull, dist(point, control)), degExact(point, control)))),
-    )
-    row(host, `${label} ∠`).append(angle)
-    row(host, `${label} pull`).append(pull)
+    const nowAngle = degOf(point, control)
+
+    const angleRow = row(host, `${label} ∠`)
+    const controls = document.createElement('div')
+    controls.className = 'props-inline'
+    const angle = angleInput(nowAngle)
+    angle.addEventListener('change', () => {
+      const a = num(angle, nowAngle)
+      if (straight && movable) {
+        // Keep it straight: pivot the free point so `point`->`neighbor` faces `a`.
+        moveFocus(polar(neighbor, dist(point, neighbor), a + 180))
+      } else {
+        writeSeg(seg, build(polar(point, dist(point, control), a))) // bend to the angle
+      }
+    })
+    controls.append(angle)
+
+    // Per-segment straight<->curved toggle (auto-detected from the segment; this flips it).
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
+    toggle.className = 'props-toggle'
+    toggle.textContent = straight ? 'straight' : 'curved'
+    toggle.title = straight ? 'Straight — click to curve' : 'Curved — click to straighten'
+    toggle.addEventListener('click', () => writeSeg(seg, straight ? build(control) : null))
+    controls.append(toggle)
+    angleRow.append(controls)
+
+    // Pull (arm reach) only makes sense once the segment is curved.
+    if (!straight) {
+      const pull = pullInput(dist(point, control))
+      pull.addEventListener('change', () =>
+        writeSeg(
+          seg,
+          build(polar(point, num(pull, dist(point, control)), degExact(point, control))),
+        ),
+      )
+      row(host, `${label} pull`).append(pull)
+    }
   }
 
-  // In arm: the segment arriving at this point (its c2 sits by `point`). Out arm: the segment
-  // leaving it (its c1 sits by `point`). A straight neighbour falls back to chord-thirds.
-  if (prevPoint) {
-    const seg = anchor - 1
-    const cur = path.curves[seg]
-    arm('In', seg, cur?.c2 ?? third(point, prevPoint), cur?.c1 ?? third(prevPoint, point), 'c2')
-  }
-  if (nextPoint) {
-    const seg = anchor
-    const cur = path.curves[seg]
-    arm('Out', seg, cur?.c1 ?? third(point, nextPoint), cur?.c2 ?? third(nextPoint, point), 'c1')
-  }
+  // In arm: the segment arriving at this point. Out arm: the segment leaving it.
+  if (prevPoint) arm('In', anchor - 1, prevPoint, 'c2')
+  if (nextPoint) arm('Out', anchor, nextPoint, 'c1')
 }
 
 /** A third of the way from `from` to `to` — a straight cubic's control point on that chord. */

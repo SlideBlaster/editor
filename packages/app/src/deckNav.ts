@@ -31,6 +31,41 @@ export interface NavHandle {
   repaintThumb(index: number, frame: Frame): Promise<void>
 }
 
+/**
+ * Fallback reference width (px) if the canvas slide isn't mounted yet (it always is, in
+ * practice — the deck paints before the nav).
+ */
+const THUMB_REF_W = 1280
+
+/**
+ * The width (px) a thumbnail's slide is rendered at before being shrunk to fit: the live
+ * canvas slide's OWN content width. A thumbnail is NOT a second, tiny render — it is the
+ * *same* full-size render scaled down by a CSS transform (a photographic reduction).
+ * Rendering at ~140px directly rounds borders, radii, and text at a different pixel scale
+ * than the ~1000px canvas, so the two drift apart no matter how carefully units match.
+ * Rendering at the canvas's exact width and scaling by transform makes every rounding
+ * decision identical, so the thumbnail is pixel-for-pixel the canvas slide, uniformly
+ * reduced — divergence is impossible by construction (and it's sharper). We match the
+ * canvas slide's `clientWidth` (its content box), which is what its `cqw` type resolves
+ * against, so the thumbnail's proportional units resolve to the identical pixels.
+ */
+function canvasRefWidth(): number {
+  const canvasSlide = document.querySelector('.deck-slide .sb-slide')
+  const w = canvasSlide instanceof HTMLElement ? canvasSlide.clientWidth : 0
+  return w > 0 ? w : THUMB_REF_W
+}
+
+/** Mount `slideHtml` in a thumbnail: render at the canvas width, then scale to fill the thumb. */
+function fillThumb(thumb: HTMLElement, slideHtml: string): void {
+  thumb.innerHTML = `<div class="thumb-canvas">${slideHtml}</div>`
+  const canvas = thumb.firstElementChild as HTMLElement
+  const ref = canvasRefWidth()
+  canvas.style.width = `${ref}px`
+  // clientWidth is the thumb's content box (its CSS width less border); the scaled slide
+  // then exactly fills it. The thumb is attached + fixed-width here, so this is stable.
+  canvas.style.transform = `scale(${thumb.clientWidth / ref})`
+}
+
 export async function paintDeckNav(host: HTMLElement, props: NavProps): Promise<NavHandle> {
   // Thumbnails share the canvas's DOM-measured layout so each is a faithful miniature of
   // the real slide. The measurer caches by content, so re-resolving here is just cache
@@ -45,9 +80,9 @@ export async function paintDeckNav(host: HTMLElement, props: NavProps): Promise<
     const thumb = document.createElement('button')
     thumb.type = 'button'
     thumb.className = 'thumb'
-    thumb.innerHTML = renderSlide(frame.picture, layouts[index]!, renderOptions)
     thumb.addEventListener('click', () => props.onSelect(index))
-    host.append(thumb)
+    host.append(thumb) // attach first so fillThumb can measure the thumb's width
+    fillThumb(thumb, renderSlide(frame.picture, layouts[index]!, renderOptions))
     thumbs.push(thumb)
   })
 
@@ -62,7 +97,7 @@ export async function paintDeckNav(host: HTMLElement, props: NavProps): Promise<
     if (!thumb) return
     const layout = await resolveLayoutAsync(frame.picture, props.measurer)
     if (!thumb.isConnected) return // a full nav rebuild superseded this thumbnail
-    thumb.innerHTML = renderSlide(frame.picture, layout, renderOptions)
+    fillThumb(thumb, renderSlide(frame.picture, layout, renderOptions))
   }
 
   return { setActive, repaintThumb }

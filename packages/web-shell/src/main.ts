@@ -14,7 +14,11 @@ import {
   createBrowserAuthAdapter,
   DevAuthAdapter,
 } from '@slideblaster/adapters-browser'
-import { WasmLatexmlCompiler, createWorkerLatexmlEngine } from '@slideblaster/adapters-shared'
+import {
+  ANNOTATION_BINDING,
+  WasmLatexmlCompiler,
+  createWorkerLatexmlEngine,
+} from '@slideblaster/adapters-shared'
 import type { AuthPort, CompilePort } from '@slideblaster/editor'
 // The emscripten build lives once (Git LFS) in adapters-shared; `?url` hands Vite the
 // asset URLs to bundle without transforming the 220 KB CJS glue or the 20 MB payload.
@@ -39,6 +43,7 @@ function createCompilePort(): CompilePort | undefined {
       jsUrl: perlJsUrl,
       wasmUrl: perlWasmUrl,
       dataUrl: perlDataUrl,
+      binding: ANNOTATION_BINDING, // stamp compiled table cells with data-sbx/y
     })
     return new WasmLatexmlCompiler({ engine: createWorkerLatexmlEngine(worker) })
   } catch (err) {

@@ -34,6 +34,7 @@ export {
   removeColumn,
   parseTabular,
   setTabularCell,
+  resolveTabularCell,
   insertTabularRow,
   removeTabularRow,
   setDeferredSource,
@@ -45,7 +46,13 @@ export {
   contentMaxStep,
   OutOfSubsetError,
 } from './content/index'
-export type { InlineStyle, TabularGrid, TabularRow, TabularCell } from './content/index'
+export type {
+  InlineStyle,
+  TabularGrid,
+  TabularRow,
+  TabularCell,
+  TabularContent,
+} from './content/index'
 export {
   resolveLayout,
   resolveLayoutAsync,

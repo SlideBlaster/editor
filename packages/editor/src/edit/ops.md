@@ -53,6 +53,11 @@ are the writer.
 message }` and re-serializes verbatim (ADR 0015) — data-safe by construction. The
   shell seeds the raw editor with `serializeBody(content)` and re-parses on commit, so
   `setNodeContent(p, name, parseContent(serializeBody(c)))` round-trips.
+- `setNodeOverlay(picture, name, spec)` — set (raw spec string) or clear (`null`/blank)
+  a node's whole-node `overlay=<spec>` reveal (ADR 0018), the properties-panel half of
+  the two-level overlay model. Stored brace-wrapped (`overlay={1,3}`) so a spec's commas
+  survive tikz option tokenizing; placement/size/content untouched. Read back by
+  `tikz/options.nodeOverlay`. No-op if the node is absent.
 
 ## E4 — connectors (this file)
 

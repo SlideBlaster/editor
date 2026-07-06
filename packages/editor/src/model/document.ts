@@ -28,11 +28,17 @@ export interface FrontmatterEntry {
  * thumbnails); the visible content — including any title node — lives in `picture`
  * (a slide is a TikZ picture, ADR 0004). `id` is the stable slide identity from the
  * heading's `{#id}`.
+ *
+ * `notes` is the optional presenter-notes sidecar (ADR 0019): a second slide picture,
+ * shown only to the presenter, driven by the SAME overlay step counter as `picture`
+ * (cap to slide — the notes never extend the step count). Absent when the slide has no
+ * notes; a frame with no notes serialises no ```notes block (round-trip law 6).
  */
 export interface Frame {
   id: string
   title: string
   picture: TikzPicture
+  notes?: TikzPicture
 }
 
 /** First value for `key` in document order, or undefined. */

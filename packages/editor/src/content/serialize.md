@@ -8,7 +8,9 @@ body slot.
 - **error** -> `{source}` — the preserved verbatim source.
 - **text** -> `{runs}`, each run emitting its exact surface form: `text` verbatim,
   `math` as `$src$`/`$$src$$`, `latex` as `\command{…}`, `markdown` as `**…**`/`*…*`,
-  `html` as `<tag>…</tag>`. Children recurse.
+  `html` as `<tag>…</tag>`. Overlays (ADR 0018) re-emit their spec: a `fragment` as
+  `\pause`/`\appear` (+ `<spec>` if any) or `<appear>`, an `overlay` wrap as
+  `\command<spec>{…}`, and a `\item<spec>` list item. Children recurse.
 
 `serializeRuns(runs)` is exposed (no braces) for content-level round-trip tests.
 

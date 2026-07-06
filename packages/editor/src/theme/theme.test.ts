@@ -55,9 +55,9 @@ describe('themeStylesheet (style layer -> scoped CSS)', () => {
     expect(out).toContain('.sb-slide .sb-style-b{color:#ff0000}')
   })
 
-  it('emits a structured border with radius', () => {
+  it('emits a structured border with radius, in cqw (slide-relative, never px)', () => {
     expect(css).toContain(
-      '.sb-slide .sb-style-box{border:1px solid var(--sb-accent);border-radius:6px}',
+      '.sb-slide .sb-style-box{border:0.1cqw solid var(--sb-accent);border-radius:0.6cqw}',
     )
   })
 

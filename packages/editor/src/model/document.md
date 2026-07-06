@@ -14,5 +14,9 @@ from `*.slideBlaster.md` text, and that the CRDT is seeded from / materialized t
 - `Frame.id` is the stable slide identity (from the heading `{#id}`); `Frame.title`
   is navigation metadata (not duplicated into the picture); `Frame.picture` is the
   slide's TikZ picture (see `tikz.md`).
+- `Frame.notes` is the optional presenter-notes sidecar (ADR 0019): a second TikZ
+  picture shown only to the presenter and driven by the same overlay step counter as
+  `picture` (cap to slide — see `overlay.md`/`slide.md`). Absent when the slide has no
+  notes; its presence is what makes `markdown/` emit a ```notes block.
 
 Invariants over this model live in `invariants/`.

@@ -35,7 +35,9 @@ export interface TypeScale {
 export type Align = 'left' | 'center' | 'right'
 export type Weight = 'normal' | 'bold' | number
 
-/** A structured border (never a raw CSS string). `width`/`radius` in px. */
+/** A structured border (never a raw CSS string). `width`/`radius` in cqw (slide-relative,
+ *  like `size`), so a border scales with the slide — identical on canvas, thumbnail, and
+ *  export. Never px: a fixed px border looks bold on a thumbnail and hairline on the canvas. */
 export interface Border {
   width: number
   color: Color
@@ -192,8 +194,8 @@ export const defaultTheme: Theme = {
       heading: { family: 'heading', size: 3.6, weight: 'bold', color: 'ink' },
       body: { size: 2.6, color: 'ink' },
       caption: { size: 2.1, color: 'ink' },
-      box: { border: { width: 1, color: 'accent', radius: 6 } },
-      note: { size: 2.2, background: '#fffbe6', border: { width: 1, color: '#e8d97a', radius: 4 } },
+      box: { border: { width: 0.1, color: 'accent', radius: 0.6 } },
+      note: { size: 2.2, background: '#fffbe6', border: { width: 0.1, color: '#e8d97a', radius: 0.4 } },
     },
     nodeDistance: 0.5,
   },

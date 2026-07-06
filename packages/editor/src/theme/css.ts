@@ -31,8 +31,10 @@ function weightCss(w: Weight): string {
 }
 
 function borderCss(theme: Theme, b: Border): string {
-  const base = `border:${b.width}px solid ${resolveColor(theme, b.color)}`
-  return b.radius !== undefined ? `${base};border-radius:${b.radius}px` : base
+  // cqw (slide-relative), like `size` — a fixed px border would look bold on a thumbnail
+  // and hairline on the canvas. Everything on a slide scales with the slide.
+  const base = `border:${b.width}cqw solid ${resolveColor(theme, b.color)}`
+  return b.radius !== undefined ? `${base};border-radius:${b.radius}cqw` : base
 }
 
 /** Structured decls -> a CSS declaration string (deterministic order). */

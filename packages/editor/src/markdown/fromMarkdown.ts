@@ -5,6 +5,7 @@
  * one fenced ```slide block. The block body is handed to the TikZ parser.
  */
 import type { DocumentMeta, Frame, SlideDocument } from '../model/document'
+import type { TikzPicture } from '../model/tikz'
 import { parsePicture } from '../tikz/parse'
 
 const HEADING = /^##\s+(.*?)\s*\{#([^}]+)\}\s*$/
@@ -46,7 +47,30 @@ export function fromMarkdown(text: string): SlideDocument {
       i++
     }
     i++ // closing ```
-    frames.push({ id, title, picture: parsePicture(bodyLines.join('\n')) })
+
+    // Optional ```notes block: the presenter-notes sidecar (ADR 0019). Look past blank
+    // lines for it, but only consume it if it is actually there — otherwise leave the
+    // cursor where it is so the outer loop reads the next heading (or trailing blanks).
+    let notes: TikzPicture | undefined
+    let j = i
+    while (lines[j] === '') j++
+    if (lines[j] === '```notes') {
+      i = j + 1
+      const noteLines: string[] = []
+      while (i < lines.length && lines[i] !== '```') {
+        noteLines.push(lines[i]!)
+        i++
+      }
+      i++ // closing ```
+      notes = parsePicture(noteLines.join('\n'))
+    }
+
+    frames.push({
+      id,
+      title,
+      picture: parsePicture(bodyLines.join('\n')),
+      ...(notes ? { notes } : {}),
+    })
   }
 
   return { meta, frames }

@@ -260,7 +260,7 @@ export function slideStylesheet(): string {
     '.sb-fn-marker{font-size:0.7em;line-height:0}',
     '.sb-bibliography{font-size:0.8em}',
     '.sb-footnotes{position:absolute;left:0;right:0;bottom:0;padding:0.4em 2%;font-size:0.55em;' +
-      'line-height:1.3;border-top:0.5px solid #ccc;color:#333;background:rgba(255,255,255,0.85)}',
+      'line-height:1.3;border-top:0.05cqw solid #ccc;color:#333;background:rgba(255,255,255,0.85)}',
     '.sb-footnote{text-indent:-1em;padding-left:1em}',
     '.sb-footnote sup{margin-right:0.3em}',
   ].join('\n')

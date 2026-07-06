@@ -76,3 +76,7 @@ layout)`. The stroke traces the arrow's **actual path** (`connector.pathData`, c
   `deckHandle.setColumnEditors` on selection change; a full render / `repaintFrame`
   mounts it here in `paintCanvas`. Its gestures commit via `editContentModel` (the
   node-scoped delta path), not the whole-doc `editContent`.
+- **Overlay step (ADR 0018).** `props.step`, when set, is passed to `renderSlide` so the
+  slide renders at that build step (inactive overlays hidden, space reserved); omitted, it
+  renders the all-visible authoring state. Handles/overlay are unaffected — hiding is
+  visibility-only, so every node stays hit-testable.

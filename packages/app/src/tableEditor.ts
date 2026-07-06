@@ -9,15 +9,19 @@
  * / `insertTabularRow`) spliced into the `deferred` run via `setDeferredSource`, which
  * the controller commits with `editContentModel`; latexml then re-compiles the source.
  *
- * latexml is one-way, so the rendered cells carry no source. We align them to the grid
- * `parseTabular` reads from the SAME source, by position — safe only for a non-spanned
- * table whose compiled row/cell counts match the source. A spanned or mismatched table
- * gets the "</>" deep editor only. Geometry is DOM-measured, so it runs after paint.
+ * latexml is one-way, so a rendered cell carries no source of its own. The annotation
+ * binding (see adapters-shared `tableAnnotation.ts`) stamps every compiled cell with its
+ * physical grid position as `data-sbx`/`data-sby`; we read that back and resolve it to a
+ * source cell with `resolveTabularCell` — exact even across `\multicolumn`/`\multirow`,
+ * and never trusting the HTML structure. A table whose cells lack coordinates (annotation
+ * off, or a cache entry compiled before it) gets the "</>" deep editor only. Geometry is
+ * DOM-measured, so this runs after paint.
  */
 import {
   deferredTableSources,
   insertTabularRow,
   parseTabular,
+  resolveTabularCell,
   setDeferredSource,
   setTabularCell,
   type NodeContent,
@@ -46,6 +50,13 @@ export function paintTableEditors(
   })
 }
 
+/** A rendered cell resolved to its source (row, col) via the compiled `data-sbx/y`. */
+interface CellHot {
+  el: HTMLElement
+  row: number
+  col: number
+}
+
 function mountTable(
   overlay: HTMLElement,
   slideEl: HTMLElement,
@@ -63,8 +74,8 @@ function mountTable(
   }
 
   const grid = parseTabular(source)
-  const tableEl = wrapper.querySelector<HTMLElement>('table')
-  const cells = editableCells(tableEl, grid) // null ⇒ not cell-editable (pending/spanned/mismatch)
+  const table = wrapper.querySelector<HTMLElement>('table')
+  const hots = grid && table ? resolveCells(table, grid) : null
 
   // "</>" deep-edit toggle — always available, in the wrapper's top-right corner.
   const sourceGrip = div('sb-table-source', layer)
@@ -77,19 +88,20 @@ function mountTable(
   })
 
   let addRow: HTMLElement | null = null
-  if (cells && grid) {
+  if (grid && hots) {
     // Inline cell editing: a click target over each rendered cell.
-    for (const cell of cells) {
-      const hot = div('sb-table-cell', layer)
-      hot.title = 'Edit cell'
-      hot.addEventListener('pointerdown', (event) => event.stopPropagation())
-      hot.addEventListener('click', (event) => {
+    for (const hot of hots) {
+      const seed = grid.rows[hot.row]?.cells[hot.col]?.content.text ?? ''
+      const cell = div('sb-table-cell', layer)
+      cell.title = 'Edit cell'
+      cell.addEventListener('pointerdown', (event) => event.stopPropagation())
+      cell.addEventListener('click', (event) => {
         event.stopPropagation()
-        openCellEditor(overlay, slideEl, cell.el, grid.rows[cell.r]!.cells[cell.c]!.text, (text) =>
-          commit(setTabularCell(source, cell.r, cell.c, text)),
+        openCellEditor(overlay, slideEl, hot.el, seed, (text) =>
+          commit(setTabularCell(source, hot.row, hot.col, text)),
         )
       })
-      cell.hot = hot
+      placeRect(cell, slideEl.getBoundingClientRect(), hot.el.getBoundingClientRect())
     }
     // "+" appends a row after the last data row.
     addRow = div('sb-table-add', layer)
@@ -102,33 +114,28 @@ function mountTable(
     })
   }
 
-  // Place everything from measured rects (one pass — the render is already laid out).
+  // Place the wrapper-anchored grips from measured rects (one pass — already laid out).
   const sr = slideEl.getBoundingClientRect()
   const wr = wrapper.getBoundingClientRect()
   placeAt(sourceGrip, sr, wr.right - sr.left, wr.top - sr.top)
-  if (cells) for (const cell of cells) placeRect(cell.hot!, sr, cell.el.getBoundingClientRect())
   if (addRow) placeAt(addRow, sr, wr.left + wr.width / 2 - sr.left, wr.bottom - sr.top)
 }
 
-interface CellRef {
-  r: number
-  c: number
-  el: HTMLElement
-  hot?: HTMLElement
-}
-
-/** The rendered cells zipped onto the source grid, or null when they can't be aligned. */
-function editableCells(tableEl: HTMLElement | null, grid: TabularGrid | null): CellRef[] | null {
-  if (!tableEl || !grid || grid.spanned) return null
-  const rows = [...tableEl.querySelectorAll<HTMLElement>('tr')]
-  if (rows.length !== grid.rows.length) return null
-  const cells: CellRef[] = []
-  for (let r = 0; r < rows.length; r++) {
-    const domCells = [...rows[r]!.querySelectorAll<HTMLElement>(':scope > td, :scope > th')]
-    if (domCells.length !== grid.rows[r]!.cells.length) return null
-    for (let c = 0; c < domCells.length; c++) cells.push({ r, c, el: domCells[c]! })
+/** Zip the compiled cells (those the annotation binding coordinated) onto the source
+ *  grid. Cells are scoped to the outermost table so a nested tabular's own coordinates
+ *  never mis-resolve against this grid. Null when no cell carries coordinates. */
+function resolveCells(table: HTMLElement, grid: TabularGrid): CellHot[] | null {
+  const cells = [...table.querySelectorAll<HTMLElement>('td[data-sbx], th[data-sbx]')]
+  const hots: CellHot[] = []
+  for (const el of cells) {
+    if (el.closest('table') !== table) continue // belongs to a nested tabular
+    const x = Number(el.getAttribute('data-sbx'))
+    const y = Number(el.getAttribute('data-sby'))
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue
+    const at = resolveTabularCell(grid, x, y)
+    if (at) hots.push({ el, row: at.row, col: at.col })
   }
-  return cells
+  return hots.length ? hots : null
 }
 
 /** Open an inline editor over a cell, seeded with its source text; commit on blur/Enter. */

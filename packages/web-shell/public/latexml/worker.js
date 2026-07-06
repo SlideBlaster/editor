@@ -32,6 +32,32 @@ var OUT = '/out.html'
 var modulePromise = null
 var queue = Promise.resolve()
 
+// Inject the table-annotation binding into the MEMFS and preload it from the driver, so
+// every compiled cell carries its grid position as data-sbx/y. Best-effort and idempotent
+// (mirror of adapters-shared tableAnnotation.ts installTableAnnotation); the binding text
+// itself arrives in the init message so it stays single-sourced in TypeScript.
+function installAnnotation(m, binding) {
+  if (!binding) return
+  try {
+    m.FS.writeFile('/sb/sbannot.ltxml', binding)
+    var driver = m.FS.readFile('/sb/driver.pl', { encoding: 'utf8' })
+    if (driver.indexOf('sbannot') === -1) {
+      var anchor = 'LaTeXML::Common::Config->new('
+      var i = driver.indexOf(anchor)
+      if (i !== -1) {
+        var at = i + anchor.length
+        var patched =
+          driver.slice(0, at) +
+          "\n  preload => ['sbannot.ltxml'],\n  paths => ['/sb']," +
+          driver.slice(at)
+        m.FS.writeFile('/sb/driver.pl', patched)
+      }
+    }
+  } catch (_) {
+    // Coordinates are optional; a table still compiles without them.
+  }
+}
+
 function boot(cfg) {
   if (!modulePromise) {
     importScripts(cfg.jsUrl) // defines self.createPerlModule (MODULARIZE factory)
@@ -46,6 +72,7 @@ function boot(cfg) {
       printErr: function () {},
     }).then(function (m) {
       m.ENV.PERL_HASH_SEED = '0' // deterministic output (matches native goldens)
+      installAnnotation(m, cfg.binding)
       return m
     })
   }

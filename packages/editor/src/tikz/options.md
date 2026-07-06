@@ -7,8 +7,11 @@ anything: `styleClasses` (bare tokens), `role` (`title` class -> title node),
 (that token parsed to `{ side, gap, ref }`; a gapless token takes `placement`'s
 `defaultGap` argument — the theme's node distance, ADR 0017 — defaulting to
 `DEFAULT_PLACEMENT_GAP`),
-and `textWidth` (the `text width=<n>` value). The layout pass (`../layout/resolve`)
-consumes the last two.
+`textWidth` (the `text width=<n>` value), and `nodeOverlay` (the whole-node
+`overlay=<spec>` reveal, ADR 0018 — stored brace-wrapped so a spec's commas survive
+option tokenizing; returns the raw `OverlaySpec` for `content/overlay` to interpret).
+The layout pass (`../layout/resolve`) consumes width/placement; the render pass
+consumes the overlay.
 
 Kept derived so they can never disagree with the serialization truth. Structured
 placement/style editing (rewriting these tokens) comes with the edit ops and canvas.

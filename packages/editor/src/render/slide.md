@@ -1,8 +1,9 @@
 # render slide (assembly)
 
 `renderSlide(picture, layout, options?) -> string`: assemble the full layered DOM of
-a slide (ADR 0014), and `slideStylesheet()` a minimal base stylesheet so it is
-viewable when mounted.
+a slide (ADR 0014), `slideStylesheet()` a minimal base stylesheet so it is viewable
+when mounted, and `slideStepCount(picture)` the number of overlay steps the slide
+plays as (ADR 0018).
 
 ```
 <div class="sb-slide">
@@ -30,6 +31,13 @@ viewable when mounted.
   become `sb-style-*` classes on both the SVG box and the content div. A named node's
   content div also carries `data-node="<name>"` so an editor can hit-test and address
   it (selection, drag, inline edit); harmless in the export DOM.
+- **Overlays (ADR 0018).** `options.step` flows into `renderContent` so inline overlays
+  step-gate. A node's own `overlay=<spec>` option (via `nodeOverlay`) reveals the whole
+  node: when its spec is inactive at `options.step` the content div gets `sb-ov-hidden`
+  (space reserved — geometry is the union of all steps, so nothing reflows) and carries
+  `data-overlay="<spec>"`. With no step, every node shows (authoring view).
+  `slideStepCount` is the max step any node references (its overlay spec or its inline
+  content), at least 1 — it drives the step navigator and the one-page-per-step export.
 - **Footnotes.** `renderSlide` supplies a per-slide `FootnoteSink` to the content
   render: each `\citefootnote` numbers in reading order across the slide's nodes, and
   the definitions collect into a `.sb-footnotes` band at the slide foot (Beamer-style).

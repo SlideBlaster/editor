@@ -24,6 +24,7 @@ import {
 } from '@slideblaster/editor'
 import { renderOptions } from './tableCompiler'
 import { paintColumnEditors } from './columnEditor'
+import { paintTableEditors } from './tableEditor'
 import { wireResizeGrips } from './resizeHandles'
 import { resolveSnap, type SnapBox, type SnapLine, type SnapSize } from './snap'
 import { findBinding, type BindBox, type Binding } from './binding'
@@ -187,6 +188,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     )
     if (node && contentEl && node.content.kind === 'text') {
       paintColumnEditors(overlay, slideEl, contentEl, props.selected, node.content, props.actions)
+      paintTableEditors(overlay, slideEl, contentEl, props.selected, node.content, props.actions)
     }
   }
 

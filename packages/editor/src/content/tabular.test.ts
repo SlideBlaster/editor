@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseTabular,
   setTabularCell,
+  resolveTabularCell,
   insertTabularRow,
   removeTabularRow,
   setDeferredSource,
@@ -28,6 +29,29 @@ const BASIC = [
   'Apples & 3 \\\\',
   'Pears & 12 \\\\',
   '\\hline',
+  '\\end{tabular}',
+].join('\n')
+
+// A merged header cell: row 0 has 2 source cells across 3 physical columns.
+const MULTICOL = [
+  '\\begin{tabular}{lll}',
+  '\\toprule',
+  '\\multicolumn{2}{c}{Half} & Rest \\\\',
+  '\\midrule',
+  'a & b & c \\\\',
+  '\\bottomrule',
+  '\\end{tabular}',
+].join('\n')
+
+// A row-spanning first column: row 1's covered slot is written as an empty leading cell.
+const MULTIROW = [
+  '\\begin{tabular}{lll}',
+  '\\toprule',
+  '\\multirow{2}{*}{Group} & a & 1 \\\\',
+  ' & b & 2 \\\\',
+  '\\midrule',
+  'x & y & z \\\\',
+  '\\bottomrule',
   '\\end{tabular}',
 ].join('\n')
 
@@ -134,6 +158,74 @@ describe('removeTabularRow', () => {
   it('refuses to remove the only data row', () => {
     const one = '\\begin{tabular}{l}\na \\\\\n\\end{tabular}'
     expect(removeTabularRow(one, 0)).toBe(one)
+  })
+})
+
+describe('physical grid coordinates', () => {
+  it('numbers plain cells left to right on each row', () => {
+    const grid = parseTabular(BOOKTABS)!
+    expect(grid.rows.map((r) => r.cells.map((c) => c.x))).toEqual([
+      [0, 1],
+      [0, 1],
+      [0, 1],
+    ])
+    expect(grid.rows.every((r) => r.cells.every((c) => c.colspan === 1))).toBe(true)
+  })
+
+  it('advances x by the colspan of a \\multicolumn', () => {
+    const grid = parseTabular(MULTICOL)!
+    expect(grid.columns).toBe(3)
+    // Half spans columns 0-1 (x=0, colspan=2); Rest sits at physical column 2.
+    expect(grid.rows[0]!.cells.map((c) => ({ x: c.x, colspan: c.colspan }))).toEqual([
+      { x: 0, colspan: 2 },
+      { x: 2, colspan: 1 },
+    ])
+    expect(grid.rows[1]!.cells.map((c) => c.x)).toEqual([0, 1, 2])
+  })
+
+  it('keeps a source cell for the slot a \\multirow overhang covers', () => {
+    const grid = parseTabular(MULTIROW)!
+    // Row 1 keeps three source cells (empty, b, 2) at physical columns 0,1,2.
+    expect(grid.rows[1]!.cells.map((c) => ({ x: c.x, text: c.text }))).toEqual([
+      { x: 0, text: '' },
+      { x: 1, text: 'b' },
+      { x: 2, text: '2' },
+    ])
+  })
+})
+
+describe('resolveTabularCell', () => {
+  it('maps a compiled cell position back to source (row, col)', () => {
+    const grid = parseTabular(MULTICOL)!
+    expect(resolveTabularCell(grid, 0, 0)).toEqual({ row: 0, col: 0 }) // Half
+    expect(resolveTabularCell(grid, 2, 0)).toEqual({ row: 0, col: 1 }) // Rest
+    // Physical column 1 of row 0 is inside Half's span — no cell begins there.
+    expect(resolveTabularCell(grid, 1, 0)).toBeNull()
+  })
+
+  it('resolves the rendered cells of a \\multirow row past the covered slot', () => {
+    const grid = parseTabular(MULTIROW)!
+    // The compiled row 1 renders only b@(1,1) and 2@(2,1); both resolve.
+    expect(resolveTabularCell(grid, 1, 1)).toEqual({ row: 1, col: 1 }) // b
+    expect(resolveTabularCell(grid, 2, 1)).toEqual({ row: 1, col: 2 }) // 2
+  })
+
+  it('is null for an out-of-range position', () => {
+    const grid = parseTabular(BOOKTABS)!
+    expect(resolveTabularCell(grid, 5, 0)).toBeNull()
+    expect(resolveTabularCell(grid, 0, 9)).toBeNull()
+  })
+})
+
+describe('editing a spanned cell', () => {
+  it('rewrites only the wrapped content of a \\multicolumn', () => {
+    const next = setTabularCell(MULTICOL, 0, 0, 'HALF')
+    expect(next).toContain('\\multicolumn{2}{c}{HALF} & Rest')
+  })
+
+  it('rewrites only the wrapped content of a \\multirow', () => {
+    const next = setTabularCell(MULTIROW, 0, 0, 'Grp')
+    expect(next).toContain('\\multirow{2}{*}{Grp} & a & 1')
   })
 })
 

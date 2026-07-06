@@ -14,6 +14,7 @@
  * synchronous conversion never blocks the UI thread.
  */
 import type { LatexmlEngine } from './wasmLatexmlCompiler'
+import { installTableAnnotation } from './tableAnnotation'
 
 /** The emscripten runtime surface this engine relies on (subset of Module). */
 export interface PerlModule {
@@ -63,6 +64,7 @@ export function createBrowserLatexmlEngine(opts: BrowserLatexmlEngineOptions): L
         })
         .then((m) => {
           m.ENV.PERL_HASH_SEED = '0' // deterministic output
+          installTableAnnotation(m.FS) // stamp compiled cells with data-sbx/y (best-effort)
           return m
         })
     }

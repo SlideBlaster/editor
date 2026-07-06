@@ -17,8 +17,10 @@ container's body (transparent nesting):
 4. **LaTeX** — `\textbf`/`\emph`/`\textit`/`\underline` (`{ }` arg, recurses);
    `\image{src}`, `\cat{path}` (include); `\cite{keys}`, `\citefootnote{keys}`,
    `\printbibliography{}` (citations, keys split on `,`; matched before the generic
-   macro so they are in-subset, not errors); `\appear`/`\pause`/`\only` (with optional
-   `[=N]`) become reveal fragments.
+   macro so they are in-subset, not errors); overlays (ADR 0018) — `\pause`/`\appear`
+   point fragments and `\only`/`\uncover`/`\visible`/`\invisible`/`\alert` wrapping
+   commands, each with an optional Beamer `<spec>` (`<2>` `<2->` `<-3>` `<2-4>` `<1,3>`),
+   plus `\item<spec>`. A malformed spec is out-of-subset (rejected, like any error).
 5. **markdown** — emphasis `**…**` / `*…*` (matching delimiter); `![alt](src)` image.
 6. anything else accumulates as literal **text**.
 

@@ -4,27 +4,42 @@
  *
  * latexml compiles a `tabular` to HTML ONE-WAY, so shallow (cell/row) editing cannot
  * be read back from the compiled output. Instead we re-parse the SAME source into a
- * cell grid whose cells carry their `[start, end)` span in the source. The canvas
- * affordance aligns the rendered `<td>`s to this grid by position (latexml renders
- * rule macros as borders, not `<tr>`s, so a non-spanned table's compiled data rows
- * map 1:1 to the source rows), so a click on a compiled cell resolves to a source span
- * these functions splice. The edit stays in the source (the `deferred` run), which
- * latexml then re-compiles — the round-trip is source-truth, never HTML-truth.
+ * cell grid whose cells carry their `[start, end)` span AND their physical grid
+ * position `(x, y)`. A LaTeXML preload binding stamps every compiled cell with that
+ * same `(x, y)` as `data-sbx`/`data-sby` (see the engine annotation binding), so the
+ * canvas affordance resolves a clicked `<td>` to a source cell by grid position —
+ * exact even for `\multicolumn`/`\multirow`, and never by trusting the HTML structure.
+ * The edit stays in the source (the `deferred` run), which latexml then re-compiles:
+ * the round-trip is source-truth, never HTML-truth.
  *
  * Rule-only chunks (`\toprule`, `\midrule`, `\hline`, `\bottomrule`, …) are NOT data
- * rows and are skipped, matching latexml. A table using `\multicolumn`/`\multirow` is
- * flagged `spanned`: its compiled grid no longer aligns 1:1 with the source, so the
- * affordance falls back to raw-source (deep) editing rather than mis-map a cell.
+ * rows and are skipped, matching latexml. `spanned` still reports whether
+ * `\multicolumn`/`\multirow` is present, but shallow editing no longer bails on it:
+ * each cell resolves by its physical `(x, y)`, and a merged cell edits just its wrapped
+ * content argument (so `\multicolumn{2}{c}{Half}` rewrites only `Half`).
  */
 import type { NodeContent, TextRun } from '../model/content'
 
-/** A single cell: its trimmed text and the span of that text within the tabular source. */
-export interface TabularCell {
+/** A trimmed run of source: its text and the `[start, end)` span it occupies. */
+export interface TabularContent {
   text: string
-  /** Offset of the first non-space char of the cell in the source (inclusive). */
+  /** Offset of the first non-space char in the source (inclusive). */
   start: number
-  /** Offset just past the last non-space char of the cell (exclusive). */
+  /** Offset just past the last non-space char (exclusive). */
   end: number
+}
+
+/** A single cell: the full trimmed cell source, its span, its physical grid position,
+ *  and the editable inner content (which narrows to the wrapped argument of a spanned
+ *  cell). */
+export interface TabularCell extends TabularContent {
+  /** Physical grid column of the cell's left edge — matches the compiled `data-sbx`. */
+  x: number
+  /** Columns this cell spans (`\multicolumn{n}` ⇒ n, otherwise 1). */
+  colspan: number
+  /** The editable inner content: the whole cell, or the wrapped argument of a
+   *  `\multicolumn`/`\multirow`, so setting the cell rewrites only the visible text. */
+  content: TabularContent
 }
 
 /** A data row (rule-only chunks excluded). */
@@ -40,10 +55,10 @@ export interface TabularRow {
 export interface TabularGrid {
   /** Raw column spec between the braces, e.g. `lr` or `|l|r|`. */
   colspec: string
-  /** Column count (the widest data row). */
+  /** Physical column count — the widest data row, counting colspans. */
   columns: number
   rows: TabularRow[]
-  /** `\multicolumn`/`\multirow` present ⇒ structural editing is unsafe (see module doc). */
+  /** Whether `\multicolumn`/`\multirow` is present (informational; see module doc). */
   spanned: boolean
 }
 
@@ -71,8 +86,9 @@ export function parseTabular(source: string): TabularGrid | null {
     if (/\\multicolumn\b|\\multirow\b/.test(source.slice(chunk.start, chunk.end))) spanned = true
     const cellStart = skipRules(source, chunk.start, chunk.end)
     if (cellStart >= chunk.end) continue // rule-only / blank chunk: not a data row
-    const cells = splitCells(source, cellStart, chunk.end)
-    columns = Math.max(columns, cells.length)
+    const cells = annotateColumns(source, splitCells(source, cellStart, chunk.end))
+    const width = cells.reduce((w, c) => w + c.colspan, 0)
+    columns = Math.max(columns, width)
     rows.push({ cells, end: chunk.termEnd, terminated: chunk.terminated })
   }
 
@@ -109,28 +125,79 @@ export function deferredTableSources(content: NodeContent): string[] {
   return out
 }
 
-/** Replace cell (row, col)'s text in `source`; returns the source unchanged if out of range. */
+/** Replace cell (row, col)'s editable content in `source`; a no-op if out of range. For a
+ *  spanned cell only the wrapped argument changes, so `\multicolumn`/`\multirow` survives. */
 export function setTabularCell(source: string, row: number, col: number, text: string): string {
   const grid = parseTabular(source)
   const cell = grid?.rows[row]?.cells[col]
   if (!cell) return source
-  return source.slice(0, cell.start) + text + source.slice(cell.end)
+  return source.slice(0, cell.content.start) + text + source.slice(cell.content.end)
+}
+
+/** Resolve a compiled cell's physical grid position — its `data-sbx`/`data-sby` — to the
+ *  source (row, col) indices, or null if no source cell begins at that position (e.g. a
+ *  slot covered by a `\multirow` overhang, which the render skips). */
+export function resolveTabularCell(
+  grid: TabularGrid,
+  x: number,
+  y: number,
+): { row: number; col: number } | null {
+  const row = grid.rows[y]
+  if (!row) return null
+  const col = row.cells.findIndex((c) => c.x === x)
+  return col === -1 ? null : { row: y, col }
 }
 
 /**
- * Insert a blank data row after row `at` (clamped). The new row has one empty cell per
- * column and is `\\`-terminated; if row `at` was not terminated (a last row without a
- * trailing `\\`) it is terminated first so the table stays well-formed.
+ * A new cell's placeholder. latexml DROPS a fully-empty tabular row (and `~`, `\strut`,
+ * `\phantom`, `{}` all still count as empty), so a blank row would compile to nothing —
+ * invisible and unfillable. `\mbox{}` is the lightest content latexml keeps: it renders
+ * an empty-looking cell but preserves the row (and its coordinates). The editor shows a
+ * placeholder cell as empty, and the first real edit replaces the whole `\mbox{}`.
+ */
+export const EMPTY_CELL = '\\mbox{}'
+
+/**
+ * Insert a blank data row after row `at` (clamped). The new row has one placeholder cell
+ * per column (see `EMPTY_CELL`) and is `\\`-terminated; if row `at` was not terminated (a
+ * last row without a trailing `\\`) it is terminated first so the table stays well-formed.
  */
 export function insertTabularRow(source: string, at: number): string {
   const grid = parseTabular(source)
   if (!grid) return source
   const i = Math.max(0, Math.min(at, grid.rows.length - 1))
   const row = grid.rows[i]!
-  const blank = Array.from({ length: Math.max(1, grid.columns) }, () => '').join(' & ')
+  const blank = Array.from({ length: Math.max(1, grid.columns) }, () => EMPTY_CELL).join(' & ')
   const prefix = row.terminated ? '' : ' \\\\'
   const insert = `${prefix}\n${blank} \\\\`
   return source.slice(0, row.end) + insert + source.slice(row.end)
+}
+
+/**
+ * Append a column at the right edge: widen the colspec by one `l` and add a placeholder
+ * cell to the end of every data row. Appending keeps the edit span-safe (a `\multicolumn`
+ * row simply gains one trailing physical column too). No-op on a malformed tabular.
+ */
+export function insertTabularColumn(source: string): string {
+  const grid = parseTabular(source)
+  if (!grid) return source
+  const begin = /\\begin\{tabular\}[ \t]*(?:\[[^\]]*\][ \t]*)?\{/.exec(source)
+  if (!begin) return source
+  const specOpen = begin.index + begin[0].length - 1
+  const specEnd = matchBrace(source, specOpen)
+  if (specEnd === -1) return source
+
+  // Widen the colspec, then append a cell to each row. Apply high offset -> low so each
+  // splice leaves the earlier offsets valid.
+  const edits: { pos: number; text: string }[] = [{ pos: specEnd, text: 'l' }]
+  for (const row of grid.rows) {
+    const last = row.cells[row.cells.length - 1]
+    if (last) edits.push({ pos: last.end, text: ` & ${EMPTY_CELL}` })
+  }
+  edits.sort((a, b) => b.pos - a.pos)
+  let out = source
+  for (const e of edits) out = out.slice(0, e.pos) + e.text + out.slice(e.pos)
+  return out
 }
 
 /** Remove data row `at`; no-op if out of range or it is the only data row. */
@@ -241,8 +308,8 @@ function skipRules(source: string, i: number, to: number): number {
 }
 
 /** Split `[from, to)` into cells at top-level `&`, each trimmed to its content span. */
-function splitCells(source: string, from: number, to: number): TabularCell[] {
-  const cells: TabularCell[] = []
+function splitCells(source: string, from: number, to: number): TabularContent[] {
+  const cells: TabularContent[] = []
   let depth = 0
   let cellStart = from
   let i = from
@@ -264,8 +331,64 @@ function splitCells(source: string, from: number, to: number): TabularCell[] {
   return cells
 }
 
-/** The trimmed content span of `[a, b)` as a cell. */
-function trimSpan(source: string, a: number, b: number): TabularCell {
+/** Assign each raw cell its physical column `x` (colspans accumulate), its `colspan`,
+ *  and its editable inner `content`. Left-to-right, so `x` is the running column sum —
+ *  which matches the compiled `data-sbx` a rowspan overhang shifts on the render side. */
+function annotateColumns(source: string, raw: TabularContent[]): TabularCell[] {
+  const cells: TabularCell[] = []
+  let x = 0
+  for (const cell of raw) {
+    const { colspan, content } = analyzeCell(source, cell)
+    cells.push({ ...cell, x, colspan, content })
+    x += colspan
+  }
+  return cells
+}
+
+/** Detect a `\multicolumn{n}{spec}{content}` / `\multirow{n}{width}{content}` wrapper,
+ *  returning its column span and the inner (visible) content span. A plain cell spans one
+ *  column and is its own content. Unrecognized forms edit the whole cell, span one. */
+function analyzeCell(
+  source: string,
+  cell: TabularContent,
+): {
+  colspan: number
+  content: TabularContent
+} {
+  const macro = /^\\(multicolumn|multirow)(?![a-zA-Z])/.exec(cell.text)
+  if (!macro) return { colspan: 1, content: cell }
+  const args = readBraceArgs(source, cell.start + macro[0].length, cell.end)
+  const content = args[args.length - 1]
+  if (args.length < 3 || !content) return { colspan: 1, content: cell }
+  let colspan = 1
+  if (macro[1] === 'multicolumn') {
+    const n = Number.parseInt(args[0]!.text, 10)
+    if (Number.isFinite(n) && n > 0) colspan = n
+  }
+  return { colspan, content }
+}
+
+/** Read consecutive `{…}` argument groups (skipping spaces and optional `[…]`) from `p`. */
+function readBraceArgs(source: string, p: number, to: number): TabularContent[] {
+  const args: TabularContent[] = []
+  let i = p
+  for (;;) {
+    while (i < to && isSpace(source[i]!)) i++
+    if (source[i] === '[') {
+      i = skipBalanced(source, i, '[', ']', to)
+      continue
+    }
+    if (source[i] !== '{') break
+    const close = matchBrace(source, i)
+    if (close === -1 || close >= to) break
+    args.push(trimSpan(source, i + 1, close))
+    i = close + 1
+  }
+  return args
+}
+
+/** The trimmed content span of `[a, b)`. */
+function trimSpan(source: string, a: number, b: number): TabularContent {
   let start = a
   let end = b
   while (start < end && isSpace(source[start]!)) start++

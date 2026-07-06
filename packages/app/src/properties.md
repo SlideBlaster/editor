@@ -21,6 +21,11 @@ selection change and after every render.
   editable X/Y (commit via `moveNode` -> `moveNodeTo`); relative nodes show an editable
   side, gap, and a read-only ref (commit via `bindNode` -> `placeNodeRelative`). A badge
   marks which mode. Switching modes is done by dragging on the canvas, not here.
+- **Selected node -> Reveal (overlays, ADR 0018).** A text field for the node's Beamer
+  overlay spec (`nodeOverlay(node)?.raw`; blank = always visible). On commit it validates
+  with `isValidSpec` — a valid spec writes via `setNodeOverlay`, blank clears it, a
+  malformed spec is left uncommitted with a red outline. The whole-node half of the
+  two-level model; inline `\pause`/`\only` live in the node body.
 - **Frame-agnostic.** The controller binds the panel's actions to the selected slide's
   frame and hands it that frame's picture; this module never touches frame indices.
 - **Empty selection** hides the panel (`host.hidden`).

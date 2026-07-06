@@ -20,6 +20,10 @@ self-contained document that is both a presenter and a print-to-PDF source.
   document `<title>` is escaped. The iframe is same-origin and removed on `afterprint`
   (with a timer fallback, since `afterprint` is not universally reliable).
 
-The controller ([main.ts](./main.md)) builds `RenderedSlide[]` by rendering each frame
-against `resolveLayoutAsync(picture, measurer)` — the same cached DOM measurements the
-canvas uses — so what you export is what you see.
+The controller ([createApp.ts](./createApp.md)) builds `RenderedSlide[]` by rendering each
+frame against `resolveLayoutAsync(picture, measurer)` — the same cached DOM measurements
+the canvas uses — so what you export is what you see. **Overlays expand to one page per
+step (ADR 0018):** a slide with N steps (`slideStepCount`) becomes N consecutive
+`RenderedSlide`s, each rendered at `{ step }`, so both the on-screen presenter (arrow keys
+advance step then slide, Beamer-style) and the printed PDF get one page per build step.
+Geometry is step-invariant, so the layout is resolved once per slide and reused.
