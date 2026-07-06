@@ -8,6 +8,8 @@ Browser implementations of the editor ports. Exposes:
 - **Git:** `IsomorphicGitAdapter` (injectable core), `createBrowserGitAdapter`
   (git-only browser wiring, kept for spikes).
 - **Storage:** `FsStorageAdapter` (injectable core over a promises-style fs).
-- **Auth:** `DevAuthAdapter` — the AuthPort stand-in until the Auth service (M4).
+- **Auth:** `BrowserAuthAdapter` / `createBrowserAuthAdapter` — the real AuthPort
+  (M4): GitHub-OAuth session + on-demand repo-scoped token minting over HTTP.
+  `DevAuthAdapter` remains the offline/test stand-in.
 
 Collab, Compile, and Export adapters attach here at their milestones.
