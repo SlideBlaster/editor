@@ -3,15 +3,27 @@
 The browser shell's entry point — deliberately thin. It builds the browser
 adapters and mounts the shared editor app
 ([@slideblaster/app](../../app/src/index.md)) into the page's `#app` element,
-tagged `web-shell · M3`.
+tagged `web-shell · M4`.
 
-Adapters wired (M3): `createBrowserWorkspace` — the Storage and Git ports over
-one shared LightningFS/IndexedDB working copy, bootstrapped on first run — and
-`DevAuthAdapter` for identity until the Auth service (M4). Optional env:
-`VITE_SB_GIT_PROXY` (first-party CORS proxy URL, used by remote git only) and
-`VITE_SB_DEV_PAT` (a PAT for manual remote testing; never shipped). If the
-working copy cannot open (IndexedDB unavailable), the shell falls back to the
-in-memory sample.
+Adapters wired: `createBrowserWorkspace` — the Storage and Git ports over one
+shared LightningFS/IndexedDB working copy, bootstrapped on first run — and the
+Auth port. `createAuth` picks the Auth adapter from `VITE_SB_AUTH_URL`: when set,
+the real `createBrowserAuthAdapter({ baseUrl })` (GitHub sign-in + token minting),
+where `/` means "this origin" — local dev through the Vite proxy to the auth-stub
+(Phase A); a full URL is the deployed Auth service (Phase B). Unset, it falls back
+to `DevAuthAdapter` (offline; instant local identity, optional `VITE_SB_DEV_PAT`
+for manual remote git). Other optional env: `VITE_SB_GIT_PROXY` (first-party CORS
+proxy URL, remote git only). If the working copy cannot open (IndexedDB
+unavailable), the shell falls back to the in-memory sample.
+
+Compile port (tables): `createCompilePort` wraps `WasmLatexmlCompiler` around a
+`createWorkerLatexmlEngine` proxy to a Web Worker. The worker is the static
+`public/latexml/worker.js` (classic, so it can `importScripts` the emscripten
+glue); the shell hands it the three engine asset URLs — `perl-web.js` / `.wasm` /
+`.data`, imported from adapters-shared via Vite `?url` so the 20 MB payload is
+bundled once from its Git-LFS source. If Workers are unavailable the port is
+omitted and tables render as "render pending" placeholders. This is why the shell
+also depends on `@slideblaster/adapters-shared`.
 
 All of the editor UI and behaviour lives in `@slideblaster/app` so it is shared
 with `desktop-shell` (implement once). The KaTeX offline stylesheet and the

@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // The auth-stub dev double (a devDep, used by the auth integration test) uses
+    // explicit .ts import extensions so its standalone `dev` launcher runs under
+    // `node --experimental-strip-types`; permit them when typechecking through it.
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }
