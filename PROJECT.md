@@ -41,7 +41,7 @@ Sibling repos at the project root: `design/` (ADRs, format, architecture, roadma
 | Git     | status/stage/commit/log/diff/branch/merge/clone/pull/push     | 0001, 0008 |
 | Auth    | identity + short-lived repo-scoped tokens; capability flags   | 0010       |
 | Collab  | session lifecycle + CRDT transport + awareness (off for solo) | 0011, 0012 |
-| Compile | table -> HTML now; general LaTeX deferred                     | 0009       |
+| Compile | table -> HTML (WASM latexml, wired into web-shell)            | 0009       |
 | Export  | PDF + standalone presenter HTML from rendered slides          | 0009       |
 
 Bundled into the core with no port: the TikZ renderer, KaTeX, fonts (ADR 0003) —
@@ -71,12 +71,25 @@ the render path is fully client-side.
   and the source-control panel (status / stage-all commit / log; author from the
   Auth port); web-shell wires it all. Offline solo works end-to-end.
 - **Track-0 spikes:** browser git + CORS proxy landed (`services/git-proxy`);
-  async measurement layout landed (`app/domMeasurer`); WASM latexml concluded
-  feasible-but-heavy (see `../spikes/wasm-latexml/FINDINGS.md`; JS table subset
-  remains the interim plan, engine work in `adapters-shared`). **Remaining:
-  Yjs<->AST round-trip (ADR 0011) — not started.**
-- **Next:** M4 — Auth service (GitHub App + KMS minting) and push/pull to
-  GitHub through the git-proxy; swap `DevAuthAdapter` for the real browser auth
-  adapter.
+  async measurement layout landed (`app/domMeasurer`); WASM latexml **built and
+  wired** — the engine (`adapters-shared/.../engine/dist`, Git LFS) drives the
+  Compile port through a Web Worker, so a slide `tabular` renders as compiled HTML
+  in web-shell (the default sample deck now includes a table). The app bridges the
+  async port to the synchronous render/measure seam with a debounced compile cache
+  (`app/tableCompiler`). **Remaining: Yjs<->AST round-trip (ADR 0011) — not
+  started.**
+- **M4 Phase A (all-local) — landed.** The full signed-in client path runs with
+  no GitHub, KMS, or Phoenix: `BrowserAuthAdapter` (real `AuthPort` — OAuth-redirect
+  sign-in, `/me` session probe, `/mint` repo-scoped tokens cached in memory,
+  CSRF); `services/auth-stub`, a dev double speaking the exact Auth-service HTTP
+  contract (fakes OAuth + minting); connect-a-repo push/pull in the source-control
+  panel (`git.push/pull` now target `RemoteRef.url` directly, so an `init`'d
+  working copy needs no preconfigured `origin`); web-shell selects the adapter from
+  `VITE_SB_AUTH_URL` and proxies auth routes to the stub same-origin. Proven by a
+  real-HTTP adapter↔stub integration test and a live Vite-proxy run.
+- **Next — M4 Phase B (deployment):** stand up the real Phoenix Auth service +
+  isolated KMS minting (choose KMS), register the GitHub App, deploy the git-proxy
+  to Cloudflare, and run real GitHub push/pull end-to-end — replacing the stub with
+  no adapter/app changes. Also still open before M6: Yjs<->AST round-trip (ADR 0011).
 
 Milestones M0-M8: `../design/roadmap.md`.
