@@ -39,6 +39,13 @@ import {
   deleteConnector,
   updateConnector,
   setConnectorOptions,
+  themeStylesheet,
+  furnitureCss,
+  furnitureHtml,
+  regionRects,
+  serializeTheme,
+  defaultTheme,
+  type Theme,
   type NodeContent,
   type RenderedSlide,
   type SlideDocument,
@@ -62,6 +69,7 @@ import { openCreationMenu, type MenuItem } from './createMenu'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
 import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
+import { openThemeEditor, type ThemeEditorHandle } from './themeEditor'
 import {
   renderOptions,
   installTableCompiler,
@@ -158,6 +166,25 @@ function countErrorNodes(doc: SlideDocument): number {
  * Mount the editor into `root`: render the chrome, inject the stylesheets, and wire
  * the controller. Idempotent per document for styles; call once per shell on startup.
  */
+/** Dashed boxes over a slide showing the theme's master-layout regions (editor preview). */
+function regionsOverlayHtml(theme: Theme): string {
+  const boxes = regionRects(theme)
+    .map((r) => {
+      const left = (r.left / 16) * 100
+      const width = ((r.right - r.left) / 16) * 100
+      const top = ((9 - r.top) / 9) * 100
+      const height = ((r.top - r.bottom) / 9) * 100
+      const name = r.name.replace(/</g, '&lt;')
+      return (
+        `<div style="position:absolute;left:${left}%;top:${top}%;width:${width}%;height:${height}%;` +
+        `border:0.2cqw dashed rgba(59,110,165,.85);box-sizing:border-box">` +
+        `<span style="position:absolute;top:0;left:.3cqw;font-size:1.4cqw;color:rgba(59,110,165,.9)">${name}</span></div>`
+      )
+    })
+    .join('')
+  return `<div class="sb-theme-regions" style="position:absolute;inset:0;pointer-events:none">${boxes}</div>`
+}
+
 export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void {
   renderChrome(root, { shellTag: opts.shellTag ?? 'SlideBlaster' })
   injectGlobalStyles()
@@ -221,6 +248,31 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   // Working copy (M3): which document is open, its debounced persistence, and the
   // side-panel views. All null/absent when the shell wired no ports (in-memory mode).
   const ports = opts.ports ?? null
+
+  // Active theme (ADR 0017): a live-updatable style layer plus per-slide furniture/region
+  // decoration over the painted deck. Starts from the built-in default; the editor edits
+  // it and saves to themes/<id>/theme.json.
+  let activeTheme: Theme = defaultTheme
+  let showRegions = false
+  const themeStyleEl = document.createElement('style')
+  themeStyleEl.id = 'sb-theme'
+  document.head.append(themeStyleEl)
+  const applyThemeCss = (): void => {
+    themeStyleEl.textContent = `${themeStylesheet(activeTheme)}\n${furnitureCss(activeTheme)}`
+  }
+  const decorateDeck = (): void => {
+    const total = currentDoc?.frames.length ?? 0
+    deck.querySelectorAll<HTMLElement>('.sb-slide').forEach((slide) => {
+      const card = slide.closest<HTMLElement>('[data-frame]')
+      const index = card ? Number(card.dataset.frame) : 0
+      slide.querySelector('.sb-furniture')?.remove()
+      const chrome = furnitureHtml(activeTheme, { index, total })
+      if (chrome) slide.insertAdjacentHTML('beforeend', chrome)
+      slide.querySelector('.sb-theme-regions')?.remove()
+      if (showRegions) slide.insertAdjacentHTML('beforeend', regionsOverlayHtml(activeTheme))
+    })
+  }
+  applyThemeCss()
   let currentPath: string | null = null
   let gitPanel: GitPanelHandle | null = null
   const autosave = ports
@@ -561,6 +613,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     })
     if (handle === null) return // a newer render superseded this one
     deckHandle = handle
+    decorateDeck() // theme furniture + optional region boundaries over the painted deck
     navHandle = await paintDeckNav(deckRail, {
       frames: doc.frames,
       active: state.active,
@@ -782,6 +835,38 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         }
       })
     })
+
+  // Theme editor (ADR 0017): a structured GUI over the active theme with live preview.
+  const themeButton = document.createElement('button')
+  themeButton.type = 'button'
+  themeButton.textContent = 'Theme'
+  themeButton.title = 'Edit the deck theme'
+  qs('#export-actions').append(themeButton)
+  let themeEditor: ThemeEditorHandle | null = null
+  themeButton.addEventListener('click', () => {
+    if (themeEditor) {
+      themeEditor.close()
+      return
+    }
+    themeEditor = openThemeEditor({
+      theme: activeTheme,
+      showRegions,
+      onChange: (t, o) => {
+        activeTheme = t
+        showRegions = o.showRegions
+        applyThemeCss()
+        decorateDeck()
+      },
+      onSave: async (t) => {
+        if (!ports) throw new Error('This shell has no storage to save into.')
+        const id = (currentDoc && getMeta(currentDoc.meta, 'theme')) || 'default'
+        await ports.storage.write(`themes/${id}/theme.json`, serializeTheme(t))
+      },
+      onClose: () => {
+        themeEditor = null
+      },
+    })
+  })
 
   // Working-copy boot (M3): open a document from storage, reveal the side panel
   // (file tree + source control), and keep everything refreshed on mutation.
