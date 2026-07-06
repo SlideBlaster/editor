@@ -146,8 +146,32 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     if (props.currentPath === original) props.onOpen(target)
   }
 
+  // Drag a file into a folder (or onto the tree background = root). A move is
+  // copy+delete (the Storage port has no move); the destination is auto-expanded
+  // so the moved file is visible. A name clash at the destination is refused.
+  const moveInto = async (src: string, destDir: string): Promise<void> => {
+    const target = destDir ? `${destDir}/${basename(src)}` : basename(src)
+    if (target === src) return // already there
+    if (await props.storage.exists(target)) {
+      await alertDialog({ title: 'Name taken', message: `${target} already exists.` })
+      return
+    }
+    await props.storage.write(target, await props.storage.read(src))
+    await props.storage.remove(src)
+    if (destDir) expanded.add(destDir)
+    props.onMutate()
+    if (props.currentPath === src) props.onOpen(target)
+  }
+
   const list = document.createElement('ul')
   list.className = 'file-tree'
+  // Dropping onto the tree background (not a folder row) moves a file to the root.
+  list.addEventListener('dragover', (event) => event.preventDefault())
+  list.addEventListener('drop', (event) => {
+    event.preventDefault()
+    const src = event.dataTransfer?.getData('text/plain')
+    if (src) void moveInto(src, '')
+  })
 
   // A create edit shows its inline field as the first row.
   if (editing && editing.kind !== 'rename') {
@@ -203,6 +227,24 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
       else expanded.add(node.path)
       repaint()
     })
+
+    // A folder is a drop target: dropping a dragged file moves it inside.
+    const highlight = (on: boolean): void => {
+      row.style.background = on ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : ''
+    }
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+      highlight(true)
+    })
+    row.addEventListener('dragleave', () => highlight(false))
+    row.addEventListener('drop', (event) => {
+      event.preventDefault()
+      event.stopPropagation() // don't also trigger the root (move-to-root) handler
+      highlight(false)
+      const src = event.dataTransfer?.getData('text/plain')
+      if (src) void moveInto(src, node.path)
+    })
     item.append(row)
     if (isOpen) {
       const sub = document.createElement('ul')
@@ -216,6 +258,13 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     const row = document.createElement('div')
     row.className = 'tree-row tree-file'
     if (node.path === props.currentPath) row.classList.add('is-current')
+
+    // Draggable into folders (drop targets are dir rows / the tree root).
+    row.draggable = true
+    row.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('text/plain', node.path)
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+    })
 
     const open = document.createElement('button')
     open.type = 'button'

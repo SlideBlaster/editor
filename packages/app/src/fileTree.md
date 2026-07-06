@@ -24,6 +24,10 @@ all through the Storage port.
   port, since Storage has no rename; git detects renames heuristically at diff
   time). **Delete** (×) confirms first via the in-app [dialog](./dialog.md);
   committed history is untouched.
+- **Drag to move.** File rows are draggable; folder rows and the tree background
+  are drop targets. Dropping a file onto a folder moves it inside (the folder
+  auto-expands); dropping on the background moves it to the root. A move is
+  copy+delete through the port; a destination name clash is refused.
 - The inline edit state (which item, which kind) lives per host and survives the
   whole-tree repaint, alongside directory expansion state.
 - Every mutation calls `onMutate` so the controller can repaint dependent views
