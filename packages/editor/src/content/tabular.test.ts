@@ -4,6 +4,7 @@ import {
   setTabularCell,
   resolveTabularCell,
   insertTabularRow,
+  insertTabularColumn,
   removeTabularRow,
   setDeferredSource,
 } from './tabular'
@@ -133,19 +134,51 @@ describe('setTabularCell', () => {
 })
 
 describe('insertTabularRow', () => {
-  it('adds a blank data row after the given row', () => {
+  it('adds a placeholder row (latexml drops a truly empty one) after the given row', () => {
     const next = insertTabularRow(BOOKTABS, 2)
     const grid = parseTabular(next)!
     expect(grid.rows).toHaveLength(4)
-    expect(grid.rows[3]!.cells.map((c) => c.text)).toEqual(['', ''])
+    // Cells hold \mbox{} so the row still renders (and stays editable), not ''.
+    expect(grid.rows[3]!.cells.map((c) => c.text)).toEqual(['\\mbox{}', '\\mbox{}'])
     // The new row lands before \bottomrule, not after \end.
-    expect(next.indexOf(' & \\\\')).toBeLessThan(next.indexOf('\\bottomrule'))
+    expect(next.indexOf('\\mbox{} \\\\')).toBeLessThan(next.indexOf('\\bottomrule'))
   })
 
-  it('produces a row you can then fill in', () => {
+  it('produces a row you can then fill in (placeholder replaced by the typed text)', () => {
     const withRow = insertTabularRow(BOOKTABS, 2)
     const filled = setTabularCell(setTabularCell(withRow, 3, 0, 'Cherries'), 3, 1, '40')
     expect(parseTabular(filled)!.rows[3]!.cells.map((c) => c.text)).toEqual(['Cherries', '40'])
+  })
+})
+
+describe('insertTabularColumn', () => {
+  it('widens the colspec and adds a placeholder cell to every row', () => {
+    const next = insertTabularColumn(BOOKTABS)
+    const grid = parseTabular(next)!
+    expect(grid.colspec).toBe('lrl')
+    expect(grid.columns).toBe(3)
+    expect(grid.rows.map((r) => r.cells.map((c) => c.text))).toEqual([
+      ['Fruit', 'Qty', '\\mbox{}'],
+      ['Apples', '3', '\\mbox{}'],
+      ['Pears', '12', '\\mbox{}'],
+    ])
+  })
+
+  it('appends a physical column even on a spanned table', () => {
+    const next = insertTabularColumn(MULTICOL)
+    const grid = parseTabular(next)!
+    expect(grid.columns).toBe(4)
+    // The \multicolumn header row gains one trailing cell; its span is unchanged.
+    expect(grid.rows[0]!.cells.map((c) => c.text)).toEqual([
+      '\\multicolumn{2}{c}{Half}',
+      'Rest',
+      '\\mbox{}',
+    ])
+    expect(grid.rows[1]!.cells.map((c) => c.text)).toEqual(['a', 'b', 'c', '\\mbox{}'])
+  })
+
+  it('is a no-op on a malformed tabular', () => {
+    expect(insertTabularColumn('nope')).toBe('nope')
   })
 })
 

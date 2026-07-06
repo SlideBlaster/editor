@@ -19,11 +19,13 @@
  */
 import {
   deferredTableSources,
+  insertTabularColumn,
   insertTabularRow,
   parseTabular,
   resolveTabularCell,
   setDeferredSource,
   setTabularCell,
+  EMPTY_CELL,
   type NodeContent,
   type TabularGrid,
 } from '@slideblaster/editor'
@@ -88,10 +90,12 @@ function mountTable(
   })
 
   let addRow: HTMLElement | null = null
+  let addCol: HTMLElement | null = null
   if (grid && hots) {
     // Inline cell editing: a click target over each rendered cell.
     for (const hot of hots) {
-      const seed = grid.rows[hot.row]?.cells[hot.col]?.content.text ?? ''
+      const raw = grid.rows[hot.row]?.cells[hot.col]?.content.text ?? ''
+      const seed = raw === EMPTY_CELL ? '' : raw // a fresh cell's placeholder reads as empty
       const cell = div('sb-table-cell', layer)
       cell.title = 'Edit cell'
       cell.addEventListener('pointerdown', (event) => event.stopPropagation())
@@ -103,15 +107,11 @@ function mountTable(
       })
       placeRect(cell, slideEl.getBoundingClientRect(), hot.el.getBoundingClientRect())
     }
-    // "+" appends a row after the last data row.
-    addRow = div('sb-table-add', layer)
-    addRow.textContent = '+'
-    addRow.title = 'Add row'
-    addRow.addEventListener('pointerdown', (event) => event.stopPropagation())
-    addRow.addEventListener('click', (event) => {
-      event.stopPropagation()
-      commit(insertTabularRow(source, grid.rows.length - 1))
-    })
+    // "+" grips append a row (below) and a column (right).
+    addRow = grip(layer, '+', 'Add row', () =>
+      commit(insertTabularRow(source, grid.rows.length - 1)),
+    )
+    addCol = grip(layer, '+', 'Add column', () => commit(insertTabularColumn(source)))
   }
 
   // Place the wrapper-anchored grips from measured rects (one pass — already laid out).
@@ -119,6 +119,20 @@ function mountTable(
   const wr = wrapper.getBoundingClientRect()
   placeAt(sourceGrip, sr, wr.right - sr.left, wr.top - sr.top)
   if (addRow) placeAt(addRow, sr, wr.left + wr.width / 2 - sr.left, wr.bottom - sr.top)
+  if (addCol) placeAt(addCol, sr, wr.right - sr.left, wr.top + wr.height / 2 - sr.top)
+}
+
+/** A round "+" grip on the inert layer that runs `onClick` without dragging the node. */
+function grip(layer: HTMLElement, label: string, title: string, onClick: () => void): HTMLElement {
+  const el = div('sb-table-add', layer)
+  el.textContent = label
+  el.title = title
+  el.addEventListener('pointerdown', (event) => event.stopPropagation())
+  el.addEventListener('click', (event) => {
+    event.stopPropagation()
+    onClick()
+  })
+  return el
 }
 
 /** Zip the compiled cells (those the annotation binding coordinated) onto the source

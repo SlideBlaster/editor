@@ -46,8 +46,14 @@ sum and `y` the data-row index, mirroring the binding's occupancy walk.
 
 - `setTabularCell(source, row, col, text)` — replace one cell's editable content (only the
   wrapped argument for a `\multicolumn`/`\multirow`); no-op out of range.
-- `insertTabularRow(source, at)` — insert a `\\`-terminated blank row (one empty cell per
-  column) after row `at`; terminates row `at` first if it lacked a trailing `\\`.
+- `insertTabularRow(source, at)` — insert a `\\`-terminated row after row `at`, each cell
+  seeded with `EMPTY_CELL` (`\mbox{}`); terminates row `at` first if it lacked a trailing
+  `\\`. The placeholder matters: latexml **drops a fully-empty row** (as it does `~`,
+  `\strut`, `\phantom`, `{}`), so a truly blank row would compile to nothing — invisible
+  and unfillable. `\mbox{}` is the lightest content latexml keeps; the editor shows it as
+  empty and the first real edit replaces the whole `\mbox{}`.
+- `insertTabularColumn(source)` — append a column at the right edge: widen the colspec by
+  one `l` and add an `EMPTY_CELL` to every data row. Appending is span-safe.
 - `removeTabularRow(source, at)` — drop a data row; no-op out of range or if it is the
   only data row.
 

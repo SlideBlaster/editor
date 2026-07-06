@@ -14,7 +14,10 @@ match `deferredTableSources(content)`), mount an inert `.sb-table-edit` layer ca
   coordinates. Click opens an inline `<textarea>` over the cell, seeded from the source
   cell's editable content; blur or Enter commits `setTabularCell`, Escape cancels,
   Shift+Enter keeps a newline.
-- **Add row** (`.sb-table-add`, "+") — appends a blank row with `insertTabularRow`.
+- **Add row / add column** (`.sb-table-add`, "+") — one grip below the table appends a row
+  (`insertTabularRow`), one at the right edge appends a column (`insertTabularColumn`). New
+  cells are seeded with a `\mbox{}` placeholder so the row/column actually renders (latexml
+  drops a truly empty row); the editor shows placeholder cells as empty.
 - **Deep edit** (`.sb-table-source`, "</>") — always present; opens the whole `tabular`
   source in a modal textarea (the popup for a small table whose source dwarfs its box).
   Save commits the raw source; Cancel/Escape discards. This is the level-2 escape hatch
