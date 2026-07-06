@@ -2,10 +2,12 @@
  * The file tree panel. Contract: see fileTree.md.
  *
  * A recursive view of the working copy (`.git` hidden): directories expand and
- * collapse, documents open in the editor, files are created, renamed, and
+ * collapse, documents open in the editor, files are created, renamed, moved, and
  * deleted through the Storage port. Naming — new deck/file/folder and rename —
- * happens **inline** (a text field in the tree), never a popup. Repainted whole
- * on every change; expansion and the in-progress inline edit survive repaints.
+ * happens **inline** (a text field in the tree), never a popup. Selecting a
+ * folder makes it the target for new items; files and folders drag to move.
+ * Repainted whole on every change; expansion, selection, and the in-progress
+ * inline edit survive repaints.
  */
 import type { FileEntry, StoragePort } from '@slideblaster/editor'
 import { DOC_EXTENSION, isDocPath } from './workspace'
@@ -17,7 +19,7 @@ export interface FileTreeProps {
   currentPath: string | null
   /** Open a document in the editor. */
   onOpen(path: string): void
-  /** A storage mutation happened (create/rename/delete): refresh dependent views. */
+  /** A storage mutation happened (create/rename/move/delete): refresh dependent views. */
   onMutate(): void
 }
 
@@ -28,9 +30,16 @@ interface TreeNode extends FileEntry {
 /** An in-progress inline edit. `rename` carries the path being renamed. */
 type EditState = { kind: 'new-deck' | 'new-file' | 'new-folder' } | { kind: 'rename'; path: string }
 
+/** A drag payload: which path is moving, and whether it is a file or a folder. */
+interface DragPayload {
+  path: string
+  kind: 'file' | 'dir'
+}
+
 // Per-host state that survives the whole-tree repaint.
 const expandedByHost = new WeakMap<HTMLElement, Set<string>>()
 const editingByHost = new WeakMap<HTMLElement, EditState | null>()
+const selectedByHost = new WeakMap<HTMLElement, string>() // active dir for new items ('' = root)
 
 const NEW_DOC_TEMPLATE = [
   '---',
@@ -52,12 +61,31 @@ const CREATE_META: Record<'new-deck' | 'new-file' | 'new-folder', { glyph: strin
     'new-folder': { glyph: '🗀', hint: 'assets' },
   }
 
+const SELECTED_BG = 'color-mix(in srgb, var(--accent) 14%, transparent)'
+const DROP_BG = 'color-mix(in srgb, var(--accent) 28%, transparent)'
+
 export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Promise<void> {
   const expanded = expandedByHost.get(host) ?? new Set<string>()
   expandedByHost.set(host, expanded)
   const editing = editingByHost.get(host) ?? null
 
   const tree = await buildTree(props.storage, '')
+
+  // The "active" folder — new items are created here. Drop it if it no longer
+  // exists (deleted/moved), so it never dangles across repaints.
+  const dirPaths = new Set<string>()
+  const collectDirs = (nodes: TreeNode[]): void => {
+    for (const node of nodes)
+      if (node.type === 'dir') {
+        dirPaths.add(node.path)
+        collectDirs(node.children)
+      }
+  }
+  collectDirs(tree)
+  let selectedDir = selectedByHost.get(host) ?? ''
+  if (selectedDir && !dirPaths.has(selectedDir)) selectedDir = ''
+  selectedByHost.set(host, selectedDir)
+
   host.replaceChildren()
 
   // The input to focus once the tree is in the DOM (only one edit at a time).
@@ -72,9 +100,20 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     editingByHost.set(host, null)
     repaint()
   }
+  const setSelected = (dir: string): void => {
+    selectedDir = dir
+    selectedByHost.set(host, dir)
+  }
   const markInvalid = (input: HTMLInputElement): void => {
     input.style.borderColor = 'var(--danger)'
     input.focus()
+  }
+  const expandChain = (dir: string): void => {
+    let acc = ''
+    for (const seg of dir.split('/').filter(Boolean)) {
+      acc = acc ? `${acc}/${seg}` : seg
+      expanded.add(acc)
+    }
   }
 
   // Header + create affordances (each opens an inline field, not a popup).
@@ -88,15 +127,16 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     titleAction('New deck', '▤', () => beginEdit({ kind: 'new-deck' })),
     titleAction('New file', '＋', () => beginEdit({ kind: 'new-file' })),
     titleAction('New folder', '🗀', () => beginEdit({ kind: 'new-folder' })),
-    titleAction('Upload file', '⬆', () => uploadFiles(props)),
+    titleAction('Upload file', '⬆', () => uploadFiles(props, selectedDir)),
   )
   head.append(label, actions)
   host.append(head)
 
-  // Create an empty file / a deck / a folder from the inline name. Guarded by the
-  // editing state so a stray blur after a successful write (repaint detaches the
-  // input) is a no-op. On clash: keep editing and mark the field, unless the blur
-  // is taking focus away — then just cancel so the user is never trapped.
+  // Create a file / deck / folder from the inline name, inside the active folder
+  // (a leading "/" overrides to the root). Guarded by the editing state so a stray
+  // blur after a successful write (repaint detaches the input) is a no-op. On
+  // clash: keep editing and mark the field, unless a blur is taking focus away —
+  // then just cancel so the user is never trapped.
   const commitCreate = async (
     kind: 'new-deck' | 'new-file' | 'new-folder',
     raw: string,
@@ -106,22 +146,29 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     if (!editingByHost.get(host)) return
     const value = raw.trim()
     if (!value) return cancelEdit()
+    const rel = value.startsWith('/')
+      ? value.slice(1)
+      : selectedDir
+        ? `${selectedDir}/${value}`
+        : value
 
     if (kind === 'new-folder') {
-      const dir = value.replace(/\/+$/, '')
+      const dir = rel.replace(/\/+$/, '')
       const keep = `${dir}/.gitkeep` // git does not track empty dirs
       if (await props.storage.exists(keep)) return fromBlur ? cancelEdit() : markInvalid(input)
       await props.storage.write(keep, '')
       editingByHost.set(host, null)
+      expandChain(dir)
+      setSelected(dir) // subsequent new items land in the folder just made
       props.onMutate()
       return
     }
 
-    const path =
-      kind === 'new-deck' && !value.endsWith(DOC_EXTENSION) ? value + DOC_EXTENSION : value
+    const path = kind === 'new-deck' && !rel.endsWith(DOC_EXTENSION) ? rel + DOC_EXTENSION : rel
     if (await props.storage.exists(path)) return fromBlur ? cancelEdit() : markInvalid(input)
     await props.storage.write(path, kind === 'new-deck' ? NEW_DOC_TEMPLATE : '')
     editingByHost.set(host, null)
+    expandChain(dirname(path))
     props.onMutate()
     if (kind === 'new-deck' || isDocPath(path)) props.onOpen(path)
   }
@@ -146,10 +193,9 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     if (props.currentPath === original) props.onOpen(target)
   }
 
-  // Drag a file into a folder (or onto the tree background = root). A move is
-  // copy+delete (the Storage port has no move); the destination is auto-expanded
-  // so the moved file is visible. A name clash at the destination is refused.
-  const moveInto = async (src: string, destDir: string): Promise<void> => {
+  // Move a file into a folder (or onto the tree background = root). A move is
+  // copy+delete (the Storage port has no move); a name clash is refused.
+  const moveFile = async (src: string, destDir: string): Promise<void> => {
     const target = destDir ? `${destDir}/${basename(src)}` : basename(src)
     if (target === src) return // already there
     if (await props.storage.exists(target)) {
@@ -158,22 +204,75 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     }
     await props.storage.write(target, await props.storage.read(src))
     await props.storage.remove(src)
-    if (destDir) expanded.add(destDir)
+    if (destDir) expandChain(destDir)
     props.onMutate()
     if (props.currentPath === src) props.onOpen(target)
   }
 
+  // Move a whole folder (all its files) into another folder or the root, refusing
+  // a move into itself/a descendant or onto a colliding path.
+  const moveFolder = async (srcDir: string, destDir: string): Promise<void> => {
+    const newRoot = destDir ? `${destDir}/${basename(srcDir)}` : basename(srcDir)
+    if (newRoot === srcDir) return // already there
+    if (newRoot.startsWith(`${srcDir}/`)) {
+      await alertDialog({ title: 'Invalid move', message: 'A folder cannot move into itself.' })
+      return
+    }
+    const files = await listFilesUnder(props.storage, srcDir)
+    for (const file of files) {
+      const rel = file.slice(srcDir.length + 1)
+      if (await props.storage.exists(`${newRoot}/${rel}`)) {
+        await alertDialog({ title: 'Name taken', message: `${newRoot}/${rel} already exists.` })
+        return
+      }
+    }
+    for (const file of files) {
+      const rel = file.slice(srcDir.length + 1)
+      await props.storage.write(`${newRoot}/${rel}`, await props.storage.read(file))
+    }
+    // Remove the whole source subtree (files + the now-empty dirs), so no empty
+    // shell is left behind — `storage.remove` recurses and rmdirs.
+    await props.storage.remove(srcDir)
+    expandChain(newRoot)
+    if (selectedDir === srcDir || selectedDir.startsWith(`${srcDir}/`)) {
+      setSelected(newRoot + selectedDir.slice(srcDir.length))
+    }
+    const open = props.currentPath
+    props.onMutate()
+    if (open && open.startsWith(`${srcDir}/`))
+      props.onOpen(`${newRoot}${open.slice(srcDir.length)}`)
+  }
+
+  const applyDrop = (raw: string | undefined, destDir: string): void => {
+    if (!raw) return
+    let payload: DragPayload
+    try {
+      payload = JSON.parse(raw) as DragPayload
+    } catch {
+      return
+    }
+    if (payload.kind === 'dir') void moveFolder(payload.path, destDir)
+    else void moveFile(payload.path, destDir)
+  }
+
   const list = document.createElement('ul')
   list.className = 'file-tree'
-  // Dropping onto the tree background (not a folder row) moves a file to the root.
+  // Dropping onto the tree background (not a row) moves the item to the root; a
+  // click on the background clears the active folder back to the root.
   list.addEventListener('dragover', (event) => event.preventDefault())
   list.addEventListener('drop', (event) => {
     event.preventDefault()
-    const src = event.dataTransfer?.getData('text/plain')
-    if (src) void moveInto(src, '')
+    applyDrop(event.dataTransfer?.getData('text/plain'), '')
+  })
+  list.addEventListener('click', (event) => {
+    if (event.target === list && selectedDir !== '') {
+      setSelected('')
+      repaint()
+    }
   })
 
-  // A create edit shows its inline field as the first row.
+  // A create edit shows its inline field as the first row, prefixed with the
+  // active folder so it is clear where the new item lands.
   if (editing && editing.kind !== 'rename') {
     const meta = CREATE_META[editing.kind]
     const row = document.createElement('li')
@@ -181,13 +280,20 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     const glyph = document.createElement('span')
     glyph.className = 'tree-edit-glyph'
     glyph.textContent = meta.glyph
+    row.append(glyph)
+    if (selectedDir) {
+      const prefix = document.createElement('span')
+      prefix.textContent = `${selectedDir}/`
+      prefix.style.cssText = 'color:var(--muted);white-space:nowrap'
+      row.append(prefix)
+    }
     const input = editInput(
       '',
       meta.hint,
       (value, el, fromBlur) => void commitCreate(editing.kind, value, el, fromBlur),
       cancelEdit,
     )
-    row.append(glyph, input)
+    row.append(input)
     list.append(row)
     activeInput = input
   }
@@ -218,19 +324,32 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
 
   const renderDir = (item: HTMLElement, node: TreeNode): void => {
     const isOpen = expanded.has(node.path)
+    const isSelected = node.path === selectedDir
     const row = document.createElement('button')
     row.type = 'button'
     row.className = 'tree-row tree-dir'
     row.textContent = `${isOpen ? '▾' : '▸'} ${basename(node.path)}`
+    if (isSelected) {
+      row.style.background = SELECTED_BG
+      row.style.color = 'var(--accent)'
+    }
+    // Click selects the folder (new items target it) and toggles expansion.
     row.addEventListener('click', () => {
+      setSelected(node.path)
       if (isOpen) expanded.delete(node.path)
       else expanded.add(node.path)
       repaint()
     })
 
-    // A folder is a drop target: dropping a dragged file moves it inside.
+    // A folder both drags (to move its subtree) and accepts drops (into itself).
+    row.draggable = true
+    row.addEventListener('dragstart', (event) => {
+      event.stopPropagation()
+      event.dataTransfer?.setData('text/plain', payload(node.path, 'dir'))
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+    })
     const highlight = (on: boolean): void => {
-      row.style.background = on ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : ''
+      row.style.background = on ? DROP_BG : isSelected ? SELECTED_BG : ''
     }
     row.addEventListener('dragover', (event) => {
       event.preventDefault()
@@ -242,8 +361,7 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
       event.preventDefault()
       event.stopPropagation() // don't also trigger the root (move-to-root) handler
       highlight(false)
-      const src = event.dataTransfer?.getData('text/plain')
-      if (src) void moveInto(src, node.path)
+      applyDrop(event.dataTransfer?.getData('text/plain'), node.path)
     })
     item.append(row)
     if (isOpen) {
@@ -262,7 +380,7 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     // Draggable into folders (drop targets are dir rows / the tree root).
     row.draggable = true
     row.addEventListener('dragstart', (event) => {
-      event.dataTransfer?.setData('text/plain', node.path)
+      event.dataTransfer?.setData('text/plain', payload(node.path, 'file'))
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
     })
 
@@ -272,7 +390,11 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     open.textContent = basename(node.path)
     if (isDocPath(node.path)) {
       open.title = node.path
-      open.addEventListener('click', () => props.onOpen(node.path))
+      // Opening a doc makes its folder the active target for new items.
+      open.addEventListener('click', () => {
+        setSelected(dirname(node.path))
+        props.onOpen(node.path)
+      })
     } else {
       open.disabled = true // assets are listed but not editable here
       open.title = `${node.path} (asset)`
@@ -303,6 +425,24 @@ async function buildTree(storage: StoragePort, dir: string): Promise<TreeNode[]>
         children: entry.type === 'dir' ? await buildTree(storage, entry.path) : [],
       })),
   )
+}
+
+/** Every file path under `dir`, recursively (dirs are implicit in the paths). */
+async function listFilesUnder(storage: StoragePort, dir: string): Promise<string[]> {
+  const out: string[] = []
+  const walk = async (current: string): Promise<void> => {
+    for (const entry of await storage.list(current)) {
+      if (entry.path === '.git') continue
+      if (entry.type === 'dir') await walk(entry.path)
+      else out.push(entry.path)
+    }
+  }
+  await walk(dir)
+  return out
+}
+
+function payload(path: string, kind: 'file' | 'dir'): string {
+  return JSON.stringify({ path, kind } satisfies DragPayload)
 }
 
 /**
@@ -364,8 +504,8 @@ function titleAction(title: string, glyph: string, onClick: () => void): HTMLBut
   return button
 }
 
-/** Upload one or more files from disk into the working-copy root (binary-safe). */
-function uploadFiles(props: FileTreeProps): void {
+/** Upload files from disk into the active folder (root if none), binary-safe. */
+function uploadFiles(props: FileTreeProps, destDir: string): void {
   const input = document.createElement('input')
   input.type = 'file'
   input.multiple = true
@@ -374,7 +514,7 @@ function uploadFiles(props: FileTreeProps): void {
       const files = Array.from(input.files ?? [])
       let wrote = 0
       for (const file of files) {
-        const path = file.name
+        const path = destDir ? `${destDir}/${file.name}` : file.name
         if (await props.storage.exists(path)) {
           await alertDialog({ title: 'Name taken', message: `${path} already exists; skipped.` })
           continue
@@ -402,4 +542,9 @@ async function deleteFile(path: string, props: FileTreeProps): Promise<void> {
 
 function basename(path: string): string {
   return path.split('/').pop() ?? path
+}
+
+function dirname(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i === -1 ? '' : path.slice(0, i)
 }

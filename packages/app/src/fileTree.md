@@ -24,12 +24,20 @@ all through the Storage port.
   port, since Storage has no rename; git detects renames heuristically at diff
   time). **Delete** (×) confirms first via the in-app [dialog](./dialog.md);
   committed history is untouched.
-- **Drag to move.** File rows are draggable; folder rows and the tree background
-  are drop targets. Dropping a file onto a folder moves it inside (the folder
-  auto-expands); dropping on the background moves it to the root. A move is
-  copy+delete through the port; a destination name clash is refused.
-- The inline edit state (which item, which kind) lives per host and survives the
-  whole-tree repaint, alongside directory expansion state.
+- **Active folder.** Clicking a folder selects it (highlighted); opening a doc
+  selects its folder; clicking the tree background clears back to the root. New
+  deck/file/folder and uploads land **inside the active folder** (a leading `/`
+  in the inline name overrides to the root), and the create field shows the
+  target folder as a prefix. The selection is validated each repaint and dropped
+  if the folder no longer exists.
+- **Drag to move.** File **and folder** rows are draggable; folder rows and the
+  tree background are drop targets. Dropping onto a folder moves the item inside
+  (auto-expanded); dropping on the background moves it to the root. A folder move
+  re-roots all its files; moving a folder into itself or a descendant, or onto a
+  colliding path, is refused. A move is copy+delete through the port (no native
+  move); the open document and active folder follow the move.
+- The inline edit, selection, and expansion state live per host and survive the
+  whole-tree repaint.
 - Every mutation calls `onMutate` so the controller can repaint dependent views
   (this tree, the git panel). The tree never touches the editor state directly —
   opening goes through `onOpen`.
