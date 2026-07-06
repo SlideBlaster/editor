@@ -8,6 +8,7 @@
  */
 import type { FileEntry, StoragePort } from '@slideblaster/editor'
 import { DOC_EXTENSION, isDocPath } from './workspace'
+import { alertDialog, confirmDialog, promptDialog } from './dialog'
 
 export interface FileTreeProps {
   storage: StoragePort
@@ -50,11 +51,18 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
   head.className = 'side-title'
   const label = document.createElement('span')
   label.textContent = 'Files'
-  const newDoc = document.createElement('button')
-  newDoc.type = 'button'
-  newDoc.textContent = '+ New deck'
-  newDoc.addEventListener('click', () => void createDoc(props))
-  head.append(label, newDoc)
+
+  // Create affordances: a deck (a presentation), any file, a folder, or an upload.
+  // Grouped so they sit at the right of the title; each inherits `.side-title button`.
+  const actions = document.createElement('div')
+  actions.style.cssText = 'display:flex;gap:.25rem;flex-wrap:wrap;justify-content:flex-end'
+  actions.append(
+    titleAction('New deck', '▤', () => void createDoc(props)),
+    titleAction('New file', '＋', () => void createFile(props)),
+    titleAction('New folder', '🗀', () => void createFolder(props)),
+    titleAction('Upload file', '⬆', () => uploadFiles(props)),
+  )
+  head.append(label, actions)
   host.append(head)
 
   const list = document.createElement('ul')
@@ -148,12 +156,29 @@ function iconButton(title: string, glyph: string, onClick: () => void): HTMLButt
   return button
 }
 
+/** A compact title-bar action button (styled by `.side-title button`). */
+function titleAction(title: string, glyph: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.title = title
+  button.setAttribute('aria-label', title)
+  button.textContent = glyph
+  button.addEventListener('click', onClick)
+  return button
+}
+
 async function createDoc(props: FileTreeProps): Promise<void> {
-  const name = window.prompt('New deck name (folders allowed, e.g. talks/demo):')
+  const name = await promptDialog({
+    title: 'New deck',
+    message: 'Subfolders are allowed, e.g. talks/demo.',
+    label: 'Deck name',
+    placeholder: 'talks/demo',
+    confirmLabel: 'Create',
+  })
   if (!name) return
   const path = name.endsWith(DOC_EXTENSION) ? name : `${name}${DOC_EXTENSION}`
   if (await props.storage.exists(path)) {
-    window.alert(`${path} already exists`)
+    await alertDialog({ title: 'Name taken', message: `${path} already exists.` })
     return
   }
   await props.storage.write(path, NEW_DOC_TEMPLATE)
@@ -161,12 +186,85 @@ async function createDoc(props: FileTreeProps): Promise<void> {
   props.onOpen(path)
 }
 
+/** Create an empty file at an arbitrary path (subfolders auto-created on write). */
+async function createFile(props: FileTreeProps): Promise<void> {
+  const path = (
+    await promptDialog({
+      title: 'New file',
+      message: 'Subfolders are allowed, e.g. assets/notes.md.',
+      label: 'File path',
+      placeholder: 'notes.md',
+      confirmLabel: 'Create',
+    })
+  )?.trim()
+  if (!path) return
+  if (await props.storage.exists(path)) {
+    await alertDialog({ title: 'Name taken', message: `${path} already exists.` })
+    return
+  }
+  await props.storage.write(path, '')
+  props.onMutate()
+  // A newly created deck opens straight away; other files just appear in the tree.
+  if (isDocPath(path)) props.onOpen(path)
+}
+
+/** Create a folder by seeding a `.gitkeep` (git does not track empty dirs). */
+async function createFolder(props: FileTreeProps): Promise<void> {
+  const raw = (
+    await promptDialog({
+      title: 'New folder',
+      message: 'Nested folders are allowed, e.g. talks/2026.',
+      label: 'Folder path',
+      placeholder: 'assets',
+      confirmLabel: 'Create',
+    })
+  )?.trim()
+  if (!raw) return
+  const dir = raw.replace(/\/+$/, '')
+  const keep = `${dir}/.gitkeep`
+  if (await props.storage.exists(keep)) {
+    await alertDialog({ title: 'Folder exists', message: `${dir} already exists.` })
+    return
+  }
+  await props.storage.write(keep, '')
+  props.onMutate()
+}
+
+/** Upload one or more files from disk into the working-copy root (binary-safe). */
+function uploadFiles(props: FileTreeProps): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  input.addEventListener('change', () => {
+    void (async () => {
+      const files = Array.from(input.files ?? [])
+      let wrote = 0
+      for (const file of files) {
+        const path = file.name
+        if (await props.storage.exists(path)) {
+          await alertDialog({ title: 'Name taken', message: `${path} already exists; skipped.` })
+          continue
+        }
+        await props.storage.write(path, new Uint8Array(await file.arrayBuffer()))
+        wrote += 1
+      }
+      if (wrote > 0) props.onMutate()
+    })()
+  })
+  input.click()
+}
+
 async function renameFile(path: string, props: FileTreeProps): Promise<void> {
-  const next = window.prompt('Rename to:', path)
+  const next = await promptDialog({
+    title: 'Rename',
+    label: 'New path',
+    initialValue: path,
+    confirmLabel: 'Rename',
+  })
   if (!next || next === path) return
   const target = isDocPath(path) && !next.endsWith(DOC_EXTENSION) ? `${next}${DOC_EXTENSION}` : next
   if (await props.storage.exists(target)) {
-    window.alert(`${target} already exists`)
+    await alertDialog({ title: 'Name taken', message: `${target} already exists.` })
     return
   }
   // The Storage port has no rename; copy+delete is equivalent for the working copy.
@@ -177,7 +275,13 @@ async function renameFile(path: string, props: FileTreeProps): Promise<void> {
 }
 
 async function deleteFile(path: string, props: FileTreeProps): Promise<void> {
-  if (!window.confirm(`Delete ${path}? (history keeps committed versions)`)) return
+  const ok = await confirmDialog({
+    title: 'Delete file',
+    message: `Delete ${path}?\nHistory keeps committed versions.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  })
+  if (!ok) return
   await props.storage.remove(path)
   props.onMutate()
 }

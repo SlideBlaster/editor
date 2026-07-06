@@ -11,15 +11,22 @@ all through the Storage port.
   directory expansion state survives repaints (per host).
 - `*.slideBlaster.md` files open via `onOpen`; other files (assets) are listed
   but inert. The current document is highlighted.
-- **New deck** prompts for a name (subfolders allowed), writes a minimal valid
-  document, and opens it. **Rename** is copy+delete through the port (the
-  Storage port has no rename; git detects renames heuristically at diff time).
-  **Delete** confirms first; committed history is untouched.
+- The title bar carries four create affordances (each an in-app
+  [dialog](./dialog.md) where it needs input):
+  - **New deck** (▤) writes a minimal valid `*.slideBlaster.md` and opens it.
+  - **New file** (＋) writes an empty file at an arbitrary path (subfolders
+    auto-created by `storage.write`); a deck opens, other files just appear.
+  - **New folder** (🗀) seeds `<dir>/.gitkeep` (git does not track empty dirs).
+  - **Upload** (⬆) reads chosen files and writes them into the working-copy root,
+    binary-safe (`storage.write` takes bytes).
+- **Rename** is copy+delete through the port (the Storage port has no rename; git
+  detects renames heuristically at diff time). **Delete** confirms first;
+  committed history is untouched. Name clashes surface an in-app alert.
 - Every mutation calls `onMutate` so the controller can repaint dependent views
   (this tree, the git panel). The tree never touches the editor state directly —
   opening goes through `onOpen`.
 
 ## Assumptions
 
-- Prompt/confirm dialogs are acceptable M3 chrome; a modeless UI can replace
-  them without changing this contract.
+- Naming/confirmation prompts go through the in-app [dialog](./dialog.md) module,
+  not the browser's `window.prompt/confirm/alert`.
