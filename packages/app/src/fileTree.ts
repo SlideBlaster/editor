@@ -2,13 +2,14 @@
  * The file tree panel. Contract: see fileTree.md.
  *
  * A recursive view of the working copy (`.git` hidden): directories expand and
- * collapse, documents open in the editor, files can be created, renamed, and
- * deleted through the Storage port. Repainted whole on every change; expansion
- * state survives repaints.
+ * collapse, documents open in the editor, files are created, renamed, and
+ * deleted through the Storage port. Naming — new deck/file/folder and rename —
+ * happens **inline** (a text field in the tree), never a popup. Repainted whole
+ * on every change; expansion and the in-progress inline edit survive repaints.
  */
 import type { FileEntry, StoragePort } from '@slideblaster/editor'
 import { DOC_EXTENSION, isDocPath } from './workspace'
-import { alertDialog, confirmDialog, promptDialog } from './dialog'
+import { alertDialog, confirmDialog } from './dialog'
 
 export interface FileTreeProps {
   storage: StoragePort
@@ -24,8 +25,12 @@ interface TreeNode extends FileEntry {
   children: TreeNode[]
 }
 
-// Expanded-directory state per host element, surviving repaints.
+/** An in-progress inline edit. `rename` carries the path being renamed. */
+type EditState = { kind: 'new-deck' | 'new-file' | 'new-folder' } | { kind: 'rename'; path: string }
+
+// Per-host state that survives the whole-tree repaint.
 const expandedByHost = new WeakMap<HTMLElement, Set<string>>()
+const editingByHost = new WeakMap<HTMLElement, EditState | null>()
 
 const NEW_DOC_TEMPLATE = [
   '---',
@@ -40,35 +45,203 @@ const NEW_DOC_TEMPLATE = [
   '',
 ].join('\n')
 
+const CREATE_META: Record<'new-deck' | 'new-file' | 'new-folder', { glyph: string; hint: string }> =
+  {
+    'new-deck': { glyph: '▤', hint: 'talks/demo' },
+    'new-file': { glyph: '＋', hint: 'notes.md' },
+    'new-folder': { glyph: '🗀', hint: 'assets' },
+  }
+
 export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Promise<void> {
   const expanded = expandedByHost.get(host) ?? new Set<string>()
   expandedByHost.set(host, expanded)
+  const editing = editingByHost.get(host) ?? null
 
   const tree = await buildTree(props.storage, '')
   host.replaceChildren()
 
+  // The input to focus once the tree is in the DOM (only one edit at a time).
+  let activeInput: HTMLInputElement | null = null
+
+  const repaint = (): void => void paintFileTree(host, props)
+  const beginEdit = (state: EditState): void => {
+    editingByHost.set(host, state)
+    repaint()
+  }
+  const cancelEdit = (): void => {
+    editingByHost.set(host, null)
+    repaint()
+  }
+  const markInvalid = (input: HTMLInputElement): void => {
+    input.style.borderColor = 'var(--danger)'
+    input.focus()
+  }
+
+  // Header + create affordances (each opens an inline field, not a popup).
   const head = document.createElement('div')
   head.className = 'side-title'
   const label = document.createElement('span')
   label.textContent = 'Files'
-
-  // Create affordances: a deck (a presentation), any file, a folder, or an upload.
-  // Grouped so they sit at the right of the title; each inherits `.side-title button`.
   const actions = document.createElement('div')
   actions.style.cssText = 'display:flex;gap:.25rem;flex-wrap:wrap;justify-content:flex-end'
   actions.append(
-    titleAction('New deck', '▤', () => void createDoc(props)),
-    titleAction('New file', '＋', () => void createFile(props)),
-    titleAction('New folder', '🗀', () => void createFolder(props)),
+    titleAction('New deck', '▤', () => beginEdit({ kind: 'new-deck' })),
+    titleAction('New file', '＋', () => beginEdit({ kind: 'new-file' })),
+    titleAction('New folder', '🗀', () => beginEdit({ kind: 'new-folder' })),
     titleAction('Upload file', '⬆', () => uploadFiles(props)),
   )
   head.append(label, actions)
   host.append(head)
 
+  // Create an empty file / a deck / a folder from the inline name. Guarded by the
+  // editing state so a stray blur after a successful write (repaint detaches the
+  // input) is a no-op. On clash: keep editing and mark the field, unless the blur
+  // is taking focus away — then just cancel so the user is never trapped.
+  const commitCreate = async (
+    kind: 'new-deck' | 'new-file' | 'new-folder',
+    raw: string,
+    input: HTMLInputElement,
+    fromBlur: boolean,
+  ): Promise<void> => {
+    if (!editingByHost.get(host)) return
+    const value = raw.trim()
+    if (!value) return cancelEdit()
+
+    if (kind === 'new-folder') {
+      const dir = value.replace(/\/+$/, '')
+      const keep = `${dir}/.gitkeep` // git does not track empty dirs
+      if (await props.storage.exists(keep)) return fromBlur ? cancelEdit() : markInvalid(input)
+      await props.storage.write(keep, '')
+      editingByHost.set(host, null)
+      props.onMutate()
+      return
+    }
+
+    const path =
+      kind === 'new-deck' && !value.endsWith(DOC_EXTENSION) ? value + DOC_EXTENSION : value
+    if (await props.storage.exists(path)) return fromBlur ? cancelEdit() : markInvalid(input)
+    await props.storage.write(path, kind === 'new-deck' ? NEW_DOC_TEMPLATE : '')
+    editingByHost.set(host, null)
+    props.onMutate()
+    if (kind === 'new-deck' || isDocPath(path)) props.onOpen(path)
+  }
+
+  const commitRename = async (
+    original: string,
+    raw: string,
+    input: HTMLInputElement,
+    fromBlur: boolean,
+  ): Promise<void> => {
+    if (!editingByHost.get(host)) return
+    const next = raw.trim()
+    if (!next || next === original) return cancelEdit()
+    const target =
+      isDocPath(original) && !next.endsWith(DOC_EXTENSION) ? `${next}${DOC_EXTENSION}` : next
+    if (await props.storage.exists(target)) return fromBlur ? cancelEdit() : markInvalid(input)
+    // The Storage port has no rename; copy+delete is equivalent for the working copy.
+    await props.storage.write(target, await props.storage.read(original))
+    await props.storage.remove(original)
+    editingByHost.set(host, null)
+    props.onMutate()
+    if (props.currentPath === original) props.onOpen(target)
+  }
+
   const list = document.createElement('ul')
   list.className = 'file-tree'
-  paintLevel(list, tree, props, expanded)
+
+  // A create edit shows its inline field as the first row.
+  if (editing && editing.kind !== 'rename') {
+    const meta = CREATE_META[editing.kind]
+    const row = document.createElement('li')
+    row.className = 'tree-row tree-edit-row'
+    const glyph = document.createElement('span')
+    glyph.className = 'tree-edit-glyph'
+    glyph.textContent = meta.glyph
+    const input = editInput(
+      '',
+      meta.hint,
+      (value, el, fromBlur) => void commitCreate(editing.kind, value, el, fromBlur),
+      cancelEdit,
+    )
+    row.append(glyph, input)
+    list.append(row)
+    activeInput = input
+  }
+
+  const renderLevel = (parent: HTMLElement, nodes: TreeNode[]): void => {
+    for (const node of nodes) {
+      const item = document.createElement('li')
+      if (node.type === 'dir') {
+        renderDir(item, node)
+      } else if (editing?.kind === 'rename' && editing.path === node.path) {
+        const input = editInput(
+          node.path,
+          '',
+          (value, el, fromBlur) => void commitRename(node.path, value, el, fromBlur),
+          cancelEdit,
+        )
+        const wrap = document.createElement('div')
+        wrap.className = 'tree-row tree-edit-row'
+        wrap.append(input)
+        item.append(wrap)
+        activeInput = input
+      } else {
+        renderFile(item, node)
+      }
+      parent.append(item)
+    }
+  }
+
+  const renderDir = (item: HTMLElement, node: TreeNode): void => {
+    const isOpen = expanded.has(node.path)
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'tree-row tree-dir'
+    row.textContent = `${isOpen ? '▾' : '▸'} ${basename(node.path)}`
+    row.addEventListener('click', () => {
+      if (isOpen) expanded.delete(node.path)
+      else expanded.add(node.path)
+      repaint()
+    })
+    item.append(row)
+    if (isOpen) {
+      const sub = document.createElement('ul')
+      sub.className = 'file-tree'
+      renderLevel(sub, node.children)
+      item.append(sub)
+    }
+  }
+
+  const renderFile = (item: HTMLElement, node: TreeNode): void => {
+    const row = document.createElement('div')
+    row.className = 'tree-row tree-file'
+    if (node.path === props.currentPath) row.classList.add('is-current')
+
+    const open = document.createElement('button')
+    open.type = 'button'
+    open.className = 'tree-name'
+    open.textContent = basename(node.path)
+    if (isDocPath(node.path)) {
+      open.title = node.path
+      open.addEventListener('click', () => props.onOpen(node.path))
+    } else {
+      open.disabled = true // assets are listed but not editable here
+      open.title = `${node.path} (asset)`
+    }
+
+    const rename = iconButton('Rename', '✎', () => beginEdit({ kind: 'rename', path: node.path }))
+    const del = iconButton('Delete', '×', () => void deleteFile(node.path, props))
+    row.append(open, rename, del)
+    item.append(row)
+  }
+
+  renderLevel(list, tree)
   host.append(list)
+
+  if (activeInput) {
+    activeInput.focus()
+    if (activeInput.value) activeInput.select()
+  }
 }
 
 async function buildTree(storage: StoragePort, dir: string): Promise<TreeNode[]> {
@@ -83,66 +256,41 @@ async function buildTree(storage: StoragePort, dir: string): Promise<TreeNode[]>
   )
 }
 
-function paintLevel(
-  list: HTMLElement,
-  nodes: TreeNode[],
-  props: FileTreeProps,
-  expanded: Set<string>,
-): void {
-  for (const node of nodes) {
-    const item = document.createElement('li')
-    if (node.type === 'dir') paintDir(item, node, props, expanded)
-    else paintFile(item, node, props)
-    list.append(item)
-  }
-}
-
-function paintDir(
-  item: HTMLElement,
-  node: TreeNode,
-  props: FileTreeProps,
-  expanded: Set<string>,
-): void {
-  const isOpen = expanded.has(node.path)
-  const row = document.createElement('button')
-  row.type = 'button'
-  row.className = 'tree-row tree-dir'
-  row.textContent = `${isOpen ? '▾' : '▸'} ${basename(node.path)}`
-  row.addEventListener('click', () => {
-    if (isOpen) expanded.delete(node.path)
-    else expanded.add(node.path)
-    props.onMutate() // repaint via the controller so every view stays consistent
+/**
+ * An inline naming field. Enter commits, Escape cancels, blur commits a non-empty
+ * value (or cancels). `onCommit(value, input, fromBlur)` owns validation and may
+ * keep the field open (e.g. on a name clash); `onCancel` discards the edit.
+ */
+function editInput(
+  initialValue: string,
+  placeholder: string,
+  onCommit: (value: string, input: HTMLInputElement, fromBlur: boolean) => void,
+  onCancel: () => void,
+): HTMLInputElement {
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.className = 'tree-edit-input'
+  input.value = initialValue
+  input.placeholder = placeholder
+  input.autocomplete = 'off'
+  input.spellcheck = false
+  input.style.cssText =
+    'flex:1;min-width:0;box-sizing:border-box;border:1px solid var(--accent);border-radius:5px;' +
+    'background:var(--bg);color:var(--ink);font:inherit;font-size:.78rem;padding:.12rem .35rem'
+  input.addEventListener('input', () => {
+    input.style.borderColor = 'var(--accent)'
   })
-  item.append(row)
-  if (isOpen) {
-    const sub = document.createElement('ul')
-    sub.className = 'file-tree'
-    paintLevel(sub, node.children, props, expanded)
-    item.append(sub)
-  }
-}
-
-function paintFile(item: HTMLElement, node: TreeNode, props: FileTreeProps): void {
-  const row = document.createElement('div')
-  row.className = 'tree-row tree-file'
-  if (node.path === props.currentPath) row.classList.add('is-current')
-
-  const open = document.createElement('button')
-  open.type = 'button'
-  open.className = 'tree-name'
-  open.textContent = basename(node.path)
-  if (isDocPath(node.path)) {
-    open.title = node.path
-    open.addEventListener('click', () => props.onOpen(node.path))
-  } else {
-    open.disabled = true // assets are listed but not editable here
-    open.title = `${node.path} (asset)`
-  }
-
-  const rename = iconButton('Rename', '✎', () => void renameFile(node.path, props))
-  const del = iconButton('Delete', '×', () => void deleteFile(node.path, props))
-  row.append(open, rename, del)
-  item.append(row)
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      onCommit(input.value, input, false)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      onCancel()
+    }
+  })
+  input.addEventListener('blur', () => onCommit(input.value, input, true))
+  return input
 }
 
 function iconButton(title: string, glyph: string, onClick: () => void): HTMLButtonElement {
@@ -167,69 +315,6 @@ function titleAction(title: string, glyph: string, onClick: () => void): HTMLBut
   return button
 }
 
-async function createDoc(props: FileTreeProps): Promise<void> {
-  const name = await promptDialog({
-    title: 'New deck',
-    message: 'Subfolders are allowed, e.g. talks/demo.',
-    label: 'Deck name',
-    placeholder: 'talks/demo',
-    confirmLabel: 'Create',
-  })
-  if (!name) return
-  const path = name.endsWith(DOC_EXTENSION) ? name : `${name}${DOC_EXTENSION}`
-  if (await props.storage.exists(path)) {
-    await alertDialog({ title: 'Name taken', message: `${path} already exists.` })
-    return
-  }
-  await props.storage.write(path, NEW_DOC_TEMPLATE)
-  props.onMutate()
-  props.onOpen(path)
-}
-
-/** Create an empty file at an arbitrary path (subfolders auto-created on write). */
-async function createFile(props: FileTreeProps): Promise<void> {
-  const path = (
-    await promptDialog({
-      title: 'New file',
-      message: 'Subfolders are allowed, e.g. assets/notes.md.',
-      label: 'File path',
-      placeholder: 'notes.md',
-      confirmLabel: 'Create',
-    })
-  )?.trim()
-  if (!path) return
-  if (await props.storage.exists(path)) {
-    await alertDialog({ title: 'Name taken', message: `${path} already exists.` })
-    return
-  }
-  await props.storage.write(path, '')
-  props.onMutate()
-  // A newly created deck opens straight away; other files just appear in the tree.
-  if (isDocPath(path)) props.onOpen(path)
-}
-
-/** Create a folder by seeding a `.gitkeep` (git does not track empty dirs). */
-async function createFolder(props: FileTreeProps): Promise<void> {
-  const raw = (
-    await promptDialog({
-      title: 'New folder',
-      message: 'Nested folders are allowed, e.g. talks/2026.',
-      label: 'Folder path',
-      placeholder: 'assets',
-      confirmLabel: 'Create',
-    })
-  )?.trim()
-  if (!raw) return
-  const dir = raw.replace(/\/+$/, '')
-  const keep = `${dir}/.gitkeep`
-  if (await props.storage.exists(keep)) {
-    await alertDialog({ title: 'Folder exists', message: `${dir} already exists.` })
-    return
-  }
-  await props.storage.write(keep, '')
-  props.onMutate()
-}
-
 /** Upload one or more files from disk into the working-copy root (binary-safe). */
 function uploadFiles(props: FileTreeProps): void {
   const input = document.createElement('input')
@@ -252,26 +337,6 @@ function uploadFiles(props: FileTreeProps): void {
     })()
   })
   input.click()
-}
-
-async function renameFile(path: string, props: FileTreeProps): Promise<void> {
-  const next = await promptDialog({
-    title: 'Rename',
-    label: 'New path',
-    initialValue: path,
-    confirmLabel: 'Rename',
-  })
-  if (!next || next === path) return
-  const target = isDocPath(path) && !next.endsWith(DOC_EXTENSION) ? `${next}${DOC_EXTENSION}` : next
-  if (await props.storage.exists(target)) {
-    await alertDialog({ title: 'Name taken', message: `${target} already exists.` })
-    return
-  }
-  // The Storage port has no rename; copy+delete is equivalent for the working copy.
-  await props.storage.write(target, await props.storage.read(path))
-  await props.storage.remove(path)
-  props.onMutate()
-  if (props.currentPath === path) props.onOpen(target)
 }
 
 async function deleteFile(path: string, props: FileTreeProps): Promise<void> {
