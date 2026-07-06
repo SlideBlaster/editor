@@ -90,6 +90,9 @@ export interface CanvasProps {
   autoEdit: string | null
   /** Overlay step to render (ADR 0018); omit for the all-visible authoring state. */
   step?: number
+  /** Theme master-layout snap references (slide-space x/y edges + centres, y-up): a drag
+   *  snaps to the title/content region bounds and draws them as guides (ADR 0017). */
+  snapRefs?: { xs: readonly number[]; ys: readonly number[] }
   actions: CanvasActions
 }
 
@@ -143,7 +146,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     if (props.connectMode) {
       wireConnect(handle, node, slideEl, overlay, props.actions)
     } else {
-      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions)
+      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions, props.snapRefs)
       // Resize grips (corners + edges), hidden by CSS until this handle is selected. They
       // scale the node's content, so they need its current scale (from its options).
       const src = findNode(props.picture, name)
@@ -260,6 +263,7 @@ function wireHandle(
   stage: HTMLElement,
   overlay: HTMLElement,
   actions: CanvasActions,
+  snapRefs?: { xs: readonly number[]; ys: readonly number[] },
 ): void {
   const name = node.name! // caller only wires named nodes
   const origin = node.center
@@ -323,6 +327,8 @@ function wireHandle(
           grid: SNAP_GRID,
           slideWidth: SLIDE_W,
           slideHeight: SLIDE_H,
+          refXs: snapRefs?.xs,
+          refYs: snapRefs?.ys,
         })
         outcome = { kind: 'move', center: snapped.center }
         guides = snapped.guides

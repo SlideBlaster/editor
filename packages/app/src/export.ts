@@ -20,18 +20,20 @@ import { KATEX_CSS } from './katexInlineCss'
 /** Standard 16:9 slide page (PowerPoint/Beamer widescreen), used for the print @page. */
 const PAGE = { w: '13.333in', h: '7.5in' }
 
-/** A self-contained deck document: on-screen presenter + print-to-PDF pages. */
+/** A self-contained deck document: on-screen presenter + print-to-PDF pages. `themeCss`
+ *  is the active theme's style + furniture stylesheet (so the print matches the canvas);
+ *  it defaults to the built-in theme for callers that don't theme. */
 export function toStandaloneHtml(
   slides: RenderedSlide[],
-  opts: { title?: string } = {},
+  opts: { title?: string; themeCss?: string } = {},
 ): Promise<string> {
-  return Promise.resolve(buildDeckDocument(slides, opts.title ?? 'Slides'))
+  return Promise.resolve(buildDeckDocument(slides, opts.title ?? 'Slides', opts.themeCss))
 }
 
 /** Download the standalone deck as an .html file. */
 export async function downloadDeckHtml(
   slides: RenderedSlide[],
-  opts: { title?: string; filename?: string } = {},
+  opts: { title?: string; filename?: string; themeCss?: string } = {},
 ): Promise<void> {
   const html = await toStandaloneHtml(slides, opts)
   const blob = new Blob([html], { type: 'text/html' })
@@ -49,7 +51,7 @@ export async function downloadDeckHtml(
  */
 export async function printDeck(
   slides: RenderedSlide[],
-  opts: { title?: string } = {},
+  opts: { title?: string; themeCss?: string } = {},
 ): Promise<void> {
   const html = await toStandaloneHtml(slides, opts)
   const iframe = document.createElement('iframe')
@@ -80,8 +82,13 @@ export async function printDeck(
   win.print()
 }
 
-/** Assemble the full HTML document. Slide HTML is trusted engine output. */
-function buildDeckDocument(slides: RenderedSlide[], title: string): string {
+/** Assemble the full HTML document. Slide HTML is trusted engine output. `themeCss` is the
+ *  active theme's style + furniture CSS; it defaults to the built-in theme's style. */
+function buildDeckDocument(
+  slides: RenderedSlide[],
+  title: string,
+  themeCss: string = SLIDE_THEME_CSS,
+): string {
   const ordered = [...slides].sort((a, b) => a.index - b.index)
   const pages = ordered.map((s) => `<section class="export-slide">${s.html}</section>`).join('\n')
   return `<!doctype html>
@@ -93,7 +100,7 @@ function buildDeckDocument(slides: RenderedSlide[], title: string): string {
 <style>
 ${DOCUMENT_CSS}
 ${slideStylesheet()}
-${SLIDE_THEME_CSS}
+${themeCss}
 ${SLIDE_TYPE_CSS}
 ${KATEX_CSS}
 </style>

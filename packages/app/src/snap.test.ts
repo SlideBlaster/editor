@@ -103,3 +103,29 @@ describe('resolveSnap spacing', () => {
     expect(center.x).toBeCloseTo(6.95)
   })
 })
+
+describe('resolveSnap region references (theme master layout, ADR 0017)', () => {
+  // A theme content region left edge at x=1 (in slide units) and top edge at y=7.
+  const withRegions: SnapConfig = { ...noGrid, refXs: [1, 8.5, 15], refYs: [1, 4, 7] }
+
+  it('snaps the dragged left edge onto a region x reference and draws its guide', () => {
+    // dragged left edge = 2.15 - 1 = 1.15; region ref x=1 is within threshold -> center 2.
+    const { center, guides } = resolveSnap(box(2.15, 4.5, 2, 1), [], withRegions)
+    expect(center.x).toBeCloseTo(2)
+    expect(guides).toContainEqual({ x1: 1, y1: 0, x2: 1, y2: 9, kind: 'align' })
+  })
+
+  it('snaps the dragged top edge onto a region y reference (y-up)', () => {
+    // dragged top edge = 6.4 + 0.5 = 6.9; region ref y=7 within threshold -> center 6.5.
+    const { center } = resolveSnap(box(4, 6.4, 2, 1), [], withRegions)
+    expect(center.y).toBeCloseTo(6.5)
+  })
+
+  it('ignores region references beyond the threshold', () => {
+    // Chosen clear of every slide guide AND region ref on both axes (box edges included).
+    const { center, guides } = resolveSnap(box(3.5, 2, 2, 1), [], withRegions)
+    expect(center.x).toBeCloseTo(3.5)
+    expect(center.y).toBeCloseTo(2)
+    expect(guides).toEqual([])
+  })
+})

@@ -35,6 +35,11 @@ export interface SnapConfig {
   grid: number
   slideWidth: number
   slideHeight: number
+  /** Extra alignment references in slide space (x coords / y coords, y-up): the theme's
+   *  master-layout region edges and centres, so a drag snaps to the title/content bounds
+   *  and draws them as guides (ADR 0017). Empty/omitted = node + slide guides only. */
+  refXs?: readonly number[]
+  refYs?: readonly number[]
 }
 
 /** A guide segment to draw, in slide space (y-up). `align` spans a full edge/center
@@ -133,8 +138,10 @@ export function resolveSnap(
   const resolveAxis = (axis: 'x' | 'y', extent: number, perpExtent: number): number => {
     const self = project(dragged, axis)
     const peerBoxes = peers.map((p) => project(p, axis))
+    const regionRefs = (axis === 'x' ? config.refXs : config.refYs) ?? []
     const refs = [
       ...slideGuides(extent),
+      ...regionRefs,
       ...peerBoxes.flatMap((p) => [p.c - p.half, p.c, p.c + p.half]),
     ]
 
