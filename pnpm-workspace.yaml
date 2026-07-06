@@ -1,6 +1,8 @@
-# JS/TS workspaces. The two Phoenix services (auth, collab) are Elixir and are
-# intentionally not pnpm packages; services/git-proxy is a JS package (the browser
-# git spike's server half).
+# JS/TS workspaces. The two production Phoenix services (auth, collab) are Elixir
+# and are intentionally not pnpm packages. services/git-proxy is a JS package (the
+# browser git spike's server half); services/auth-stub is the local dev double for
+# the Auth service (Phase A), replaced by the Phoenix service at deployment.
 packages:
   - packages/*
   - services/git-proxy
+  - services/auth-stub
