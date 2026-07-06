@@ -2,12 +2,15 @@
 
 `fromMarkdown(text) -> SlideDocument`. Parses the container: optional `---`
 frontmatter of `key: value` lines, then one or more `## Title {#id}` slide sections,
-each with exactly one fenced ```slide block whose body is parsed by the TikZ parser.
+each with exactly one fenced `slide` block whose body is parsed by the TikZ parser,
+optionally followed by one fenced `notes` block (the presenter-notes sidecar, ADR 0019) parsed the same way into `Frame.notes`.
 
 ## Contract
 
 - Lenient where it does not lose information; strict where structure is required
-  (throws on a non-heading at slide level, or a missing ```slide block).
+  (throws on a non-heading at slide level, or a missing `slide` block). The `notes`
+  block is optional: consumed only when it follows the `slide` block (past blank
+  lines); its absence leaves the cursor for the next heading.
 - Frontmatter is captured as raw ordered key/value entries; one blank line after the
   closing `---` is consumed.
 - The inverse of `toMarkdown` for canonical text (invariant 2); the model it yields

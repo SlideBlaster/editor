@@ -89,10 +89,18 @@ const verbatimStmt = fc.record({
 
 const statement = fc.oneof(nodeStmt, pathStmt, coordStmt, verbatimStmt)
 
+const picture = fc.record({ statements: fc.array(statement, { maxLength: 5 }) })
+
+// A frame optionally carries a notes sidecar picture (ADR 0019). Generating it here
+// puts round-trip law 6 (notes round-trip, absent notes emit no block) under the same
+// property checks as the slide picture.
 const frame = fc.record({
   id: fc.constantFrom('s1', 's2', 'a', 'b', 'intro'),
   title: fc.constantFrom('Intro', 'My Slide', 'Section 1', 'Overview'),
-  picture: fc.record({ statements: fc.array(statement, { maxLength: 5 }) }),
+  picture,
+  notes: fc.option(fc.record({ statements: fc.array(statement, { maxLength: 3 }) }), {
+    nil: undefined,
+  }),
 })
 
 const document = fc.record({
@@ -124,6 +132,48 @@ describe('property: invariants over generated documents', () => {
         return textIsCanonical(text)
       }),
     )
+  })
+})
+
+describe('presenter-notes sidecar (ADR 0019, round-trip law 6)', () => {
+  const withNotes = [
+    '---',
+    'title: Intro',
+    '---',
+    '',
+    '## Intro {#s1}',
+    '',
+    '```slide',
+    '\\node[body] (b) {audience \\pause reveal};',
+    '```',
+    '',
+    '```notes',
+    '\\node[body] (n) {open \\pause caveat};',
+    '```',
+    '',
+  ].join('\n')
+
+  it('is canonical — a notes block round-trips (invariant 2)', () => {
+    expect(textIsCanonical(withNotes)).toBe(true)
+  })
+
+  it('parses the ```notes block into Frame.notes', () => {
+    const doc = fromMarkdown(withNotes)
+    const frame = doc.frames[0]!
+    expect(nodeNames({ ...doc, frames: [{ ...frame, picture: frame.picture }] })).toEqual(['b'])
+    expect(frame.notes).toBeDefined()
+    expect(frame.notes!.statements.filter((s) => s.kind === 'node')).toHaveLength(1)
+  })
+
+  it('a slide with no notes emits no ```notes block', () => {
+    const doc = fromMarkdown(fixture)
+    expect(doc.frames[0]!.notes).toBeUndefined()
+    expect(toMarkdown(doc)).not.toContain('```notes')
+  })
+
+  it('round-trips a model that has notes (invariant 1)', () => {
+    const doc = fromMarkdown(withNotes)
+    expect(modelRoundTrips(doc)).toBe(true)
   })
 })
 
