@@ -28,10 +28,37 @@ export function renderSlide(
   const boxes = layout.nodes.map(rectSvg).join('')
   const arrows = connectorsOf(picture, layout).map(arrowSvg).join('')
   const svg = `<svg class="sb-geometry" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}" preserveAspectRatio="none">${MARKER_DEFS}${boxes}${arrows}</svg>`
+  // Per-slide footnotes: each `\citefootnote` marker numbers in reading order across
+  // the slide's nodes (the sink `add` returns the 1-based index); the definitions then
+  // collect into a band at the slide foot (Beamer-style), so numbering and placement
+  // are a slide-level concern rather than a per-node one.
+  const footnotes: string[][] = []
+  const withFootnotes: RenderOptions = {
+    ...options,
+    footnotes: { add: (keys) => footnotes.push(keys) },
+  }
   const content = layout.nodes
-    .map((placed, i) => nodeDiv(placed, contentNodes[i]!, options))
+    .map((placed, i) => nodeDiv(placed, contentNodes[i]!, withFootnotes))
     .join('')
-  return `<div class="sb-slide">${svg}<div class="sb-content">${content}</div></div>`
+  return `<div class="sb-slide">${svg}<div class="sb-content">${content}</div>${footnoteBand(footnotes, options)}</div>`
+}
+
+/** The slide-foot footnote band: each collected `\citefootnote`, numbered in order.
+ *  `renderFootnoteText` (app-supplied, has the bibliography) formats each reference;
+ *  absent, the band falls back to the raw keys. Empty -> no band. */
+function footnoteBand(footnotes: string[][], options: RenderOptions): string {
+  if (footnotes.length === 0) return ''
+  const items = footnotes
+    .map((keys, i) => {
+      const text = options.renderFootnoteText?.(keys) ?? escapeHtml(keys.join(', '))
+      return `<div class="sb-footnote"><sup>${i + 1}</sup> ${text}</div>`
+    })
+    .join('')
+  return `<div class="sb-footnotes">${items}</div>`
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 /** A resolved connector: its identity (`index` among path statements — what
@@ -187,6 +214,14 @@ export function slideStylesheet(): string {
     '.sb-deferred,.sb-include,.sb-error,.sb-table-error{opacity:0.7;font-style:italic}',
     // a compiled table (Compile port) carries its own latexml <style>; keep its box tidy.
     '.sb-table{display:inline-block;font-style:normal}',
+    // citations: inline marker, superscript footnote marker, and the slide-foot band.
+    '.sb-cite{white-space:nowrap}',
+    '.sb-fn-marker{font-size:0.7em;line-height:0}',
+    '.sb-bibliography{font-size:0.8em}',
+    '.sb-footnotes{position:absolute;left:0;right:0;bottom:0;padding:0.4em 2%;font-size:0.55em;' +
+      'line-height:1.3;border-top:0.5px solid #ccc;color:#333;background:rgba(255,255,255,0.85)}',
+    '.sb-footnote{text-indent:-1em;padding-left:1em}',
+    '.sb-footnote sup{margin-right:0.3em}',
   ].join('\n')
 }
 

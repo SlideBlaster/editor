@@ -38,6 +38,9 @@ export function dialectOf(run: TextRun): Dialect | undefined {
     case 'matrix':
     case 'include':
     case 'deferred':
+    case 'cite':
+    case 'citefootnote':
+    case 'printbibliography':
       return 'latex'
     default:
       return undefined

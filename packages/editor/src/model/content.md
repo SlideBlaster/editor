@@ -52,3 +52,10 @@ and are **not** errors: `table` (`\begin{tabular}` -> Compile port, kept opaque 
 `deferred`) and `include` (`\cat{path}` -> Storage port). Their visual/resolved
 rendering is the render track. Parsed by `../content/parse`, serialized by
 `../content/serialize`.
+
+Citations are three structured runs carrying only their keys: `cite` (`\cite{a, b}`),
+`citefootnote` (`\citefootnote{a}`), and `printbibliography` (`\printbibliography{}`).
+Like math/tables they are opaque to the model — the bibliography (`.bib` named by the
+`bibliography:` frontmatter key, via the Storage port), the deck-wide numbering, and
+the slide-foot footnote band are all resolved by the render track
+([citeCompiler](../../../app/src/citeCompiler.md), `../render/slide`), never stored.

@@ -23,6 +23,7 @@ import type {
   TextRun,
 } from '@slideblaster/editor'
 import { renderMath } from './math'
+import { renderCite, renderBibliography, renderFootnoteText } from './citeCompiler'
 
 /** How long the source must be quiet before we compile it (coalesces fast typing). */
 const DEBOUNCE_MS = 200
@@ -43,8 +44,15 @@ function renderTable(source: string): string | undefined {
   return cache.get(source)
 }
 
-/** The single shared render options — math + table seams — passed to every render call site. */
-export const renderOptions: RenderOptions = { renderMath, renderTable }
+/** The single shared render options — math, table, and citation seams — passed to
+ *  every render call site (see citeCompiler for how citations resolve out of band). */
+export const renderOptions: RenderOptions = {
+  renderMath,
+  renderTable,
+  renderCite,
+  renderBibliography,
+  renderFootnoteText,
+}
 
 /**
  * Wire (or clear) the Compile port and the ready callback. Called once per shell

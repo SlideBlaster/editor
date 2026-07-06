@@ -4,9 +4,11 @@ Bridges the ASYNC Compile port (latexml) to the SYNCHRONOUS `renderTable` seam t
 engine's `renderContent` reads — the same shape as KaTeX behind `renderMath`, but the
 compile happens out of band and populates a cache the seam reads instantly.
 
-`renderOptions` is the single shared `RenderOptions` — math seam + table seam — passed
-to every render surface (canvas, DOM measurer, navigator, export) so measurement and
-every painted surface agree. It replaces the old `mathOptions` at those call sites.
+`renderOptions` is the single shared `RenderOptions` — math seam + table seam +
+citation seams (`renderCite`/`renderBibliography`/`renderFootnoteText` from
+[citeCompiler](./citeCompiler.md)) — passed to every render surface (canvas, DOM
+measurer, navigator, export) so measurement and every painted surface agree. It
+replaces the old `mathOptions` at those call sites.
 
 ## The cache and the seam
 

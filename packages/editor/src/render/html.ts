@@ -11,9 +11,25 @@
  * Port-gated payloads render as labelled placeholders, never dropped: a `deferred`
  * table says "render pending" (Compile port), an `include` shows its path (Storage
  * port).
+ *
+ * Citations resolve through the same seam pattern: `renderCite`/`renderBibliography`
+ * turn keys into `[1]` / a reference list once the app has loaded the `.bib` and
+ * numbered the deck. A `\citefootnote` renders only its inline `<sup>` marker here —
+ * the number is assigned by the per-slide `footnotes` sink (`slide.ts`), which also
+ * emits the footnote band, since numbering and placement are slide-level concerns.
  */
 import type { NodeContent, TextRun } from '../model/content'
 import { inlineStyleOf, type InlineStyle } from '../content/styles'
+
+/**
+ * Per-slide footnote collector. `slide.ts` supplies one, calling `add` as each
+ * `\citefootnote` renders (in reading order) to get its 1-based slide-local number,
+ * then reads the collected keys back to emit the footnote band. Absent for a bare
+ * content render (e.g. measurement) — the marker then renders without a number.
+ */
+export interface FootnoteSink {
+  add(keys: string[]): number
+}
 
 export interface RenderOptions {
   /** Render inline/display math to HTML. Defaults to a source-carrying placeholder. */
@@ -26,6 +42,25 @@ export interface RenderOptions {
    * populates a cache this reads, exactly like `renderMath` reads KaTeX.
    */
   renderTable?: (source: string) => string | undefined
+  /**
+   * Render an inline `\cite{keys}` to its marker HTML (e.g. `[1]`), or `undefined`
+   * when the bibliography is not yet loaded — the caller shows a `[?]` placeholder.
+   * Sync by contract, reading a cache the app fills out of band (like `renderTable`).
+   */
+  renderCite?: (keys: string[]) => string | undefined
+  /**
+   * Render `\printbibliography{}` to a reference list, or `undefined` while the
+   * bibliography loads — the caller then shows a "render pending" placeholder.
+   */
+  renderBibliography?: () => string | undefined
+  /**
+   * Format one footnote's reference text for the slide-bottom band (the app supplies
+   * the bibliography). Undefined -> the band falls back to the raw keys. Consumed by
+   * `slide.ts`, not `renderContent`.
+   */
+  renderFootnoteText?: (keys: string[]) => string | undefined
+  /** Per-slide footnote sink; `slide.ts` provides it (see `FootnoteSink`). */
+  footnotes?: FootnoteSink
 }
 
 export function renderContent(content: NodeContent, options: RenderOptions = {}): string {
@@ -94,6 +129,19 @@ function renderRun(run: TextRun, options: RenderOptions): string {
     }
     case 'fragment':
       return `<span class="sb-fragment" data-fragment="${escapeAttr(run.name)}"${run.at !== undefined ? ` data-at="${run.at}"` : ''}></span>`
+    case 'cite': {
+      const resolved = options.renderCite?.(run.keys)
+      return `<span class="sb-cite">${resolved ?? '[?]'}</span>`
+    }
+    case 'citefootnote': {
+      const n = options.footnotes?.add(run.keys)
+      return `<sup class="sb-fn-marker">${n ?? '?'}</sup>`
+    }
+    case 'printbibliography': {
+      const resolved = options.renderBibliography?.()
+      if (resolved !== undefined) return `<div class="sb-bibliography">${resolved}</div>`
+      return `<div class="sb-deferred" data-feature="bibliography">bibliography &mdash; render pending</div>`
+    }
   }
 }
 

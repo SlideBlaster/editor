@@ -66,6 +66,12 @@ function serializeRun(run: TextRun): string {
       return `\\cat{${run.path}}`
     case 'deferred':
       return run.source
+    case 'cite':
+      return `\\cite{${run.keys.join(', ')}}`
+    case 'citefootnote':
+      return `\\citefootnote{${run.keys.join(', ')}}`
+    case 'printbibliography':
+      return `\\printbibliography{}`
   }
 }
 

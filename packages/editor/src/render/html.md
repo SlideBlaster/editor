@@ -17,6 +17,13 @@ output: `\textbf{x}` / `**x**` / `<b>x</b>` all become `<strong>x</strong>` (bol
   or `undefined` when the compile is not yet available — then the "render pending"
   placeholder below shows. Synchronous like `renderMath`; the async compile populates a
   cache the seam reads.
+- **Citations go through seams too:** `options.renderCite(keys)` -> an inline marker
+  (`<span class="sb-cite">[1]</span>`), defaulting to `[?]` until the bibliography
+  loads; `options.renderBibliography()` -> the `\printbibliography` list (else a
+  "render pending" placeholder). A `\citefootnote` renders ONLY its inline `<sup>`
+  marker here — its number comes from `options.footnotes.add(keys)` (a `FootnoteSink`),
+  and the footnote text + slide-foot band are `../render/slide`'s job, because
+  numbering is per-slide and placement is slide-level.
 - **Port-gated payloads are labelled, never dropped:** an uncompiled `deferred` (table)
   renders "table &mdash; render pending" (Compile port); `include` shows `[include:
 path]` (Storage port); a `fragment` is an empty marker span (reveal is a presentation

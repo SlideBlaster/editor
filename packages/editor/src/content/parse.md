@@ -15,7 +15,9 @@ container's body (transparent nesting):
 3. **HTML** — `<appear>` (fragment); a supported tag (`b strong i em u s div span`,
    no attributes) opens an element whose inner text recurses.
 4. **LaTeX** — `\textbf`/`\emph`/`\textit`/`\underline` (`{ }` arg, recurses);
-   `\image{src}`, `\cat{path}` (include); `\appear`/`\pause`/`\only` (with optional
+   `\image{src}`, `\cat{path}` (include); `\cite{keys}`, `\citefootnote{keys}`,
+   `\printbibliography{}` (citations, keys split on `,`; matched before the generic
+   macro so they are in-subset, not errors); `\appear`/`\pause`/`\only` (with optional
    `[=N]`) become reveal fragments.
 5. **markdown** — emphasis `**…**` / `*…*` (matching delimiter); `![alt](src)` image.
 6. anything else accumulates as literal **text**.

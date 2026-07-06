@@ -73,10 +73,16 @@ export async function findDocs(storage: StoragePort, dir = ''): Promise<string[]
  * working copy, then prefer the last-opened doc if it still exists, else the
  * first doc found.
  */
-export async function bootDocument(storage: StoragePort, sampleSource: string): Promise<string> {
+export async function bootDocument(
+  storage: StoragePort,
+  sampleSource: string,
+  seedFiles: Record<string, string> = {},
+): Promise<string> {
   let docs = await findDocs(storage)
   if (docs.length === 0) {
     await storage.write(`sample${DOC_EXTENSION}`, sampleSource)
+    // Seed sibling assets the sample references (e.g. its bibliography).
+    for (const [path, content] of Object.entries(seedFiles)) await storage.write(path, content)
     docs = [`sample${DOC_EXTENSION}`]
   }
   const last = readLastDoc()

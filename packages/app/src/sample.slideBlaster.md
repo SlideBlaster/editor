@@ -1,6 +1,8 @@
 ---
 title: SlideBlaster
 author: You
+bibliography: refs.bib
+citationStyle: numeric
 ---
 
 ## Welcome {#s1}
@@ -59,5 +61,26 @@ Cherries & 40 \\
 A matrix of cells:
 \matrix{1 & 2 \\ 3 & 4}
 \end{columns}
+};
+```
+
+## Related work {#s5}
+
+```slide
+\node[title] (title) at (8,8) {Related work};
+\node[body, below=0.8 of title, text width=13] (c) {
+- Digital typesetting was pioneered by \cite{knuth1984}
+- Markup on top of it followed soon after \cite{lamport94}
+- Together they remain the standard references \cite{knuth1984, lamport94}
+- Numbering is deck-wide; footnotes sit at the slide foot\citefootnote{lamport94}
+};
+```
+
+## References {#s6}
+
+```slide
+\node[title] (title) at (8,8) {References};
+\node[body, below=0.9 of title, text width=13] (refs) {
+\printbibliography{}
 };
 ```

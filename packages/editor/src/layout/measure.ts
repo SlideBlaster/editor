@@ -106,5 +106,15 @@ function runText(run: TextRun): string {
       return ''
     case 'deferred':
       return run.source
+    case 'cite':
+      // A resolved numeric cite is ~"[1]"; the DOM measurer re-measures once the
+      // bibliography loads. This naive proxy just needs a small, non-empty width.
+      return '[?]'
+    case 'citefootnote':
+      // A superscript marker — negligible in the naive fallback (like `fragment`).
+      return ''
+    case 'printbibliography':
+      // A block resolved from the deck's cited keys; a minimal proxy pre-resolution.
+      return 'bibliography'
   }
 }

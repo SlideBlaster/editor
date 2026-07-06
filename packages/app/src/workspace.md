@@ -12,8 +12,9 @@ working copy, the controller edits one of them at a time.
   render as "render pending" placeholders ([tableCompiler.md](./tableCompiler.md)).
 - `findDocs(storage)` — every `*.slideBlaster.md` in the working copy,
   recursive, `.git` excluded, sorted.
-- `bootDocument(storage, sampleSource)` — startup document selection: seeds the
-  bundled sample into an empty working copy, then prefers the last-opened doc
+- `bootDocument(storage, sampleSource, seedFiles?)` — startup document selection:
+  seeds the bundled sample (and any `seedFiles` it references, e.g. its `refs.bib`
+  bibliography) into an empty working copy, then prefers the last-opened doc
   (localStorage, best-effort) over the first found.
 - `rememberDoc(path)` — record the last-opened doc.
 - `RemoteConfig` (`{owner, name}`), `remoteUrl(remote)` (the GitHub HTTPS git

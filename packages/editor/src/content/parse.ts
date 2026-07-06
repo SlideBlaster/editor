@@ -46,7 +46,18 @@ const TABULAR_BEGIN = /^\\begin\{tabular\}/
 const MATRIX = /^\\matrix\b/
 const IMAGE_LATEX = /^\\image\{/
 const CAT = /^\\cat\{/
+const CITEFOOTNOTE = /^\\citefootnote\{/
+const CITE = /^\\cite\{/
+const PRINTBIB = /^\\printbibliography(\{[^}]*\})?/
 const MD_IMAGE = /^!\[([^\]]*)\]\(([^)]*)\)/
+
+/** Split a `\cite{…}` argument into trimmed, non-empty keys (`a, b` -> ['a','b']). */
+function citeKeys(inner: string): string[] {
+  return inner
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean)
+}
 
 export function parseContent(body: string): NodeContent {
   if (body === '') return { kind: 'empty' }
@@ -147,6 +158,21 @@ function parseRuns(s: string): TextRun[] {
       if (CAT.test(rest)) {
         const g = readGroup(s, i + '\\cat'.length, '{', '}')
         emit({ kind: 'include', path: g.inner }, g.end)
+        continue
+      }
+      if (CITEFOOTNOTE.test(rest)) {
+        const g = readGroup(s, i + '\\citefootnote'.length, '{', '}')
+        emit({ kind: 'citefootnote', keys: citeKeys(g.inner) }, g.end)
+        continue
+      }
+      if (CITE.test(rest)) {
+        const g = readGroup(s, i + '\\cite'.length, '{', '}')
+        emit({ kind: 'cite', keys: citeKeys(g.inner) }, g.end)
+        continue
+      }
+      const printbib = PRINTBIB.exec(rest)
+      if (printbib) {
+        emit({ kind: 'printbibliography' }, i + printbib[0].length)
         continue
       }
       const fragment = FRAGMENT.exec(rest)

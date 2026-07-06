@@ -41,6 +41,7 @@ import {
   type TikzPicture,
 } from '@slideblaster/editor'
 import initialSource from './sample.slideBlaster.md?raw'
+import sampleBib from './sample.refs.bib?raw'
 import { createCodePane, type CodePane } from './codePane'
 import { minimalDiff } from './sourceDelta'
 import {
@@ -62,6 +63,7 @@ import {
   scheduleTableCompile,
   ensureTables,
 } from './tableCompiler'
+import { installCiteCompiler, scheduleCiteCompile, ensureCitations } from './citeCompiler'
 import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import { renderChrome } from './chrome'
@@ -309,6 +311,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     currentDoc = doc
     persist()
     scheduleTableCompile(doc) // the edit may have introduced a table; keep compilation live
+    scheduleCiteCompile(doc) // the edit may have changed a \cite or the bibliography
 
     // Canvas delta: only this frame's card + thumbnail, everything else untouched.
     const ctx = {
@@ -349,6 +352,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   /** Render every frame to self-contained HTML for export — same measurements as the canvas. */
   const collectSlides = async (doc: SlideDocument): Promise<RenderedSlide[]> => {
     await ensureTables(doc) // the export must not race the async table compile
+    await ensureCitations(doc) // resolve \cite numbering + bibliography before export
     return Promise.all(
       doc.frames.map(async (frame, index) => ({
         index,
@@ -452,6 +456,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     const doc = result.doc
     currentDoc = doc
     scheduleTableCompile(doc) // compile any new tables out of band; they pop in on onReady
+    scheduleCiteCompile(doc) // resolve citations out of band; they pop in on onReady
     docTitle.textContent = getMeta(doc.meta, 'title') ?? 'Untitled'
     const maxIndex = Math.max(0, doc.frames.length - 1)
     state.active = Math.min(state.active, maxIndex)
@@ -492,6 +497,15 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   // Compile port (latexml tables): compile out of band, then drop the placeholder
   // measurement and re-render so the table appears at its true size (tableCompiler.md).
   installTableCompiler(ports?.compile, {
+    onReady: () => {
+      measurer.reset()
+      void render()
+    },
+  })
+
+  // Citations: load the bibliography (Storage port) + number the deck out of band,
+  // then re-measure and re-render so `[?]` placeholders resolve (citeCompiler.md).
+  installCiteCompiler(ports?.storage, {
     onReady: () => {
       measurer.reset()
       void render()
@@ -665,7 +679,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (currentPath && !(await ports.storage.exists(currentPath))) {
       autosave?.discard()
       currentPath = null
-      await openDoc(await bootDocument(ports.storage, initialSource))
+      await openDoc(await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib }))
     } else {
       await refreshTree()
     }
@@ -687,7 +701,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         const path =
           currentPath && (await ports.storage.exists(currentPath))
             ? currentPath
-            : await bootDocument(ports.storage, initialSource)
+            : await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib })
         await openDoc(path)
       },
       onError: (message) => {
@@ -701,7 +715,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     window.addEventListener('beforeunload', () => void autosave.flush())
     void (async () => {
       try {
-        await openDoc(await bootDocument(ports.storage, initialSource))
+        await openDoc(await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib }))
       } catch (err) {
         errorBanner.textContent = `workspace failed to open: ${err instanceof Error ? err.message : String(err)}`
         errorBanner.hidden = false

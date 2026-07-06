@@ -8,6 +8,7 @@ viewable when mounted.
 <div class="sb-slide">
   <svg class="sb-geometry" viewBox="0 0 16 9">  node boxes + \draw arrows
   <div class="sb-content">                      one absolutely-% -positioned node per box
+  <div class="sb-footnotes">                     slide-foot band (only if \citefootnote used)
 ```
 
 - **One mapping, two layers.** Slide space is `0..16 x 0..9`, y-up. The SVG geometry
@@ -29,6 +30,13 @@ viewable when mounted.
   become `sb-style-*` classes on both the SVG box and the content div. A named node's
   content div also carries `data-node="<name>"` so an editor can hit-test and address
   it (selection, drag, inline edit); harmless in the export DOM.
+- **Footnotes.** `renderSlide` supplies a per-slide `FootnoteSink` to the content
+  render: each `\citefootnote` numbers in reading order across the slide's nodes, and
+  the definitions collect into a `.sb-footnotes` band at the slide foot (Beamer-style).
+  `options.renderFootnoteText(keys)` (app-supplied, has the bibliography) formats each
+  reference; absent, it falls back to the raw keys. No footnotes -> no band. Numbering
+  is per-slide; inline `\cite` numbering is deck-wide and lives in the app
+  ([citeCompiler](../../../app/src/citeCompiler.md)).
 
 - **Content block layout.** `slideStylesheet()` also carries the base visual layout for
   the structured content blocks `renderContent` emits, so a mounted slide is viewable

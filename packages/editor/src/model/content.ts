@@ -7,7 +7,10 @@
  * images (`\image`, `![alt](src)`); and `columns`/`matrix` groups (fully structured
  * — only their visual layout is the render track). Two constructs parse but need a
  * port to render: `table` (`tabular` -> Compile, kept opaque as `deferred`) and
- * `include` (`\cat` -> Storage). Out-of-subset input becomes `error` (ADR 0015).
+ * `include` (`\cat` -> Storage). Citations (`\cite`, `\citefootnote`,
+ * `\printbibliography`) parse to structured runs that carry only their keys; the
+ * bibliography (`.bib` via the Storage port) and numbering are resolved by the render
+ * track, exactly like math/tables. Out-of-subset input becomes `error` (ADR 0015).
  *
  * Runs are SURFACE-FAITHFUL: each stores the exact form it was written in, so the
  * dialect (ADR 0007 provenance) is implicit in the run kind and byte-exact
@@ -36,6 +39,9 @@ export type TextRun =
   | { kind: 'image'; src: string; alt: string; dialect: 'latex' | 'md' }
   | { kind: 'include'; path: string }
   | { kind: 'deferred'; feature: DeferredFeature; source: string }
+  | { kind: 'cite'; keys: string[] }
+  | { kind: 'citefootnote'; keys: string[] }
+  | { kind: 'printbibliography' }
 
 /** A list item: its inline content, which may itself contain a nested `list` run. */
 export interface ListItem {
