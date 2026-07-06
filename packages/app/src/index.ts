@@ -5,3 +5,10 @@
  */
 export { createApp, type CreateAppOptions } from './createApp'
 export type { AppPorts } from './workspace'
+export { renderHome, type HomeDeps } from './home'
+export {
+  createProjectRegistry,
+  type Project,
+  type ProjectRegistry,
+  type StorageLike,
+} from './projects'

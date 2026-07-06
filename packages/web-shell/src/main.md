@@ -1,9 +1,17 @@
 # web-shell entry (main.ts)
 
-The browser shell's entry point — deliberately thin. It builds the browser
-adapters and mounts the shared editor app
-([@slideblaster/app](../../app/src/index.md)) into the page's `#app` element,
-tagged `web-shell · M4`.
+The browser shell's entry point — deliberately thin. It is a tiny router over the
+shared editor app ([@slideblaster/app](../../app/src/index.md)), mounted into the
+page's `#app` element.
+
+**Projects routing.** A project is one working copy (= repo). The shell lands on
+the projects page (`renderHome` over a `createProjectRegistry`); opening a project
+records it in `sessionStorage` and reloads into the editor, scoped to that
+project's dir (`createBrowserWorkspace({ dir: '/projects/<id>' })`), with
+`onExitToProjects` wired back to the landing. Routing is **reload-based** so each
+hop is a clean page — `createApp` registers document-level listeners, and a full
+reload avoids leaking them between the landing and the editor. A fresh tab (no
+session pointer) always lands on the projects page.
 
 Adapters wired: `createBrowserWorkspace` — the Storage and Git ports over one
 shared LightningFS/IndexedDB working copy, bootstrapped on first run — and the

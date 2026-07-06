@@ -1,0 +1,157 @@
+/* Projects landing page. Uses the design tokens defined in app.css (:root),
+   so it themes light/dark with the rest of the app. Mounts into #app. */
+
+.home {
+  height: 100%;
+  overflow: auto;
+  padding: 4rem 1.5rem;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.home-shell {
+  max-width: 44rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.home-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.home-brand {
+  font-size: 1.7rem;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+
+.home-tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* New-project row */
+.home-create {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.home-create-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 0.55rem 0.75rem;
+}
+
+.home-create-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.home-create-button {
+  flex: none;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 550;
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+}
+
+.home-create-button:hover {
+  filter: brightness(1.05);
+}
+
+/* Project list */
+.home-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.home-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.home-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.home-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--slide-shadow);
+}
+
+.home-card-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+}
+
+.home-card-name {
+  font-weight: 580;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-card-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.home-card-delete {
+  flex: none;
+  align-self: center;
+  margin-right: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.home-card-delete:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}

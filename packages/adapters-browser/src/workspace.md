@@ -1,8 +1,10 @@
 # createBrowserWorkspace
 
-The browser shell's one-stop factory for the local working copy: the Storage and
+The browser shell's one-stop factory for a local working copy: the Storage and
 Git adapters over a **single shared LightningFS (IndexedDB) filesystem** and a
-single working-copy dir.
+given working-copy dir. One project = one working copy: the shell passes a
+per-project `dir` (e.g. `/projects/<id>`), and the factory `mkdir -p`s it (nested
+parents included) before `git init`, so many projects coexist in the one fs.
 
 ## Contract
 

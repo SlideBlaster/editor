@@ -55,7 +55,7 @@ export async function createBrowserWorkspace(
     dir,
   })
 
-  await mkdirIfMissing(pfs, dir)
+  await mkdirp(pfs, dir)
   if (!(await exists(pfs, `${dir}/.git`))) await git.init(dir)
 
   return { storage, git }
@@ -67,6 +67,20 @@ async function exists(fs: PromiseFs, path: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * `mkdir -p`: create `path` and any missing parents. LightningFS `mkdir` is not
+ * recursive, so a nested working-copy dir (e.g. `/projects/<id>`) needs each
+ * ancestor created in turn.
+ */
+async function mkdirp(fs: PromiseFs, path: string): Promise<void> {
+  const parts = path.split('/').filter(Boolean)
+  let current = ''
+  for (const part of parts) {
+    current += `/${part}`
+    await mkdirIfMissing(fs, current)
   }
 }
 

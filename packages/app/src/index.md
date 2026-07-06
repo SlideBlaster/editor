@@ -7,6 +7,12 @@ passes as `opts.ports`. Both shells depend on this package and do nothing but
 build adapters and call `createApp` against a root element; passing no ports
 runs the bundled in-memory sample.
 
+It also exports the projects landing: `renderHome` ([home.md](./home.md)) and
+`createProjectRegistry` ([projects.md](./projects.md)). A project is one working
+copy (= repo); the shell renders the landing, and on open builds that project's
+ports (dir `/projects/<id>`) and mounts `createApp` with `onExitToProjects` to
+return.
+
 Everything else in the package — the controller ([createApp.ts](./createApp.md)),
 the chrome ([chrome.ts](./chrome.md)), the working-copy glue
 ([workspace.ts](./workspace.md), [fileTree.ts](./fileTree.md),
