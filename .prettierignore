@@ -5,5 +5,9 @@ pnpm-lock.yaml
 **/vendor/**
 # Golden fixtures are byte-significant; prettier must not touch them.
 **/fixtures/**
+**/__fixtures__/**
 # Auto-generated (scripts/genKatexCss.mjs) — a single huge line of embedded fonts.
 **/katexInlineCss.ts
+# LaTeXML WASM engine build tree: generated build artifacts and upstream sources.
+packages/adapters-shared/src/compile/engine/build/
+packages/adapters-shared/src/compile/engine/tmp/

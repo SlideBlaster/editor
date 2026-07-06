@@ -35,26 +35,22 @@ describe.skipIf(!wasmLatexmlAvailable())('WasmLatexmlCompiler end-to-end (WASM l
 
   for (const name of cases) {
     // First cold conversion boots LaTeXML; keep a generous per-case budget.
-    it(
-      `compiles ${name} to a LaTeXML HTML fragment via WASM`,
-      async () => {
-        const latex = readFileSync(join(tablesDir, `${name}.tex`), 'utf8').trim()
-        const html = await compiler.tableToHtml(latex)
+    it(`compiles ${name} to a LaTeXML HTML fragment via WASM`, async () => {
+      const latex = readFileSync(join(tablesDir, `${name}.tex`), 'utf8').trim()
+      const html = await compiler.tableToHtml(latex)
 
-        // A real, styled, embeddable table fragment — not a page, not empty.
-        expect(html).toContain('ltx_tabular')
-        expect(html).toContain('<style')
-        expect(html).not.toMatch(/<\/?(?:html|head|body)\b/)
-        expect(html).not.toMatch(/<footer\b/)
+      // A real, styled, embeddable table fragment — not a page, not empty.
+      expect(html).toContain('ltx_tabular')
+      expect(html).toContain('<style')
+      expect(html).not.toMatch(/<\/?(?:html|head|body)\b/)
+      expect(html).not.toMatch(/<footer\b/)
 
-        const goldenPath = join(tablesDir, `${name}.wasm.html`)
-        if (update) {
-          writeFileSync(goldenPath, html, 'utf8')
-          return
-        }
-        expect(html).toBe(readFileSync(goldenPath, 'utf8'))
-      },
-      30_000,
-    )
+      const goldenPath = join(tablesDir, `${name}.wasm.html`)
+      if (update) {
+        writeFileSync(goldenPath, html, 'utf8')
+        return
+      }
+      expect(html).toBe(readFileSync(goldenPath, 'utf8'))
+    }, 30_000)
   }
 })

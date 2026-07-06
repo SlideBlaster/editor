@@ -37,9 +37,13 @@ export interface BrowserLatexmlEngineOptions {
 
 // @INC inside the preloaded MEMFS (mounted at /sb by --preload-file). Order:
 // patched overlay first, then perl core, the XS pure-perl halves, then LaTeXML.
-const INC_ARGS = ['/sb/overlay', '/sb/lib', '/sb/xml-libxml', '/sb/xml-libxslt', '/sb/perl5'].flatMap(
-  (p) => ['-I', p],
-)
+const INC_ARGS = [
+  '/sb/overlay',
+  '/sb/lib',
+  '/sb/xml-libxml',
+  '/sb/xml-libxslt',
+  '/sb/perl5',
+].flatMap((p) => ['-I', p])
 const DRIVER = '/sb/driver.pl'
 const IN = '/in.tex'
 const OUT = '/out.html'
@@ -50,15 +54,17 @@ export function createBrowserLatexmlEngine(opts: BrowserLatexmlEngineOptions): L
 
   const boot = (): Promise<PerlModule> => {
     if (!modulePromise) {
-      modulePromise = opts.createPerlModule({
-        noInitialRun: true,
-        ...(opts.locateFile ? { locateFile: opts.locateFile } : {}),
-        print: () => {},
-        printErr: () => {},
-      }).then((m) => {
-        m.ENV.PERL_HASH_SEED = '0' // deterministic output
-        return m
-      })
+      modulePromise = opts
+        .createPerlModule({
+          noInitialRun: true,
+          ...(opts.locateFile ? { locateFile: opts.locateFile } : {}),
+          print: () => {},
+          printErr: () => {},
+        })
+        .then((m) => {
+          m.ENV.PERL_HASH_SEED = '0' // deterministic output
+          return m
+        })
     }
     return modulePromise
   }
