@@ -43,9 +43,17 @@ import {
   furnitureCss,
   furnitureHtml,
   regionRects,
+  regionGuides,
+  regionAt,
+  slideBoxFromMeta,
+  DEFAULT_SLIDE_BOX,
   serializeTheme,
+  parseTheme,
   defaultTheme,
   type Theme,
+  type SlideBox,
+  type Layout,
+  type Frame,
   type NodeContent,
   type RenderedSlide,
   type SlideDocument,
@@ -61,6 +69,7 @@ import {
   type DeckHandle,
   type Selection,
   type ConnectorSelection,
+  type Surface,
 } from './deck'
 import type { CurveFocus } from './connectorEditor'
 import { paintDeckNav, type NavHandle } from './deckNav'
@@ -79,6 +88,7 @@ import {
 import { installCiteCompiler, scheduleCiteCompile, ensureCitations } from './citeCompiler'
 import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
+import { present } from './presenter'
 import { renderChrome } from './chrome'
 import { enableResizers } from './resizer'
 import {
@@ -112,7 +122,7 @@ interface State {
   selectedConnector: ConnectorSelection | null
   // E4+: the anchor/dot (of the selected connector) whose tangent angles the panel edits. Set
   // by the connector editor on paint, carrying the live geometry the panel works against.
-  focusedCurve: (CurveFocus & { frame: number }) | null
+  focusedCurve: (CurveFocus & { frame: number; surface: Surface }) | null
   connectMode: boolean // E4: dragging a node draws an arrow instead of moving it
   autoEdit: Selection | null // W5: a just-created node to open in edit mode next paint
   // ADR 0018: overlay-step preview for the active slide (null = all-visible authoring view).
@@ -151,6 +161,30 @@ function withFrame(doc: SlideDocument, index: number, picture: TikzPicture): Sli
   }
 }
 
+/** The picture behind a (frame, surface): the audience slide, or its notes sidecar (ADR 0019). */
+function pictureOf(frame: Frame, surface: Surface): TikzPicture | undefined {
+  return surface === 'notes' ? frame.notes : frame.picture
+}
+
+/** A document with one frame surface's picture swapped — `withFrame` generalised to notes. */
+function withSurface(
+  doc: SlideDocument,
+  index: number,
+  surface: Surface,
+  picture: TikzPicture,
+): SlideDocument {
+  return {
+    meta: doc.meta,
+    frames: doc.frames.map((frame, i) =>
+      i === index
+        ? surface === 'notes'
+          ? { ...frame, notes: picture }
+          : { ...frame, picture }
+        : frame,
+    ),
+  }
+}
+
 /** Count nodes whose content is out of subset (ADR 0015 error state) across the deck. */
 function countErrorNodes(doc: SlideDocument): number {
   return doc.frames.reduce(
@@ -167,13 +201,13 @@ function countErrorNodes(doc: SlideDocument): number {
  * the controller. Idempotent per document for styles; call once per shell on startup.
  */
 /** Dashed boxes over a slide showing the theme's master-layout regions (editor preview). */
-function regionsOverlayHtml(theme: Theme): string {
-  const boxes = regionRects(theme)
+function regionsOverlayHtml(theme: Theme, box: SlideBox): string {
+  const boxes = regionRects(theme, box)
     .map((r) => {
-      const left = (r.left / 16) * 100
-      const width = ((r.right - r.left) / 16) * 100
-      const top = ((9 - r.top) / 9) * 100
-      const height = ((r.top - r.bottom) / 9) * 100
+      const left = (r.left / box.width) * 100
+      const width = ((r.right - r.left) / box.width) * 100
+      const top = ((box.height - r.top) / box.height) * 100
+      const height = ((r.top - r.bottom) / box.height) * 100
       const name = r.name.replace(/</g, '&lt;')
       return (
         `<div style="position:absolute;left:${left}%;top:${top}%;width:${width}%;height:${height}%;` +
@@ -269,10 +303,39 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       const chrome = furnitureHtml(activeTheme, { index, total })
       if (chrome) slide.insertAdjacentHTML('beforeend', chrome)
       slide.querySelector('.sb-theme-regions')?.remove()
-      if (showRegions) slide.insertAdjacentHTML('beforeend', regionsOverlayHtml(activeTheme))
+      if (showRegions) slide.insertAdjacentHTML('beforeend', regionsOverlayHtml(activeTheme, currentBox()))
     })
   }
   applyThemeCss()
+  // Load the open doc's saved theme (themes/<id>/theme.json; the id is its `theme`
+  // frontmatter, else 'default') back on open — closing the save/load loop the editor's
+  // onSave opens. A missing file uses the built-in default; a corrupt one falls back too
+  // and warns, since a theme must never block opening a document.
+  const loadActiveTheme = async (): Promise<void> => {
+    let next: Theme = defaultTheme
+    const id = (currentDoc && getMeta(currentDoc.meta, 'theme')) || 'default'
+    const path = `themes/${id}/theme.json`
+    if (ports && (await ports.storage.exists(path))) {
+      try {
+        next = parseTheme(await ports.storage.readText(path))
+      } catch (e) {
+        status.textContent = `Theme "${id}" is invalid; using the default (${e instanceof Error ? e.message : String(e)}).`
+      }
+    }
+    activeTheme = next
+    applyThemeCss()
+    decorateDeck()
+  }
+  // The open document's slide box (ADR 0017 aspect ratio; default 16x9). One source for the
+  // render width, the DOM measurer, and region geometry, so all three agree on the shape.
+  const currentBox = (): SlideBox =>
+    currentDoc ? slideBoxFromMeta(currentDoc.meta) : DEFAULT_SLIDE_BOX
+  // Region snap references for the drag snapper: the active theme's master-layout edges +
+  // centres in slide space (y-up), resolved against the doc's box. Soft guides shown only
+  // while a node is moving — the "boundaries on move" of ADR 0017, distinct from the
+  // always-on showRegions overlay.
+  const themeSnapRefs = (): { xs: readonly number[]; ys: readonly number[] } =>
+    regionGuides(activeTheme, currentBox())
   let currentPath: string | null = null
   let gitPanel: GitPanelHandle | null = null
   const autosave = ports
@@ -308,19 +371,23 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   /** Repaint the properties panel for the current selection (node or connector). Cheap;
    *  called on selection (no re-render) and after every render. */
   const paintPanel = (): void => {
-    const frame = state.selected?.frame ?? state.selectedConnector?.frame ?? null
+    const sel = state.selected ?? state.selectedConnector ?? null
+    const frame = sel?.frame ?? null
+    const surface: Surface = sel?.surface ?? 'slide'
     const selection: PropSelection = state.selected
       ? { kind: 'node', name: state.selected.name }
       : state.selectedConnector
         ? { kind: 'connector', index: state.selectedConnector.index }
         : null
-    const picture = frame !== null ? (currentDoc?.frames[frame]?.picture ?? null) : null
+    const target = frame !== null ? currentDoc?.frames[frame] : undefined
+    const picture = target ? (pictureOf(target, surface) ?? null) : null
     // Curve-angle editing is offered only when the focused curve belongs to the arrow that
     // is actually selected (a stale focus from a since-deselected connector is ignored).
     const curveFocus =
       state.selectedConnector &&
       state.focusedCurve &&
       state.focusedCurve.frame === state.selectedConnector.frame &&
+      state.focusedCurve.surface === state.selectedConnector.surface &&
       state.focusedCurve.index === state.selectedConnector.index
         ? state.focusedCurve
         : null
@@ -329,25 +396,23 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       picture,
       curveFocus,
       actions: {
-        moveNode: (name, center) => frame !== null && actions.move(frame, name, center),
-        bindNode: (name, binding) => frame !== null && actions.bind(frame, name, binding),
-        resizeNode: (name, patch) => frame !== null && actions.resize(frame, name, patch),
+        moveNode: (name, center) => frame !== null && actions.move(frame, surface, name, center),
+        bindNode: (name, binding) => frame !== null && actions.bind(frame, surface, name, binding),
+        resizeNode: (name, patch) => frame !== null && actions.resize(frame, surface, name, patch),
         setConnectorOptions: (index, options) => {
-          const target = frame !== null ? currentDoc?.frames[frame] : undefined
-          if (currentDoc && target && frame !== null)
-            commit(
-              withFrame(currentDoc, frame, setConnectorOptions(target.picture, index, options)),
-            )
+          const p = target ? pictureOf(target, surface) : undefined
+          if (currentDoc && p && frame !== null)
+            commit(withSurface(currentDoc, frame, surface, setConnectorOptions(p, index, options)))
         },
         updateConnectorPath: (index, path) => {
-          const target = frame !== null ? currentDoc?.frames[frame] : undefined
-          if (currentDoc && target && frame !== null)
-            commit(withFrame(currentDoc, frame, updateConnector(target.picture, index, path)))
+          const p = target ? pictureOf(target, surface) : undefined
+          if (currentDoc && p && frame !== null)
+            commit(withSurface(currentDoc, frame, surface, updateConnector(p, index, path)))
         },
         setNodeOverlay: (name, spec) => {
-          const target = frame !== null ? currentDoc?.frames[frame] : undefined
-          if (currentDoc && target && frame !== null)
-            commit(withFrame(currentDoc, frame, setNodeOverlay(target.picture, name, spec)))
+          const p = target ? pictureOf(target, surface) : undefined
+          if (currentDoc && p && frame !== null)
+            commit(withSurface(currentDoc, frame, surface, setNodeOverlay(p, name, spec)))
         },
       },
     })
@@ -357,10 +422,13 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
    *  selection-change path, since `select` deliberately does not re-render the canvas. */
   const mountColumnEditors = (): void => {
     const sel = state.selected
-    const picture = sel && currentDoc ? currentDoc.frames[sel.frame]?.picture : undefined
+    const target = sel && currentDoc ? currentDoc.frames[sel.frame] : undefined
+    const picture = sel && target ? pictureOf(target, sel.surface) : undefined
     const node = sel && picture ? findNode(picture, sel.name) : undefined
     deckHandle?.setColumnEditors(
-      sel && node ? { frame: sel.frame, name: sel.name, content: node.content } : null,
+      sel && node
+        ? { frame: sel.frame, surface: sel.surface, name: sel.name, content: node.content }
+        : null,
     )
   }
 
@@ -381,10 +449,16 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
    * one changed range (`minimalDiff`, caret kept) and re-paint just this frame's card and
    * thumbnail. Undo/persist are unchanged; only the paint is localized.
    */
-  const commitContent = (frame: number, name: string, content: NodeContent): void => {
+  const commitContent = (
+    frame: number,
+    surface: Surface,
+    name: string,
+    content: NodeContent,
+  ): void => {
     const target = currentDoc?.frames[frame]
-    if (!currentDoc || !target) return
-    const doc = withFrame(currentDoc, frame, setNodeContent(target.picture, name, content))
+    const picture = target ? pictureOf(target, surface) : undefined
+    if (!currentDoc || !target || !picture) return
+    const doc = withSurface(currentDoc, frame, surface, setNodeContent(picture, name, content))
 
     undoStack.push(state.source)
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
@@ -398,18 +472,25 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     scheduleTableCompile(doc) // the edit may have introduced a table; keep compilation live
     scheduleCiteCompile(doc) // the edit may have changed a \cite or the bibliography
 
-    // Canvas delta: only this frame's card + thumbnail, everything else untouched.
+    // Canvas delta: only this frame surface's card, everything else untouched.
     const ctx = {
       selected: state.selected,
       selectedConnector: state.selectedConnector,
       selectedCurve: state.focusedCurve
-        ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+        ? {
+            frame: state.focusedCurve.frame,
+            surface: state.focusedCurve.surface,
+            anchor: state.focusedCurve.anchor,
+          }
         : null,
       connectMode: state.connectMode,
       ...(state.preview?.frame === frame ? { step: state.preview.step } : {}),
+      snapRefs: themeSnapRefs(),
+      slideWidth: currentBox().width,
     }
-    void deckHandle?.repaintFrame(frame, doc.frames[frame]!, ctx)
-    void navHandle?.repaintThumb(frame, doc.frames[frame]!)
+    void deckHandle?.repaintFrame(frame, surface, doc.frames[frame]!, ctx)
+    // The navigator thumbnail shows the audience slide, so only a slide edit changes it.
+    if (surface === 'slide') void navHandle?.repaintThumb(frame, doc.frames[frame]!)
     undoButton.disabled = undoStack.length === 0
     redoButton.disabled = redoStack.length === 0
   }
@@ -448,21 +529,34 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const collectSlides = async (doc: SlideDocument): Promise<RenderedSlide[]> => {
     await ensureTables(doc) // the export must not race the async table compile
     await ensureCitations(doc) // resolve \cite numbering + bibliography before export
+    const slideWidth = slideBoxFromMeta(doc.meta).width // aspect ratio (ADR 0017)
+    measurer.setSlideWidth(slideWidth) // measure the export at the doc's box, like the canvas
     const perFrame = await Promise.all(
       doc.frames.map(async (frame) => {
         const layout = await resolveLayoutAsync(frame.picture, measurer)
         const steps = slideStepCount(frame.picture)
         return Array.from({ length: steps }, (_, i) =>
-          renderSlide(frame.picture, layout, { ...renderOptions, step: i + 1 }),
+          renderSlide(frame.picture, layout, { ...renderOptions, step: i + 1, slideWidth }),
         )
       }),
     )
-    return perFrame.flat().map((html, index) => ({ index, html }))
+    // Furniture (page number, logo, bands) prints too (ADR 0017): it's frame, not content,
+    // and belongs on every exported page. Inject it inside each .sb-slide (the positioned
+    // box) so it anchors identically to the canvas; {n}/{total} number the flattened pages.
+    const rendered = perFrame.flat()
+    const total = rendered.length
+    return rendered.map((html, index) => {
+      const chrome = furnitureHtml(activeTheme, { index, total })
+      const withChrome = chrome
+        ? html.slice(0, html.lastIndexOf('</div>')) + chrome + '</div>'
+        : html
+      return { index, html: withChrome }
+    })
   }
 
   const actions: DeckActions = {
-    select(frame, name) {
-      state.selected = name === null ? null : { frame, name }
+    select(frame, surface, name) {
+      state.selected = name === null ? null : { frame, surface, name }
       state.focusedCurve = null // leaving a connector drops any curve-angle focus
       if (state.selectedConnector) {
         // Selecting a node clears any connector selection — needs a re-render (which
@@ -477,37 +571,41 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       setStatus()
       paintPanel()
     },
-    connect(frame, from, to) {
+    connect(frame, surface, from, to) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      commit(withFrame(currentDoc, frame, createConnector(target.picture, from, to)))
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
+      commit(withSurface(currentDoc, frame, surface, createConnector(picture, from, to)))
     },
-    selectConnector(frame, index) {
-      state.selectedConnector = index === null ? null : { frame, index }
+    selectConnector(frame, surface, index) {
+      state.selectedConnector = index === null ? null : { frame, surface, index }
       if (index !== null) state.selected = null // connector and node selection are exclusive
       state.focusedCurve = null // the editor re-emits fresh focus for the new arrow on paint
       void render() // cheap re-render to reflect the connector highlight (no drag in flight)
     },
-    focusConnectorCurve(frame, focus) {
+    focusConnectorCurve(frame, surface, focus) {
       // Fired by the connector editor (on paint, and when a control handle is grabbed): pin
       // the segment the panel edits, carrying its live geometry. Panel-only, never a render.
-      state.focusedCurve = focus ? { ...focus, frame } : null
+      state.focusedCurve = focus ? { ...focus, frame, surface } : null
       paintPanel()
     },
-    updateConnector(frame, index, path) {
+    updateConnector(frame, surface, index, path) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      commit(withFrame(currentDoc, frame, updateConnector(target.picture, index, path)))
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
+      commit(withSurface(currentDoc, frame, surface, updateConnector(picture, index, path)))
     },
-    move(frame, name, center) {
+    move(frame, surface, name, center) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      commit(withFrame(currentDoc, frame, moveNodeTo(target.picture, name, center)))
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
+      commit(withSurface(currentDoc, frame, surface, moveNodeTo(picture, name, center)))
     },
-    resize(frame, name, patch) {
+    resize(frame, surface, name, patch) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      let picture = resizeNode(target.picture, name, {
+      const source = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !source) return
+      let picture = resizeNode(source, name, {
         ...(patch.textWidth !== undefined ? { textWidth: patch.textWidth } : {}),
         ...(patch.minHeight !== undefined ? { minHeight: patch.minHeight } : {}),
         ...(patch.scaleX !== undefined ? { scaleX: patch.scaleX } : {}),
@@ -519,15 +617,17 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       if (patch.center && node && placement(node) === undefined) {
         picture = moveNodeTo(picture, name, patch.center)
       }
-      commit(withFrame(currentDoc, frame, picture))
+      commit(withSurface(currentDoc, frame, surface, picture))
     },
-    bind(frame, name, binding) {
+    bind(frame, surface, name, binding) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      commit(withFrame(currentDoc, frame, placeNodeRelative(target.picture, name, binding)))
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
+      commit(withSurface(currentDoc, frame, surface, placeNodeRelative(picture, name, binding)))
     },
-    requestCreate(frame, center, client) {
-      if (!currentDoc?.frames[frame]) return
+    requestCreate(frame, surface, center, client) {
+      const t = currentDoc?.frames[frame]
+      if (!t || !pictureOf(t, surface)) return
       // Summon the creation menu at the cursor; picking inserts at the slide point,
       // selects the new node, and opens it in edit mode (ux/creation-menu.md).
       openCreationMenu(client.x, client.y, {
@@ -536,31 +636,58 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         onPick: (id) => {
           const entry = CATALOGUE.find((item) => item.id === id)
           const target = currentDoc?.frames[frame]
-          if (!entry || !currentDoc || !target) return
-          const { picture, name } = createNode(target.picture, {
+          const source = target ? pictureOf(target, surface) : undefined
+          if (!entry || !currentDoc || !source) return
+          // Creation seeding (ADR 0017): a node made inside a master-layout region with no
+          // explicit class inherits the region's defaultClass. Creation-only — a later move
+          // never reclassifies (regions are soft guides, not placement).
+          const options = [...entry.options]
+          if (surface === 'slide' && options.length === 0) {
+            const region = regionAt(activeTheme, center, currentBox())
+            if (region?.defaultClass) options.unshift(region.defaultClass)
+          }
+          const { picture, name } = createNode(source, {
             at: center,
-            options: entry.options,
+            options,
             content: parseContent(entry.body),
           })
-          state.selected = { frame, name }
-          state.autoEdit = { frame, name }
-          commit(withFrame(currentDoc, frame, picture))
+          state.selected = { frame, surface, name }
+          state.autoEdit = { frame, surface, name }
+          commit(withSurface(currentDoc, frame, surface, picture))
         },
       })
     },
-    remove(frame, name) {
+    remove(frame, surface, name) {
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
-      if (state.selected?.frame === frame && state.selected.name === name) state.selected = null
-      commit(withFrame(currentDoc, frame, deleteNode(target.picture, name)))
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
+      if (
+        state.selected?.frame === frame &&
+        state.selected.surface === surface &&
+        state.selected.name === name
+      )
+        state.selected = null
+      commit(withSurface(currentDoc, frame, surface, deleteNode(picture, name)))
     },
-    editContent(frame, name, body) {
+    editContent(frame, surface, name, body) {
       // parseContent tolerates out-of-subset input: it lands as error content that
       // re-serializes verbatim (source kept) and renders as a marked error (ADR 0015).
-      commitContent(frame, name, parseContent(body))
+      commitContent(frame, surface, name, parseContent(body))
     },
-    editContentModel(frame, name, content) {
-      commitContent(frame, name, content)
+    editContentModel(frame, surface, name, content) {
+      commitContent(frame, surface, name, content)
+    },
+    addNotes(frame) {
+      const target = currentDoc?.frames[frame]
+      if (!currentDoc || !target || target.notes) return
+      // Seed the sidecar with one empty body node and open it for editing (ADR 0019).
+      const { picture, name } = createNode(
+        { statements: [] },
+        { at: { x: 8, y: 5 }, options: ['body'], content: parseContent('') },
+      )
+      state.selected = { frame, surface: 'notes', name }
+      state.autoEdit = { frame, surface: 'notes', name }
+      commit(withSurface(currentDoc, frame, 'notes', picture))
     },
   }
 
@@ -575,6 +702,9 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
 
     const doc = result.doc
     currentDoc = doc
+    // Aspect ratio (ADR 0017): size the measurer to this doc's box BEFORE any layout is
+    // resolved, so measured node boxes are in the right units for a non-16:9 deck.
+    measurer.setSlideWidth(slideBoxFromMeta(doc.meta).width)
     scheduleTableCompile(doc) // compile any new tables out of band; they pop in on onReady
     scheduleCiteCompile(doc) // resolve citations out of band; they pop in on onReady
     docTitle.textContent = getMeta(doc.meta, 'title') ?? 'Untitled'
@@ -594,11 +724,17 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       selected: state.selected,
       selectedConnector: state.selectedConnector,
       selectedCurve: state.focusedCurve
-        ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+        ? {
+            frame: state.focusedCurve.frame,
+            surface: state.focusedCurve.surface,
+            anchor: state.focusedCurve.anchor,
+          }
         : null,
       connectMode: state.connectMode,
       autoEdit,
       preview: state.preview,
+      snapRefs: themeSnapRefs(),
+      slideWidth: currentBox().width,
       actions,
       measurer,
       isStale: () => seq !== renderSeq,
@@ -618,6 +754,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       frames: doc.frames,
       active: state.active,
       measurer,
+      slideWidth: currentBox().width,
       onSelect: (index) => deckHandle?.scrollToSlide(index),
     })
     undoButton.disabled = undoStack.length === 0
@@ -687,16 +824,25 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     selected: state.selected,
     selectedConnector: state.selectedConnector,
     selectedCurve: state.focusedCurve
-      ? { frame: state.focusedCurve.frame, anchor: state.focusedCurve.anchor }
+      ? {
+          frame: state.focusedCurve.frame,
+          surface: state.focusedCurve.surface,
+          anchor: state.focusedCurve.anchor,
+        }
       : null,
     connectMode: state.connectMode,
     ...(previewStep(frame) !== undefined ? { step: previewStep(frame) } : {}),
+    snapRefs: themeSnapRefs(),
+    slideWidth: currentBox().width,
   })
 
-  /** Repaint one frame's card in place (its preview changed), leaving the rest untouched. */
+  /** Repaint one frame's cards in place (its preview step changed), leaving the rest
+   *  untouched. The step drives BOTH surfaces — the notes render at the same step (ADR 0019). */
   const repaintFrameStep = (frame: number): void => {
     const f = currentDoc?.frames[frame]
-    if (f) void deckHandle?.repaintFrame(frame, f, repaintCtx(frame))
+    if (!f) return
+    void deckHandle?.repaintFrame(frame, 'slide', f, repaintCtx(frame))
+    if (f.notes) void deckHandle?.repaintFrame(frame, 'notes', f, repaintCtx(frame))
   }
 
   /** Return a previewed slide to its all-visible authoring view. */
@@ -786,14 +932,15 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (event.key !== 'Delete' && event.key !== 'Backspace') return
     if (state.selectedConnector) {
       event.preventDefault()
-      const { frame, index } = state.selectedConnector
+      const { frame, surface, index } = state.selectedConnector
       const target = currentDoc?.frames[frame]
-      if (!currentDoc || !target) return
+      const picture = target ? pictureOf(target, surface) : undefined
+      if (!currentDoc || !picture) return
       state.selectedConnector = null
-      commit(withFrame(currentDoc, frame, deleteConnector(target.picture, index)))
+      commit(withSurface(currentDoc, frame, surface, deleteConnector(picture, index)))
     } else if (state.selected) {
       event.preventDefault()
-      actions.remove(state.selected.frame, state.selected.name)
+      actions.remove(state.selected.frame, state.selected.surface, state.selected.name)
     }
   })
 
@@ -826,8 +973,12 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         button.disabled = true
         try {
           const slides = await collectSlides(currentDoc)
-          if (button.dataset.export === 'print') await printDeck(slides, { title })
-          else await downloadDeckHtml(slides, { title })
+          // The export must carry the active theme's style + furniture CSS, so the printed
+          // page matches the canvas (default theme's CSS is the fallback inside export).
+          const themeCss = `${themeStylesheet(activeTheme)}\n${furnitureCss(activeTheme)}`
+          const slideWidth = currentBox().width // aspect ratio (ADR 0017)
+          if (button.dataset.export === 'print') await printDeck(slides, { title, themeCss, slideWidth })
+          else await downloadDeckHtml(slides, { title, themeCss, slideWidth })
         } catch (err) {
           status.textContent = `Export failed: ${err instanceof Error ? err.message : String(err)}`
         } finally {
@@ -835,6 +986,46 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         }
       })
     })
+
+  // Present (ADR 0019): open the audience + speaker-notes windows, driven by one shared
+  // cursor. Rendered from the current in-memory deck (reflects unsaved edits), so tables
+  // and citations are compiled first. `present` opens the console window synchronously in
+  // this click so the pop-up is not blocked, then renders and writes it in.
+  qs('#present').addEventListener('click', () => {
+    if (!currentDoc) return
+    const doc = currentDoc
+    const title = getMeta(doc.meta, 'title') ?? 'Slides'
+    // One layout per picture, resolved on first use and reused across its steps (geometry
+    // is step-invariant, ADR 0018) — and across the slide/notes of a frame.
+    const layouts = new Map<TikzPicture, Layout>()
+    void present({
+      frames: doc.frames,
+      title,
+      themeCss: `${themeStylesheet(activeTheme)}\n${furnitureCss(activeTheme)}`,
+      prepare: async () => {
+        await ensureTables(doc)
+        await ensureCitations(doc)
+      },
+      renderAt: async (picture, step) => {
+        let layout = layouts.get(picture)
+        if (!layout) {
+          layout = await resolveLayoutAsync(picture, measurer)
+          layouts.set(picture, layout)
+        }
+        return renderSlide(picture, layout, { ...renderOptions, step })
+      },
+      stepsOf: (picture) => slideStepCount(picture),
+    }).then((result) => {
+      if (!result.ok) {
+        status.textContent =
+          result.reason === 'blocked'
+            ? 'Presenter: allow pop-ups for this site to present.'
+            : result.reason === 'empty'
+              ? 'Nothing to present yet.'
+              : `Presenter failed: ${result.message ?? 'unknown error'}`
+      }
+    })
+  })
 
   // Theme editor (ADR 0017): a structured GUI over the active theme with live preview.
   const themeButton = document.createElement('button')
@@ -902,6 +1093,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     state.autoEdit = null
     codePane.setValue(source)
     await render()
+    await loadActiveTheme() // the doc may select a saved theme; apply it over the fresh paint
     await refreshTree()
   }
 

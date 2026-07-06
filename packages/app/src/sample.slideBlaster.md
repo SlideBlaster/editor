@@ -47,6 +47,16 @@ Pause build: first \pause second \appear third
 \draw[->] (side) -- (list);
 ```
 
+```notes
+\node[body, text width=15] (n) {
+Speaker notes are a sidecar slide, keyed to the SAME steps (ADR 0019).
+\pause
+Step 2: the staged item just appeared on the audience slide — mention why it matters.
+\pause
+Step 3: land the third point. Press Present to see both windows advance together.
+};
+```
+
 ## Overlays: wrapping commands {#s-overlays-2}
 
 ```slide

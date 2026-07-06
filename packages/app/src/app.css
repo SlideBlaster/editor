@@ -111,6 +111,13 @@ body {
   gap: 0.4rem;
 }
 
+/* Present group: opens the audience + speaker-notes windows. */
+.present-actions {
+  margin-left: 0.4rem;
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
 /* Export group: Print / PDF and Export HTML, at the right of the app bar. */
 .export-actions {
   margin-left: 0.4rem;
@@ -119,6 +126,7 @@ body {
 }
 
 .tool-actions button,
+.present-actions button,
 .export-actions button {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -131,6 +139,7 @@ body {
 }
 
 .tool-actions button:hover,
+.present-actions button:hover,
 .export-actions button:hover {
   border-color: var(--accent);
   color: var(--accent);
@@ -144,12 +153,14 @@ body {
 }
 
 .tool-actions button:disabled,
+.present-actions button:disabled,
 .export-actions button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
 .tool-actions button:focus-visible,
+.present-actions button:focus-visible,
 .export-actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -756,16 +767,59 @@ button.tree-row {
   padding-block: calc(clamp(1rem, 4vw, 3rem) * var(--zoom, 1));
 }
 
-/* Zoom scales the slide width (and the deck's gaps/padding) via --zoom, so the
+/* Each frame is a row: the audience slide on the left, its presenter-notes sidecar on
+   the right (ADR 0019), scrolling together. */
+.deck-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: safe center;
+  gap: calc(clamp(0.6rem, 1.6vw, 1.4rem) * var(--zoom, 1));
+}
+
+/* Zoom scales the card width (and the deck's gaps/padding) via --zoom, so the
    slide can grow past the viewport and the scrollport pans over it. Linear in
-   --zoom, which keeps zoom.ts's zoom-to-cursor math exact. */
-.deck-slide {
+   --zoom, which keeps zoom.ts's zoom-to-cursor math exact. The slide and the notes
+   card share one width so the two columns line up. */
+.deck-slide,
+.deck-note {
   position: relative;
   flex: 0 0 auto;
-  width: calc(min(100%, 62rem) * var(--zoom, 1));
+  width: calc(min(46rem, 46vw) * var(--zoom, 1));
   /* A query container so the inline editor's cqw font matches the slide's (the editor
      lives in the overlay layer, a sibling of .sb-slide, not inside it). */
   container-type: inline-size;
+}
+
+/* The empty-notes cell: a dashed 16:9 placeholder with an "Add notes" button. */
+.deck-note-empty {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+.deck-note-add {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.deck-note-add:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+/* A quiet accent so the notes card reads as the presenter's side, not another slide. */
+.deck-note .sb-slide {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 3px;
 }
 
 /* Floating zoom control, top-right of the canvas. */

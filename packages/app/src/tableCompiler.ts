@@ -67,12 +67,16 @@ export function installTableCompiler(
   onReady = hooks.onReady
 }
 
-/** Every distinct deferred-table source in the document. */
+/** Every distinct deferred-table source in the document — slide pictures AND their
+ *  presenter-notes sidecars (ADR 0019), so a table in the notes compiles too. The cache
+ *  is source-keyed and additive, so folding notes in cannot disturb slide tables. */
 function tableSources(doc: SlideDocument): Set<string> {
   const out = new Set<string>()
   for (const frame of doc.frames) {
-    for (const stmt of frame.picture.statements) {
-      if (stmt.kind === 'node') collectContent(stmt.content, out)
+    for (const picture of frame.notes ? [frame.picture, frame.notes] : [frame.picture]) {
+      for (const stmt of picture.statements) {
+        if (stmt.kind === 'node') collectContent(stmt.content, out)
+      }
     }
   }
   return out

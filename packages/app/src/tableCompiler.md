@@ -30,8 +30,11 @@ replaces the old `mathOptions` at those call sites.
   document must settle before any conversion runs, so typing inside a `tabular` never
   fires a Perl conversion per keystroke — only the settled source compiles. Returns
   immediately; the current paint uses placeholders and the table pops in on `onReady`.
-- `ensureTables(doc)` — the export path. Compiles every table in the doc now and awaits
-  it (no debounce), so a collected/exported deck is never missing a table.
+- `ensureTables(doc)` — the export/presenter path. Compiles every table in the doc now
+  and awaits it (no debounce), so a collected/exported deck — or a presented one — is
+  never missing a table. The source walk covers each frame's slide picture **and its
+  presenter-notes sidecar** (`frame.notes`, ADR 0019), so a table in the notes compiles
+  too; the cache is source-keyed and additive, so notes never disturb slide tables.
 - `onReady` (wired by createApp) resets the DOM measurer and re-renders: the placeholder
   box that was measured is dropped and the table re-measures at its true size. It fires
   after the cache is populated, so the re-render finds cache hits and does not re-compile

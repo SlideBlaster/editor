@@ -25,6 +25,9 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
         <span id="step-readout" title="Overlay step of the active slide">All</span>
         <button type="button" data-step="next" aria-label="Next step" title="Next step (.)">&rsaquo;</button>
       </div>
+      <div class="present-actions" id="present-actions" role="group" aria-label="Present">
+        <button type="button" id="present" title="Present: open audience + speaker-notes windows">Present</button>
+      </div>
       <div class="export-actions" id="export-actions" role="group" aria-label="Export">
         <button type="button" data-export="print">Print / PDF</button>
         <button type="button" data-export="html">Export HTML</button>
