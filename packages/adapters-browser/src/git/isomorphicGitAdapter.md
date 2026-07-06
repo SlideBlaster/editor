@@ -16,13 +16,18 @@ the user's GitHub repo (ADR 0001), so no server holds the working copy.
   token; the caller passes one per call.
 - **Proxy:** all remote traffic goes through `corsProxy` (the first-party
   `services/git-proxy`), because GitHub's git-smart-http is not CORS-enabled.
-- **Spike scope:** `clone/status/stage/commit/log/currentBranch/checkout/
+- **Scope:** `init/clone/status/stage/commit/log/currentBranch/checkout/
 createBranch/push` are implemented; `pull`/`merge` handle the fast-forward and
-  conflict-reporting cases; `status` ahead/behind is stubbed to 0 (deferred past the
-  spike). `stage` routes deletions to `git.remove`.
+  conflict-reporting cases; `status` ahead/behind is stubbed to 0 (deferred until a
+  remote exists, M4). `stage` routes deletions to `git.remove`. `init` creates a
+  fresh local-only repository (default branch `main`) — the offline-first M3 path;
+  a remote attaches later via clone/push. `log` on an unborn branch (nothing
+  committed yet) returns `[]` rather than throwing.
 
 ## Validation
 
-Proven by an env-gated integration test that stands up an in-process proxy and
-round-trips a real scratch repo (`isomorphicGitAdapter.test.ts`). The in-browser
-CORS + IndexedDB path is validated separately (see the package README).
+Local history (`init` -> write -> stage -> commit -> log/status) is covered by an
+always-on offline test against `node:fs`. The remote round-trip is proven by an
+env-gated integration test that stands up an in-process proxy against a real
+scratch repo (`isomorphicGitAdapter.test.ts`). The in-browser CORS + IndexedDB
+path is validated separately (see the package README).

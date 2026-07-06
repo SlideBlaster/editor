@@ -27,8 +27,12 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
       <span class="app-tag">${escapeText(opts.shellTag)}</span>
     </header>
     <main class="workspace">
+      <aside class="side-panel" id="side-panel" aria-label="Workspace" hidden>
+        <div class="side-section" id="file-tree"></div>
+        <div class="side-section side-section-grow" id="git-panel"></div>
+      </aside>
       <section class="editor">
-        <div class="editor-head">sample.slideBlaster.md</div>
+        <div class="editor-head" id="editor-head">sample.slideBlaster.md</div>
         <div class="code-host" id="code"></div>
       </section>
       <nav class="deck-rail" id="deck-rail" aria-label="Slides" hidden></nav>

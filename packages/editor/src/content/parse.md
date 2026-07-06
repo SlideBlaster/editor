@@ -41,7 +41,7 @@ container's body (transparent nesting):
   the render track. Markdown list nesting is by container only (a LaTeX item / HTML
   wrap holding a sublist), not markdown indentation.
 - Whitespace/markers in lists, columns, and matrices normalize on save (list markers
-  -> `-` and renumbered; matrix cells joined ` & `, rows ` \\ `), so only canonical
+  -> `-` and renumbered; matrix cells joined `&`, rows `\\`), so only canonical
   text round-trips byte-exact. Matrix `&`/`\\` splitting respects braces but not math
   `$…$`.
 - HTML tags must be attribute-less; math delimiters are only `$`/`$$`; an unmatched

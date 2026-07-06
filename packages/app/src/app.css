@@ -155,19 +155,254 @@ body {
   outline-offset: 1px;
 }
 
-/* Workspace: code editor | carousel navigator rail | preview deck. The middle
-   track sizes to the rail. */
+/* Workspace: side panel | code editor | carousel navigator rail | preview deck.
+   The first track collapses when the side panel is hidden (no ports wired); the
+   middle track sizes to the rail. */
 .workspace {
   display: grid;
-  grid-template-columns: minmax(18rem, 32rem) auto 1fr;
+  grid-template-columns: auto minmax(18rem, 32rem) auto 1fr;
   min-height: 0;
 }
 
 @media (max-width: 820px) {
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto 1fr;
+    grid-template-rows: auto 1fr auto 1fr;
   }
+}
+
+/* Side panel (M3): the file tree over the source-control panel. */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  width: 15rem;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.78rem;
+}
+
+.side-panel[hidden] {
+  display: none;
+}
+
+.side-section {
+  overflow: auto;
+  padding: 0.5rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  max-height: 45%;
+}
+
+.side-section-grow {
+  flex: 1;
+  border-bottom: 0;
+  max-height: none;
+}
+
+.side-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.side-title button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+.side-title button:hover {
+  border-color: var(--accent);
+}
+
+/* File tree */
+.file-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.35rem;
+}
+
+.file-tree .file-tree {
+  padding-left: 0.85rem;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  border-radius: 5px;
+  padding: 0.14rem 0.3rem;
+  color: var(--ink);
+}
+
+.tree-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+button.tree-row,
+.tree-name,
+.tree-action {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+button.tree-row {
+  padding: 0.14rem 0.3rem;
+  color: var(--muted);
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.05rem 0;
+}
+
+.tree-name:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.tree-file.is-current .tree-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tree-action {
+  color: var(--muted);
+  padding: 0 0.15rem;
+  visibility: hidden;
+}
+
+.tree-row:hover .tree-action {
+  visibility: visible;
+}
+
+.tree-action:hover {
+  color: var(--danger);
+}
+
+/* Source-control panel */
+.git-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+  color: var(--muted);
+}
+
+.git-identity button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+.git-changes,
+.git-log {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.git-changes li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.1rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-badge {
+  flex: none;
+  width: 1.1rem;
+  text-align: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.git-clean {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.git-commit {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.git-commit input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+}
+
+.git-commit button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+
+.git-commit button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.git-log li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.22rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.git-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 /* Editor pane */

@@ -59,13 +59,24 @@ the render path is fully client-side.
 ## Status
 
 - **M0:** scaffold + the six port interfaces. Done in `packages/editor`.
-- **Track-0 spike — browser git + CORS proxy:** landed. `services/git-proxy`
-  (runtime-agnostic handler + Worker/Node entries, allowlist + CORS unit-tested)
-  and `packages/adapters-browser` (`IsomorphicGitAdapter` Git port + env-gated live
-  round-trip). Open: in-browser CORS/IndexedDB round-trip and body-framing against
-  real GitHub (see `services/git-proxy/README.md`).
-- **Track-0 spikes remaining:** async measurement layout (engine), WASM latexml
-  (`adapters-shared`, handled separately), Yjs<->AST round-trip.
-- **M1:** the engine, test-first against the format invariants.
+- **M1 (engine):** built in `packages/editor` — model, markdown round-trip, TikZ
+  subset, measure->resolve->render layout, edit ops, connectors, invariants.
+- **M2 (editor app):** built in `packages/app` — canvas deck, code pane, deck
+  navigator, properties, creation menu, undo/redo, snapping, zoom, export.
+- **M3 (browser working copy):** landed. `packages/adapters-browser` has the
+  Storage port (`FsStorageAdapter`) and Git port (`IsomorphicGitAdapter`, incl.
+  `init`) over **one shared LightningFS/IndexedDB fs** (`createBrowserWorkspace`,
+  bootstraps `git init` on first run) plus `DevAuthAdapter` (AuthPort stand-in
+  until M4). The app takes `ports` and adds autosave persistence, the file tree,
+  and the source-control panel (status / stage-all commit / log; author from the
+  Auth port); web-shell wires it all. Offline solo works end-to-end.
+- **Track-0 spikes:** browser git + CORS proxy landed (`services/git-proxy`);
+  async measurement layout landed (`app/domMeasurer`); WASM latexml concluded
+  feasible-but-heavy (see `../spikes/wasm-latexml/FINDINGS.md`; JS table subset
+  remains the interim plan, engine work in `adapters-shared`). **Remaining:
+  Yjs<->AST round-trip (ADR 0011) — not started.**
+- **Next:** M4 — Auth service (GitHub App + KMS minting) and push/pull to
+  GitHub through the git-proxy; swap `DevAuthAdapter` for the real browser auth
+  adapter.
 
 Milestones M0-M8: `../design/roadmap.md`.

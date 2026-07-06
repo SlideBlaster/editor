@@ -73,3 +73,38 @@ function parseRepo(url: string): RemoteRef['token']['repo'] {
   const match = url.replace(/\.git$/, '').match(/github\.com[/:]([^/]+)\/([^/]+)$/)
   return { owner: match?.[1] ?? '', name: match?.[2] ?? '' }
 }
+
+// Local-only history — the offline M3 path. No network, always on.
+describe('IsomorphicGitAdapter local history (offline)', () => {
+  it('inits a repo, commits, and reads history and status', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sb-git-local-'))
+    const adapter = new IsomorphicGitAdapter({
+      fs: nodeFs as unknown as FsClient,
+      http,
+      dir,
+    })
+
+    await adapter.init(dir)
+    expect(await adapter.currentBranch()).toBe('main')
+    expect(await adapter.log()).toEqual([]) // unborn branch: empty history, no throw
+
+    writeFileSync(join(dir, 'deck.slideBlaster.md'), '# deck\n')
+    const before = await adapter.status()
+    expect(before.files).toEqual([
+      { path: 'deck.slideBlaster.md', index: 'unmodified', worktree: 'untracked' },
+    ])
+
+    await adapter.stage(['deck.slideBlaster.md'])
+    const oid = await adapter.commit('first deck', { name: 'Dev', email: 'dev@local' })
+    expect(oid).toMatch(/^[0-9a-f]{40}$/)
+
+    const log = await adapter.log()
+    expect(log).toHaveLength(1)
+    expect(log[0]?.message).toContain('first deck')
+    expect(log[0]?.author).toEqual({ name: 'Dev', email: 'dev@local' })
+
+    const after = await adapter.status()
+    expect(after.branch).toBe('main')
+    expect(after.files).toEqual([])
+  })
+})

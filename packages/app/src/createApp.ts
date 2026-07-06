@@ -6,7 +6,9 @@
  * the workspace chrome, injects the global stylesheets, and wires the two-way edit
  * loop. Everything here is platform-agnostic DOM + engine code, so it runs unchanged
  * in a browser tab and in a Tauri webview — the shells differ only in which adapters
- * they build around it (none wired yet at this milestone).
+ * they build around it. With `ports` wired (M3) the source of truth is a document in
+ * the working copy: edits autosave through Storage, and the side panel adds the file
+ * tree and local git history; without ports the bundled sample runs in memory.
  *
  * The engine, running unchanged in a browser, with a two-way edit loop:
  *   - text -> render: code pane -> fromMarkdown -> resolveLayout -> renderSlide (W2)
@@ -55,11 +57,19 @@ import { mathOptions } from './math'
 import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import { renderChrome } from './chrome'
+import { bootDocument, createAutosave, rememberDoc, type AppPorts } from './workspace'
+import { paintFileTree } from './fileTree'
+import { createGitPanel, type GitPanelHandle } from './gitPanel'
 import './app.css'
 
-/** Per-shell knobs. `shellTag` is the app-bar badge (e.g. "web-shell · M2"). */
+/**
+ * Per-shell knobs. `shellTag` is the app-bar badge (e.g. "web-shell · M3").
+ * `ports` wires the working copy in (storage/git/auth); without it the app runs
+ * the bundled sample in memory (no persistence, side panel hidden).
+ */
 export interface CreateAppOptions {
   shellTag?: string
+  ports?: AppPorts
 }
 
 interface State {
@@ -149,6 +159,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const undoButton = qs<HTMLButtonElement>('#undo')
   const redoButton = qs<HTMLButtonElement>('#redo')
   const propsHost = qs('#props')
+  const editorHead = qs('#editor-head')
   let currentDoc: SlideDocument | null = null
   let codePane: CodePane
   let deckHandle: DeckHandle | null = null
@@ -156,6 +167,20 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const measurer = createDomMeasurer()
   // Monotonic render token: a slow async paint that finishes after a newer edit is dropped.
   let renderSeq = 0
+
+  // Working copy (M3): which document is open, its debounced persistence, and the
+  // side-panel views. All null/absent when the shell wired no ports (in-memory mode).
+  const ports = opts.ports ?? null
+  let currentPath: string | null = null
+  let gitPanel: GitPanelHandle | null = null
+  const autosave = ports
+    ? createAutosave(ports.storage, { onWrite: () => void gitPanel?.refresh() })
+    : null
+
+  /** Persist the current source to the working copy (debounced; no-op in memory mode). */
+  const persist = (): void => {
+    if (autosave && currentPath) autosave.schedule(currentPath, state.source)
+  }
 
   const setStatus = (): void => {
     // Out-of-subset nodes take precedence: surface the document error state (ADR 0015).
@@ -212,6 +237,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     redoStack.length = 0 // a new edit invalidates the redo branch
     state.source = toMarkdown(doc)
     codePane.setValue(state.source)
+    persist()
     void render()
   }
 
@@ -221,6 +247,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     codePane.setValue(source)
     state.selected = null
     state.selectedConnector = null
+    persist()
     void render()
   }
 
@@ -377,6 +404,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     value: state.source,
     onChange: (value) => {
       state.source = value
+      persist()
       void render()
     },
   })
@@ -496,7 +524,80 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       })
     })
 
-  void render()
+  // Working-copy boot (M3): open a document from storage, reveal the side panel
+  // (file tree + source control), and keep everything refreshed on mutation.
+  // Without ports the app stays on the bundled in-memory sample (pre-M3 behaviour).
+  const fileTreeHost = ports ? qs('#file-tree') : null
+
+  const refreshTree = async (): Promise<void> => {
+    if (!ports || !fileTreeHost) return
+    await paintFileTree(fileTreeHost, {
+      storage: ports.storage,
+      currentPath,
+      onOpen: (path) => void openDoc(path),
+      onMutate: () => void onWorkspaceMutated(),
+    })
+  }
+
+  /** Switch the editor to `path`: flush (or drop) pending saves, load, reset history. */
+  const openDoc = async (path: string): Promise<void> => {
+    if (!ports || !autosave) return
+    // A pending save of a deleted/renamed-away file must not resurrect it.
+    if (currentPath && (await ports.storage.exists(currentPath))) await autosave.flush()
+    else autosave.discard()
+    const source = await ports.storage.readText(path)
+    currentPath = path
+    rememberDoc(path)
+    editorHead.textContent = path
+    undoStack.length = 0
+    redoStack.length = 0
+    state.source = source
+    state.active = 0
+    state.selected = null
+    state.selectedConnector = null
+    state.autoEdit = null
+    codePane.setValue(source)
+    await render()
+    await refreshTree()
+  }
+
+  /** After a file-tree mutation: reopen if the current doc vanished, repaint views. */
+  const onWorkspaceMutated = async (): Promise<void> => {
+    if (!ports) return
+    if (currentPath && !(await ports.storage.exists(currentPath))) {
+      autosave?.discard()
+      currentPath = null
+      await openDoc(await bootDocument(ports.storage, initialSource))
+    } else {
+      await refreshTree()
+    }
+    void gitPanel?.refresh()
+  }
+
+  if (ports && autosave) {
+    qs('#side-panel').hidden = false
+    gitPanel = createGitPanel(qs('#git-panel'), {
+      git: ports.git,
+      auth: ports.auth,
+      beforeCommit: () => autosave.flush(),
+      onError: (message) => {
+        status.textContent = message
+      },
+    })
+    // Last-resort flush; the 400ms debounce keeps the unload race window small.
+    window.addEventListener('beforeunload', () => void autosave.flush())
+    void (async () => {
+      try {
+        await openDoc(await bootDocument(ports.storage, initialSource))
+      } catch (err) {
+        errorBanner.textContent = `workspace failed to open: ${err instanceof Error ? err.message : String(err)}`
+        errorBanner.hidden = false
+      }
+      await gitPanel?.refresh()
+    })()
+  } else {
+    void render()
+  }
 }
 
 // Inject the engine's base stylesheet, the shared slide type scale, and the KaTeX

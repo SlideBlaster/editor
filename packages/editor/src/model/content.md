@@ -44,7 +44,7 @@ Inline runs; lists in all three dialects (`- x` / `itemize` / `enumerate` / `<ul
 `[=N]` step, `<appear>`); images (`\image`, `![alt](src)`); and `columns`/`matrix`
 groups. Any container run (list, columns, matrix, wrap) is a `TextRun`, so it nests
 freely. Whitespace in lists/columns/matrix is normalized on save (list markers ->
-`-`, ordered lists renumber; cells joined by ` & `, rows by ` \\ `); canonical text
+`-`, ordered lists renumber; cells joined by `&`, rows by `\\`); canonical text
 round-trips byte-exact.
 
 Two constructs are parsed but not renderable without a port, so they preserve source

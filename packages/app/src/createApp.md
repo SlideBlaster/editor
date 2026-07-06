@@ -5,7 +5,8 @@ mounted identically by both shells (web, desktop). Runs the editor engine unchan
 in any webview and keeps a **two-way** loop between the source text and the slides,
 both sharing one source of truth (the `.slideBlaster.md` text, A1). On mount it
 renders the [chrome](./chrome.md) into `root` and injects the global stylesheets
-(once), then wires everything below. `opts.shellTag` sets the app-bar badge.
+(once), then wires everything below. `opts.shellTag` sets the app-bar badge;
+`opts.ports` (optional) wires the working copy in — see the working-copy bullet.
 
 ```
 text -> render (W2):   code pane -> fromMarkdown -> resolveLayoutAsync -> renderSlide
@@ -44,6 +45,19 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   verbatim, renders as a marked error — ADR 0015). `setStatus` counts error nodes across
   the deck (`countErrorNodes`) and surfaces the document error state; the git-commit
   gate itself lands with the Git adapter (M4).
+- **Working copy (M3).** With `opts.ports` (`AppPorts`: storage/git/auth from
+  [workspace.ts](./workspace.md)) the open document lives in the working copy:
+  boot seeds/selects via `bootDocument` and every source change persists through
+  the debounced autosave (`persist` in `commit`/`restore`/code-pane `onChange`;
+  flushed on doc switch, before a git commit, and on unload — discarded instead
+  if the file was deleted or renamed away). The side panel (`#side-panel`)
+  reveals the [file tree](./fileTree.md) (open/create/rename/delete; deleting
+  the open doc re-boots onto a surviving one) and the
+  [git panel](./gitPanel.md) (status / stage-all commit / log, author from the
+  Auth port). `#editor-head` shows the open path. Doc switches reset the undo
+  stacks and selection. Without ports everything above is absent and the
+  bundled sample runs purely in memory (pre-M3 behaviour, still the desktop
+  shell's mode until M5).
 - **Selection is cheap.** `select` only toggles handle outlines via
   `deckHandle.showSelection`; it must not re-render, or it would destroy the
   element a drag started on. Selection is `{ frame, name }` — names are unique per

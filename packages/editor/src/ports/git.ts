@@ -52,6 +52,8 @@ export interface SyncResult {
 }
 
 export interface GitPort {
+  /** Create an empty local repository at `dir` (no remote; offline-first M3). */
+  init(dir: string): Promise<void>
   clone(remote: RemoteRef, dir: string): Promise<void>
   status(): Promise<GitStatus>
   stage(paths: string[]): Promise<void>

@@ -28,7 +28,7 @@ format invariants.
 ## E2 — relative placement (this file)
 
 The relative half of the two-mode rule (`moveNodeTo` is the absolute half). Placement
-already *parses* (`tikz/options.placement`) and *renders* (`layout/resolve`); these ops
+already _parses_ (`tikz/options.placement`) and _renders_ (`layout/resolve`); these ops
 are the writer.
 
 - `placeNodeRelative(picture, name, { side, gap, ref })` — bind a node
@@ -50,7 +50,7 @@ are the writer.
 - `setNodeContent(picture, name, content)` — replace a node's body content, leaving
   geometry and options untouched. No-op if the node is absent. The `content` is the
   parsed edited body, so an out-of-subset edit lands as `{ kind: 'error', source,
-  message }` and re-serializes verbatim (ADR 0015) — data-safe by construction. The
+message }` and re-serializes verbatim (ADR 0015) — data-safe by construction. The
   shell seeds the raw editor with `serializeBody(content)` and re-parses on commit, so
   `setNodeContent(p, name, parseContent(serializeBody(c)))` round-trips.
 

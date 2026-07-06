@@ -54,6 +54,11 @@ export class IsomorphicGitAdapter implements GitPort {
     this.mergeAuthor = deps.mergeAuthor ?? DEFAULT_MERGE_AUTHOR
   }
 
+  async init(dir: string): Promise<void> {
+    this.dir = dir
+    await git.init({ fs: this.fs, dir, defaultBranch: 'main' })
+  }
+
   async clone(remote: RemoteRef, dir: string): Promise<void> {
     this.dir = dir
     await git.clone({
@@ -99,12 +104,19 @@ export class IsomorphicGitAdapter implements GitPort {
   }
 
   async log(options?: { depth?: number; ref?: string }): Promise<Commit[]> {
-    const entries = await git.log({
-      fs: this.fs,
-      dir: this.dir,
-      depth: options?.depth ?? 50,
-      ref: options?.ref,
-    })
+    let entries: Awaited<ReturnType<typeof git.log>>
+    try {
+      entries = await git.log({
+        fs: this.fs,
+        dir: this.dir,
+        depth: options?.depth ?? 50,
+        ref: options?.ref,
+      })
+    } catch (error) {
+      // An unborn branch (fresh init, nothing committed) has no history yet.
+      if (errorCode(error) === 'NotFoundError') return []
+      throw error
+    }
     return entries.map((entry): Commit => ({
       oid: entry.oid,
       message: entry.commit.message,
@@ -205,13 +217,14 @@ function toFileStatus(row: StatusRow): GitStatus['files'][number] {
   return { path, index, worktree }
 }
 
+function errorCode(error: unknown): string | undefined {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : undefined
+}
+
 function mergeConflicts(error: unknown): string[] | null {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    error.code === 'MergeConflictError'
-  ) {
+  if (errorCode(error) === 'MergeConflictError') {
     const data = (error as { data?: { filepaths?: string[] } }).data
     return data?.filepaths ?? []
   }

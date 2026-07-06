@@ -4,3 +4,4 @@
  * Both shells import `createApp` from here and mount it into their root element.
  */
 export { createApp, type CreateAppOptions } from './createApp'
+export type { AppPorts } from './workspace'

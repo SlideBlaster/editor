@@ -8,6 +8,9 @@ port exposes. Git is the persistence and merge mechanism for the whole product
 
 - Operates on the working copy in place. `stage` / `commit` build local history;
   `pull` / `push` move it to and from the user's GitHub repo.
+- A working copy comes into being either by `clone` (from a remote) or by `init`
+  (a fresh local-only repository, default branch `main`). `init` needs no
+  credentials; a remote can be attached later when the user connects GitHub.
 - Remote operations take a `RemoteRef` carrying a short-lived `ScopedToken` from the
   Auth port. The port never stores credentials; the caller passes one per call.
 - `pull` and `merge` surface `conflicts` (a path list) rather than throwing on
