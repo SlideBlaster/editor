@@ -1,0 +1,37 @@
+# Cloudflare Worker deploy config for the Auth service (ADR 0010, 0020).
+# Deploy: `npx wrangler deploy` (CI, after `wrangler secret put` sets the secrets).
+# Runs on a route of the APP domain so the session cookie is first-party same-site.
+name = "slideblaster-auth"
+main = "src/worker.ts"
+compatibility_date = "2024-11-01"
+
+# Non-secret vars. Secrets (GITHUB_CLIENT_SECRET, APP_PRIVATE_KEY) are set out of
+# band via `wrangler secret put` — never in this file. See infra/secrets.md.
+[vars]
+GITHUB_APP_ID = ""
+GITHUB_CLIENT_ID = ""
+WEB_SHELL_ORIGIN = "http://localhost:5173"
+SECURE_COOKIES = "false"
+COOKIE_SAMESITE = "Lax"
+
+# Sessions + pending-OAuth handoffs. Create with:
+#   wrangler kv namespace create SB_SESSIONS   → paste the id below.
+# [[kv_namespaces]]
+# binding = "SB_SESSIONS"
+# id = "<kv-namespace-id>"
+
+# Same-origin routes on the app domain (uncomment once the zone exists):
+# routes = [
+#   { pattern = "app.slideblaster.app/auth/*", zone_name = "slideblaster.app" },
+#   { pattern = "app.slideblaster.app/me", zone_name = "slideblaster.app" },
+#   { pattern = "app.slideblaster.app/mint", zone_name = "slideblaster.app" },
+#   { pattern = "app.slideblaster.app/capabilities", zone_name = "slideblaster.app" },
+#   { pattern = "app.slideblaster.app/signout", zone_name = "slideblaster.app" },
+# ]
+
+[observability]
+enabled = true
+
+# The minted token and OAuth code transit this Worker; keep logs off.
+[observability.logs]
+enabled = false

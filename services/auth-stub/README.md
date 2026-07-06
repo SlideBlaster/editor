@@ -3,10 +3,10 @@
 The **local dev double** for the Auth + minting service (ADR 0010). It speaks the
 exact HTTP contract `BrowserAuthAdapter` calls, so the whole signed-in client
 path — sign in, session, token minting, capabilities, sign out — works locally
-with no GitHub App, no KMS, and no Phoenix. This is Phase A of M4(a): build and
-prove the client against a stub, then replace the stub wholesale with the real
-Phoenix Auth service + isolated minting service at deployment (Phase B). The
-adapter and app code do not change across that swap.
+with no GitHub App and no real backend. This is Phase A of M4(a): build and prove
+the client against a stub, then replace the stub wholesale with the real Auth
+service (`services/auth-worker`, a Cloudflare Worker — ADR 0019) at deployment
+(Phase B). The adapter and app code do not change across that swap.
 
 ## What it fakes (and how the real service differs)
 

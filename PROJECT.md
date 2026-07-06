@@ -25,9 +25,10 @@ editor/                         <- this monorepo (pnpm workspace)
     web-shell/         @slideblaster/web-shell         thin Vite app: mounts app + browser adapters
     desktop-shell/     @slideblaster/desktop-shell     thin Tauri app: mounts app + native adapters
   services/
-    auth/       Phoenix: GitHub App, token minting, identity, capabilities      (built; KMS-swappable key)
-    collab/     Phoenix: P2P signaling + premium server sessions + WAL           (not a pnpm package)
-    git-proxy/  first-party CORS proxy for browser git (token transits it)       (Cloudflare Worker)
+    auth-worker/ Cloudflare Worker: GitHub App, token minting, identity, caps    (built; KMS-swappable key, ADR 0020)
+    auth-stub/   local dev double for the Auth HTTP contract (Phase A)
+    collab/      Phoenix: P2P signaling + premium server sessions + WAL          (not a pnpm package)
+    git-proxy/   first-party CORS proxy for browser git (token transits it)      (Cloudflare Worker)
 ```
 
 Sibling repos at the project root: `design/` (ADRs, format, architecture, roadmap),
@@ -88,16 +89,18 @@ the render path is fully client-side.
   `VITE_SB_AUTH_URL` and proxies auth routes to the stub same-origin. Proven by a
   real-HTTP adapter↔stub integration test and a live Vite-proxy run.
 - **M4 Phase B (deployment) — in progress.** Vertical slice first: real GitHub
-  push/pull with KMS deferred behind a swappable seam. **Built:** the real Phoenix
-  Auth service (`services/auth`) — full HTTP contract (drop-in for the stub), real
-  GitHub OAuth, and installation-token minting authorized against the user's own
-  installations; the App private key is held locally behind a KMS-swappable
-  `MintingKey` (RS256 App-JWT signing unit-verified); git-proxy `wrangler.toml`
-  (bundles clean). **User gates cleared:** GitHub App registered, Elixir toolchain.
-  **Remaining:** drop the client secret + `.pem` into `services/auth/.env`, deploy
-  git-proxy to Cloudflare (`wrangler login`), and drive the live sign-in →
-  push/pull. **Then the KMS/hardening pass:** `MintingKey.Kms`, split the minting
-  service, revocation webhooks, durable sessions. Also open before M6: Yjs<->AST
-  round-trip (ADR 0011).
+  push/pull with KMS deferred behind a swappable seam. Hosting is **all-Cloudflare**
+  (ADR 0020): Pages (app) + auth Worker (same-origin, first-party cookies) + git-proxy
+  Worker. **Built:** the Auth service as a **Cloudflare Worker** (`services/auth-worker`)
+  — full HTTP contract (drop-in for the stub + `BrowserAuthAdapter`), real GitHub SSO,
+  install-per-repo, and installation-token minting authorized against the user's own
+  installations; App key behind a KMS-swappable `MintingKey` (WebCrypto RS256, signing
+  unit-verified against a real PKCS#1 key); git-proxy + auth-worker `wrangler.toml`
+  bundle clean. The `infra/` plan + ADR 0020 record the topology/CI. **User gates
+  cleared:** GitHub App registered. **Remaining:** drop the client secret + `.pem`
+  into `services/auth-worker/.dev.vars`, set up the Cloudflare account (zone, routes,
+  Pages, KV), add the deploy CI, and drive the live sign-in → push/pull. **Then the
+  KMS/hardening pass:** external-KMS `MintingKey`, revocation webhooks. Also open
+  before M6: Yjs<->AST round-trip (ADR 0011).
 
 Milestones M0-M8: `../design/roadmap.md`.

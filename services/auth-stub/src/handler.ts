@@ -3,7 +3,7 @@
  *
  * Speaks exactly the HTTP contract BrowserAuthAdapter calls (auth.md, ADR 0010)
  * so the whole signed-in client path works locally with no GitHub, no KMS, and
- * no Phoenix — Phase A. It fakes what the real service does for real: `/auth/
+ * no real backend — Phase A. It fakes what the real service does for real: `/auth/
  * github` "authenticates" a fixed dev identity instead of round-tripping GitHub
  * OAuth, and `/mint` returns a configured/synthetic token instead of a
  * KMS-signed App installation token. The real service (Phase B) replaces it

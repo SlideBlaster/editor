@@ -1,0 +1,15 @@
+# Local `wrangler dev` secrets. Copy to `.dev.vars` (gitignored) and fill in.
+# Use a throwaway/dev GitHub App so prod secrets never sit on a laptop.
+GITHUB_APP_ID = "4228880"
+GITHUB_CLIENT_ID = "Iv23lisSDXA14QthWBtq"
+GITHUB_CLIENT_SECRET = ""
+# Paste the full PEM (PKCS#1 "BEGIN RSA PRIVATE KEY" from GitHub is fine — the
+# Worker wraps it to PKCS#8 for WebCrypto). Multi-line: use triple quotes.
+APP_PRIVATE_KEY = """
+-----BEGIN RSA PRIVATE KEY-----
+...
+-----END RSA PRIVATE KEY-----
+"""
+WEB_SHELL_ORIGIN = "http://localhost:5173"
+SECURE_COOKIES = "false"
+COOKIE_SAMESITE = "Lax"
