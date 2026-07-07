@@ -34,7 +34,9 @@ import {
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeStyleClass,
   setNodeOverlay,
+  styleClasses,
   createConnector,
   deleteConnector,
   updateConnector,
@@ -55,6 +57,7 @@ import {
   type Layout,
   type Frame,
   type NodeContent,
+  type Point,
   type RenderedSlide,
   type SlideDocument,
   type TikzPicture,
@@ -75,6 +78,8 @@ import type { CurveFocus } from './connectorEditor'
 import { paintDeckNav, type NavHandle } from './deckNav'
 import { paintProperties, type PropSelection } from './properties'
 import { openCreationMenu, type MenuItem } from './createMenu'
+import { renderShapesPanel, SHAPE_DRAG_MIME } from './shapesPanel'
+import { shapeById, shapeNodeOptions } from './shapes/catalog'
 import { enableZoomPan } from './zoom'
 import { createDomMeasurer } from './domMeasurer'
 import { SLIDE_THEME_CSS, SLIDE_TYPE_CSS } from './slideType'
@@ -90,6 +95,7 @@ import { KATEX_CSS } from './katexInlineCss'
 import { downloadDeckHtml, printDeck } from './export'
 import { present } from './presenter'
 import { renderChrome } from './chrome'
+import { mountStyleToolbar } from './styleToolbar'
 import { enableResizers } from './resizer'
 import {
   bootDocument,
@@ -444,6 +450,32 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   }
 
   /**
+   * Insert a catalogue shape as a new node at a slide point (the shapes panel). A shape is a
+   * curated preset of TikZ node options (shapes/catalog): dropping it is just `createNode`
+   * with those options, so it is byte-identical to a hand-typed `\node[...]` and the engine
+   * renders/moves/resizes/serializes it with no special case. Selects the new node (no
+   * auto-edit — a shape is a box; double-click adds a label later).
+   */
+  const insertShapeAt = (
+    frame: number,
+    surface: Surface,
+    center: Point,
+    shapeId: string,
+  ): void => {
+    const shape = shapeById(shapeId)
+    const target = currentDoc?.frames[frame]
+    const source = target ? pictureOf(target, surface) : undefined
+    if (!shape || !currentDoc || !source) return
+    const { picture, name } = createNode(source, {
+      at: center,
+      options: shapeNodeOptions(shape),
+      content: parseContent(shape.body),
+    })
+    state.selected = { frame, surface, name }
+    commit(withSurface(currentDoc, frame, surface, picture))
+  }
+
+  /**
    * Node-scoped commit for a content edit (ADR 0016): apply the new node content, then
    * derive both deltas instead of a whole-scene round-trip — splice the code pane at the
    * one changed range (`minimalDiff`, caret kept) and re-paint just this frame's card and
@@ -568,6 +600,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         mountColumnEditors()
       }
       deckHandle?.showSelection(state.selected)
+      styleToolbar.refresh() // the dropdown tracks the selected node without a repaint
       setStatus()
       paintPanel()
     },
@@ -691,6 +724,38 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     },
   }
 
+  // The picture behind the current node selection (shared by the style toolbar reads).
+  const selectedPicture = (): { picture: TikzPicture; sel: Selection } | undefined => {
+    const sel = state.selected
+    const target = sel ? currentDoc?.frames[sel.frame] : undefined
+    const picture = target ? pictureOf(target, sel!.surface) : undefined
+    return sel && picture ? { picture, sel } : undefined
+  }
+
+  // Text-style toolbar (style-in-place): theme-styles dropdown + B/I/U/S. The buttons
+  // act on the rich inline editor's live selection (no app plumbing); the dropdown
+  // reclassifies the selected node through the standard commit (undo, splice, repaint).
+  const styleToolbar = mountStyleToolbar(
+    qs('#text-actions'),
+    {
+      classes: () => Object.keys(activeTheme.style.classes),
+      currentClass: () => {
+        const at = selectedPicture()
+        const node = at ? findNode(at.picture, at.sel.name) : undefined
+        if (!node) return undefined
+        return styleClasses(node)[0] ?? null
+      },
+    },
+    {
+      setStyleClass: (styleClass) => {
+        const at = selectedPicture()
+        if (!at || !currentDoc) return
+        const picture = setNodeStyleClass(at.picture, at.sel.name, styleClass || null)
+        commit(withSurface(currentDoc, at.sel.frame, at.sel.surface, picture))
+      },
+    },
+  )
+
   const render = async (): Promise<void> => {
     const result = parse(state.source)
     if ('error' in result) {
@@ -762,6 +827,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     setStatus()
     paintPanel()
     updateStepControl()
+    styleToolbar.refresh()
   }
 
   // Compile port (latexml tables): compile out of band, then drop the placeholder
@@ -942,6 +1008,52 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       event.preventDefault()
       actions.remove(state.selected.frame, state.selected.surface, state.selected.name)
     }
+  })
+
+  // Shapes panel: the draw.io-style library rail. Clicking a shape drops it at the active
+  // slide's centre; dragging one onto the canvas drops it at the cursor (handled below).
+  renderShapesPanel(qs('#shapes-panel'), {
+    onInsert: (shapeId) => {
+      const box = currentBox()
+      insertShapeAt(state.active, 'slide', { x: box.width / 2, y: box.height / 2 }, shapeId)
+    },
+  })
+
+  // Drag a shape from the panel onto a slide -> insert at the cursor. The deck is the drop
+  // zone; the dropped-on card carries its (frame, surface) and holds the .sb-slide whose box
+  // maps the client point to slide space (the same mapping the canvas gestures use).
+  const isShapeDrag = (event: DragEvent): boolean =>
+    event.dataTransfer?.types.includes(SHAPE_DRAG_MIME) ?? false
+  deck.addEventListener('dragover', (event) => {
+    if (!isShapeDrag(event)) return
+    event.preventDefault() // permit the drop
+    event.dataTransfer!.dropEffect = 'copy'
+    deck.classList.add('shape-drop-active')
+  })
+  deck.addEventListener('dragleave', (event) => {
+    if (event.target === deck) deck.classList.remove('shape-drop-active')
+  })
+  deck.addEventListener('drop', (event) => {
+    deck.classList.remove('shape-drop-active')
+    const shapeId = event.dataTransfer?.getData(SHAPE_DRAG_MIME)
+    if (!shapeId) return
+    event.preventDefault()
+    const card = (event.target as HTMLElement).closest<HTMLElement>('.deck-slide, .deck-note')
+    const slideEl = card?.querySelector<HTMLElement>('.sb-slide')
+    if (!card || !slideEl || card.dataset.frame === undefined) return
+    const frame = Number(card.dataset.frame)
+    const surface: Surface = card.dataset.surface === 'notes' ? 'notes' : 'slide'
+    const box = currentBox()
+    const rect = slideEl.getBoundingClientRect()
+    insertShapeAt(
+      frame,
+      surface,
+      {
+        x: ((event.clientX - rect.left) / rect.width) * box.width,
+        y: box.height - ((event.clientY - rect.top) / rect.height) * box.height,
+      },
+      shapeId,
+    )
   })
 
   // Zoom & pan the deck canvas (Ctrl/pinch to zoom, middle/Space-drag to pan).

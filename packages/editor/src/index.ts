@@ -16,12 +16,16 @@ export {
   placement,
   textWidth,
   minHeight,
+  minWidth,
+  nodeShape,
+  isDrawn,
+  fillColor,
   nodeScale,
   nodeOverlay,
   parseConnector,
   serializeConnector,
 } from './tikz/index'
-export type { Placement, ConnectorPath, Anchor, CurveControls } from './tikz/index'
+export type { Placement, NodeShape, ConnectorPath, Anchor, CurveControls } from './tikz/index'
 export {
   parseContent,
   serializeContent,
@@ -80,8 +84,9 @@ export {
   slideStylesheet,
   connectorsOf,
   slideStepCount,
+  shapeGeometrySvg,
 } from './render/index'
-export type { RenderOptions, Connector } from './render/index'
+export type { RenderOptions, Connector, Rect } from './render/index'
 export {
   defaultTheme,
   themeStylesheet,
@@ -130,6 +135,7 @@ export {
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeStyleClass,
   setNodeOverlay,
   placeNodeRelative,
   adjustPlacement,

@@ -87,6 +87,40 @@ export function minHeight(node: NodeStatement): number | undefined {
 }
 
 /**
+ * The `minimum width=<n>` value in slide units, if the node sets a width floor — the
+ * width counterpart to `minimum height`. Grow-only: content wider than `<n>` still
+ * expands the box. This is the size lever shapes use so a dropped, empty shape lands
+ * at a visible default size (rather than collapsing to a caret).
+ */
+export function minWidth(node: NodeStatement): number | undefined {
+  return numericOption(node, /^minimum\s+width\s*=/)
+}
+
+/** The geometric outline a node draws. `rectangle` is the default box; a bare `ellipse`
+ *  or `circle` option makes it elliptical (tikz-subset.md). This is the shape switch the
+ *  renderer maps to an SVG element and the shape catalogue selects with an option preset. */
+export type NodeShape = 'rectangle' | 'ellipse'
+
+/** The node's shape, from a bare shape token; defaults to `rectangle`. */
+export function nodeShape(node: NodeStatement): NodeShape {
+  const classes = styleClasses(node)
+  return classes.includes('ellipse') || classes.includes('circle') ? 'ellipse' : 'rectangle'
+}
+
+/** Whether the node paints a visible outline — the bare `draw` option. A plain (text)
+ *  node has no `draw`, so its box stays invisible; a shape carries `draw` to be seen. */
+export function isDrawn(node: NodeStatement): boolean {
+  return node.options.includes('draw')
+}
+
+/** The `fill=<color>` value if the node paints a fill, else undefined. The color is a raw
+ *  token (a CSS/TikZ color name or hex) passed straight through to the SVG `fill`. */
+export function fillColor(node: NodeStatement): string | undefined {
+  const token = node.options.find((t) => /^fill\s*=/.test(t))
+  return token === undefined ? undefined : token.slice(token.indexOf('=') + 1).trim() || undefined
+}
+
+/**
  * The node's content scale on each axis (default 1). TikZ multiplies a bare `scale=<k>`
  * into both axes and `xscale`/`yscale` per axis; resize writes these so the rendered
  * content (text, tables, images) grows with the box. `{ x: 1, y: 1 }` means natural size.

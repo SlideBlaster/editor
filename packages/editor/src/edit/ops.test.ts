@@ -13,6 +13,7 @@ import {
   createNode,
   deleteNode,
   setNodeContent,
+  setNodeStyleClass,
   setNodeOverlay,
   placeNodeRelative,
   adjustPlacement,
@@ -367,6 +368,27 @@ describe('setNodeOverlay', () => {
 
   it('is a no-op when the node is not found', () => {
     expect(serializePicture(setNodeOverlay(picture(), 'nope', '2-'))).toBe(SOURCE)
+  })
+})
+
+describe('setNodeStyleClass', () => {
+  it('replaces the existing class and keeps key=value / placement options', () => {
+    const out = serializePicture(setNodeStyleClass(picture(), 'intro', 'note'))
+    expect(out).toContain('\\node[note, below=0.7 of title, text width=12] (intro)')
+    expect(roundTrips(setNodeStyleClass(picture(), 'intro', 'note'))).toBe(true)
+  })
+
+  it('sets a class on an unclassed node and clears on null', () => {
+    const bare = parsePicture('\\node (n1) at (1,1) {x};')
+    expect(serializePicture(setNodeStyleClass(bare, 'n1', 'title'))).toContain(
+      '\\node[title] (n1)',
+    )
+    const cleared = setNodeStyleClass(picture(), 'o2', null)
+    expect(serializePicture(cleared)).toContain('\\node (o2)')
+  })
+
+  it('is a no-op when the node is not found', () => {
+    expect(serializePicture(setNodeStyleClass(picture(), 'nope', 'title'))).toBe(SOURCE)
   })
 })
 

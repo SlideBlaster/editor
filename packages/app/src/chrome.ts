@@ -20,6 +20,7 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
         <button type="button" id="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
         <button type="button" id="connect-toggle" aria-pressed="false">&rarr; Connect</button>
       </div>
+      <div class="text-actions" id="text-actions" role="group" aria-label="Text style"></div>
       <div class="step-actions" id="step-control" role="group" aria-label="Overlay step" hidden>
         <button type="button" data-step="prev" aria-label="Previous step" title="Previous step (,)">&lsaquo;</button>
         <span id="step-readout" title="Overlay step of the active slide">All</span>
@@ -58,6 +59,7 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
         <div class="parse-error" id="error" hidden></div>
         <div class="status-bar" id="status"></div>
       </section>
+      <aside class="shapes-panel" id="shapes-panel" aria-label="Shapes"></aside>
     </main>`
   return root
 }

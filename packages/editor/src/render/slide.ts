@@ -17,6 +17,7 @@ import { minHeight, nodeOverlay, nodeScale } from '../tikz/options'
 import { activeAt, contentMaxStep, specMaxStep } from '../content/overlay'
 import { parseConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { renderContent, type RenderOptions } from './html'
+import { shapeGeometrySvg } from './shape'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -31,7 +32,7 @@ export function renderSlide(
   // and in the x-axis percentages (nodeDiv); the vertical math stays anchored to SLIDE_H.
   const W = options.slideWidth ?? SLIDE_W
   const contentNodes = picture.statements.filter(isNode)
-  const boxes = layout.nodes.map(rectSvg).join('')
+  const boxes = layout.nodes.map((placed, i) => shapeSvg(placed, contentNodes[i]!)).join('')
   const arrows = connectorsOf(picture, layout).map(arrowSvg).join('')
   const svg = `<svg class="sb-geometry" viewBox="0 0 ${r(W)} ${SLIDE_H}" preserveAspectRatio="none">${MARKER_DEFS}${boxes}${arrows}</svg>`
   // Per-slide footnotes: each `\citefootnote` marker numbers in reading order across
@@ -145,10 +146,22 @@ function polyPathData(points: Point[]): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${r(p.x)},${r(SLIDE_H - p.y)}`).join(' ')
 }
 
-function rectSvg(node: PlacedNode): string {
-  const x = node.center.x - node.size.width / 2
-  const y = SLIDE_H - node.center.y - node.size.height / 2
-  return `<rect class="${boxClass(node)}" x="${r(x)}" y="${r(y)}" width="${r(node.size.width)}" height="${r(node.size.height)}"/>`
+/** The geometry box for a placed node: its shape outline (rect/ellipse), stroked when the
+ *  source node carries `draw`. Maps the node box out of slide space (y-up) into the SVG
+ *  viewBox (y-down), then defers the element choice + stroke/fill to `shapeGeometrySvg` —
+ *  the same function the shapes palette draws its thumbnails with. */
+function shapeSvg(node: PlacedNode, source: NodeStatement): string {
+  const rect = {
+    x: node.center.x - node.size.width / 2,
+    y: SLIDE_H - node.center.y - node.size.height / 2,
+    width: node.size.width,
+    height: node.size.height,
+  }
+  return shapeGeometrySvg(
+    source,
+    rect,
+    node.styleClasses.map((c) => `sb-style-${c}`),
+  )
 }
 
 function nodeDiv(
@@ -251,7 +264,10 @@ export function slideStylesheet(): string {
     '.sb-geometry{position:absolute;inset:0;width:100%;height:100%}',
     '.sb-content{position:absolute;inset:0}',
     '.sb-node{position:absolute;box-sizing:border-box}',
+    // A node box is invisible by default (text/title nodes have no outline). A shape carries
+    // `draw`, adding `sb-drawn` for a visible stroke; `fill=<color>` sets an inline fill.
     '.sb-box{fill:transparent;stroke:none}',
+    '.sb-drawn{stroke:#333;stroke-width:0.03;stroke-linejoin:round}',
     '.sb-arrow{fill:none;stroke:#333;stroke-width:0.03}',
     // columns lay out as a flex row; each `.sb-column` carries an inline `flex:<width>`
     // (from its `\column{…}` argument) so widths are proportional. min-width:0 lets a
@@ -276,10 +292,6 @@ export function slideStylesheet(): string {
     '.sb-footnote{text-indent:-1em;padding-left:1em}',
     '.sb-footnote sup{margin-right:0.3em}',
   ].join('\n')
-}
-
-function boxClass(node: PlacedNode): string {
-  return ['sb-box', ...node.styleClasses.map((c) => `sb-style-${c}`)].join(' ')
 }
 
 function nodeClass(node: PlacedNode): string {

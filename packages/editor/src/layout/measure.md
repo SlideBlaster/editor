@@ -19,4 +19,6 @@ that makes `resolve` headless and testable.
   one) to a `BatchMeasurer`, the headless default and the browser fallback.
 
 Contract: `Measurer` is pure and deterministic. `MeasureInput` is `{ content,
-styleClasses, textWidth? }`. A `BatchMeasurer` returns one `Size` per input, in order.
+styleClasses, textWidth?, minWidth?, minHeight? }`, where `minWidth`/`minHeight` are
+grow-only size floors (content larger than a floor still wins). A `BatchMeasurer`
+returns one `Size` per input, in order.

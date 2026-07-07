@@ -27,6 +27,10 @@ plays as (ADR 0018).
   (index among path statements) so an editor can select / delete / reshape it
   (`deleteConnector`, `updateConnector`); because endpoints re-resolve every paint, a
   connector re-routes automatically when its nodes move.
+- **Shape geometry.** Each node's SVG box is drawn by `shapeGeometrySvg` (see `shape.md`):
+  a `<rect>` by default, an `<ellipse>` for a shape node, stroked (`sb-drawn`) when the node
+  has `draw` and filled from `fill=…`. A plain text node has neither, so its box stays
+  invisible — the outline is what makes a dragged-in shape a shape.
 - **Content.** Each node's box holds `renderContent` output (B2); style classes
   become `sb-style-*` classes on both the SVG box and the content div. A named node's
   content div also carries `data-node="<name>"` so an editor can hit-test and address

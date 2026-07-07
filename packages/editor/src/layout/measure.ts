@@ -14,6 +14,8 @@ export interface MeasureInput {
   content: NodeContent
   /** `text width=<n>` when the node fixes its width (content wraps to it). */
   textWidth?: number
+  /** `minimum width=<n>` when the node sets a width floor (grow-only: content may exceed it). */
+  minWidth?: number
   /** `minimum height=<n>` when the node sets a height floor (grow-only: content may exceed it). */
   minHeight?: number
   styleClasses: string[]
@@ -48,25 +50,29 @@ const TITLE_SCALE = 1.4
 
 /** Deterministic estimate from character/line counts; good enough to lay out, not to render. */
 export const naiveMeasurer: Measurer = {
-  measure({ content, textWidth, minHeight, styleClasses }): Size {
+  measure({ content, textWidth, minWidth, minHeight, styleClasses }): Size {
     const scale = styleClasses.includes('title') ? TITLE_SCALE : 1
     const charW = CHAR_WIDTH * scale
     const lineH = LINE_HEIGHT * scale
     const lines = plainText(content).split('\n')
-    // `minimum height` is grow-only: it raises the height floor but never clips content.
+    // `minimum width`/`minimum height` are grow-only: they raise a floor but never clip content.
+    const wFloor = Math.max(MIN_WIDTH, minWidth ?? 0)
     const floor = Math.max(MIN_HEIGHT, minHeight ?? 0)
 
-    if (content.kind === 'empty') return { width: MIN_WIDTH, height: floor }
+    if (content.kind === 'empty') return { width: wFloor, height: floor }
 
     if (textWidth !== undefined) {
       const perLine = Math.max(1, Math.floor((textWidth - 2 * PADDING) / charW))
       const rows = lines.reduce((n, line) => n + Math.max(1, Math.ceil(line.length / perLine)), 0)
-      return { width: textWidth, height: Math.max(floor, rows * lineH + 2 * PADDING) }
+      return {
+        width: Math.max(wFloor, textWidth),
+        height: Math.max(floor, rows * lineH + 2 * PADDING),
+      }
     }
 
     const longest = lines.reduce((m, line) => Math.max(m, line.length), 0)
     return {
-      width: Math.max(MIN_WIDTH, longest * charW + 2 * PADDING),
+      width: Math.max(wFloor, longest * charW + 2 * PADDING),
       height: Math.max(floor, lines.length * lineH + 2 * PADDING),
     }
   },

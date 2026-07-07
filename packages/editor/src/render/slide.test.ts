@@ -70,6 +70,35 @@ describe('renderSlide', () => {
     expect(html).toContain('class="sb-box sb-style-title"')
   })
 
+  it('leaves a plain node box a rectangle with no stroke class', () => {
+    // intro is a plain text node — a <rect>, no sb-drawn.
+    expect(html).toContain('class="sb-box sb-style-body"')
+    expect(html).not.toContain('sb-drawn')
+  })
+
+  it('renders a shape node (draw, ellipse) as a stroked ellipse sized to its box', () => {
+    // A dropped shape: draw + ellipse + a size floor. center (8,4.5), size 4x2.
+    const picture = parsePicture(
+      ['\\node[draw, ellipse, minimum width=4, minimum height=2] (s1) at (8,4.5) {};'].join('\n'),
+    )
+    const out = renderSlide(picture, resolveLayout(picture, fixed(4, 2)))
+    // An <ellipse> (not a rect), stroked (sb-drawn), centred at (8, 9-4.5=4.5) with
+    // rx/ry = half-size. `draw`/`ellipse` also surface as sb-style-* (bare-token model).
+    expect(out).toMatch(/<ellipse class="sb-box sb-drawn[^"]*" cx="8" cy="4.5" rx="2" ry="1"\/>/)
+    expect(out).not.toMatch(/<rect /)
+  })
+
+  it('emits a fill as an inline style so it beats the transparent class default', () => {
+    const picture = parsePicture(['\\node[draw, fill=red] (s1) at (8,4.5) {};'].join('\n'))
+    const out = renderSlide(picture, resolveLayout(picture, fixed(4, 2)))
+    expect(out).toMatch(/class="sb-box sb-drawn[^"]*"/)
+    expect(out).toContain('style="fill:red"')
+  })
+
+  it('exposes the drawn-stroke rule in the stylesheet', () => {
+    expect(slideStylesheet()).toContain('.sb-drawn{')
+  })
+
   it('tags content nodes with their model identity (data-node)', () => {
     expect(html).toContain('data-node="intro"')
     expect(html).toContain('data-node="o2"')

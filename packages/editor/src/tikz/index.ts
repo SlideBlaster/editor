@@ -8,9 +8,13 @@ export {
   placement,
   textWidth,
   minHeight,
+  minWidth,
+  nodeShape,
+  isDrawn,
+  fillColor,
   nodeScale,
   nodeOverlay,
 } from './options'
-export type { Placement } from './options'
+export type { Placement, NodeShape } from './options'
 export { parseConnector, serializeConnector } from './connector'
 export type { ConnectorPath, Anchor, CurveControls } from './connector'

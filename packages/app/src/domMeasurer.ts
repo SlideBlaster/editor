@@ -81,8 +81,10 @@ export function createDomMeasurer(): DomMeasurer {
       // node's natural width (widest line) with `max-content`.
       el.style.width =
         input.textWidth !== undefined ? `${input.textWidth * perUnit}px` : 'max-content'
-      // `minimum height` is a grow-only floor: the box reads at least this tall, but taller
-      // content still wins (CSS min-height never clips), matching the naive measurer.
+      // `minimum width`/`minimum height` are grow-only floors: the box reads at least this
+      // wide/tall, but larger content still wins (CSS min-* never clips), matching the naive
+      // measurer. This is the size lever a dropped shape uses to land at a visible default.
+      if (input.minWidth !== undefined) el.style.minWidth = `${input.minWidth * perUnit}px`
       if (input.minHeight !== undefined) el.style.minHeight = `${input.minHeight * perUnit}px`
       el.innerHTML = renderContent(input.content, renderOptions)
       content.append(el)

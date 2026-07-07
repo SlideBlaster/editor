@@ -12,6 +12,7 @@ import type { Layout, PlacedNode, Size } from '../model/layout'
 import {
   DEFAULT_PLACEMENT_GAP,
   minHeight,
+  minWidth,
   nodeScale,
   placement,
   styleClasses,
@@ -35,11 +36,13 @@ function layoutNodes(picture: TikzPicture): NodeStatement[] {
 /** What a `Measurer` needs to size one node (content + its style/width options). */
 function measureInputFor(node: NodeStatement): MeasureInput {
   const tw = textWidth(node)
+  const mw = minWidth(node)
   const mh = minHeight(node)
   return {
     content: node.content,
     styleClasses: styleClasses(node),
     ...(tw !== undefined ? { textWidth: tw } : {}),
+    ...(mw !== undefined ? { minWidth: mw } : {}),
     ...(mh !== undefined ? { minHeight: mh } : {}),
   }
 }

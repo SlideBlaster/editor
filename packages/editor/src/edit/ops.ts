@@ -132,6 +132,30 @@ export function setNodeOverlay(
 }
 
 /**
+ * Set (or clear, when `styleClass` is null) a node's style class — the bare option
+ * token that binds it to a theme role (`title`, `body`, `note`, …). Drops every
+ * existing bare class token and prepends the new one, so a node carries at most the
+ * class the user picked; key=value options, placements, and arrow shorthands are
+ * untouched. A no-op if the node is not found.
+ */
+export function setNodeStyleClass(
+  picture: TikzPicture,
+  name: string,
+  styleClass: string | null,
+): TikzPicture {
+  return mapNode(picture, name, (node) => {
+    const kept = node.options.filter((token) => !isStyleClassToken(token))
+    return { ...node, options: styleClass === null ? kept : [styleClass, ...kept] }
+  })
+}
+
+/** Bare (non `key=value`, non arrow-shorthand) tokens name style classes — the same
+ *  predicate `styleClasses` (tikz/options) reads with. */
+function isStyleClassToken(token: string): boolean {
+  return !token.includes('=') && !/^[<|>.-]+$/.test(token)
+}
+
+/**
  * Replace a node's body content (E3: inline content editing). A no-op if the node is
  * not found. Content is the parsed result of the edited raw body, so an out-of-subset
  * edit lands as `{ kind: 'error', source, message }` and is preserved verbatim on

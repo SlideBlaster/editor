@@ -15,14 +15,17 @@ import {
   renderSlide,
   connectorsOf,
   serializeBody,
+  textWidth,
   type ConnectorPath,
   type Layout,
   type NodeContent,
   type PlacedNode,
   type Point,
+  type TextRun,
   type TikzPicture,
 } from '@slideblaster/editor'
 import { renderOptions } from './tableCompiler'
+import { editableHtml, padIslands, readEditable, wireRichEditing } from './richText'
 import { paintColumnEditors } from './columnEditor'
 import { paintTableEditors } from './tableEditor'
 import { wireResizeGrips } from './resizeHandles'
@@ -155,7 +158,18 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     if (props.connectMode) {
       wireConnect(handle, node, slideEl, overlay, props.actions, slideWidth)
     } else {
-      wireHandle(handle, node, peers, bindPeers, slideEl, stage, overlay, props.actions, props.snapRefs, slideWidth)
+      wireHandle(
+        handle,
+        node,
+        peers,
+        bindPeers,
+        slideEl,
+        stage,
+        overlay,
+        props.actions,
+        props.snapRefs,
+        slideWidth,
+      )
       // Resize grips (corners + edges), hidden by CSS until this handle is selected. They
       // scale the node's content, so they need its current scale (from its options).
       const src = findNode(props.picture, name)
@@ -171,7 +185,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
       // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
       handle.addEventListener('dblclick', (event) => {
         event.stopPropagation() // don't let the empty-overlay dblclick create a node
-        openInlineEditor(overlay, node, name, props.picture, props.actions)
+        openInlineEditor(overlay, slideEl, node, name, props.picture, props.actions)
       })
     }
     overlay.append(handle)
@@ -205,45 +219,127 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     }
   }
 
-  // A just-created node opens straight in edit mode with an empty caret (W5).
+  // A just-created node opens straight in edit mode with an empty caret (W5). An edit
+  // abandoned while still empty removes the node again — no orphaned invisible boxes.
   if (props.autoEdit) {
     const placed = props.layout.nodes.find((n) => n.name === props.autoEdit)
-    if (placed?.name) openInlineEditor(overlay, placed, placed.name, props.picture, props.actions)
+    if (placed?.name)
+      openInlineEditor(overlay, slideEl, placed, placed.name, props.picture, props.actions, {
+        discardIfEmpty: true,
+      })
   }
 }
 
 /**
- * Open a raw-body editor over a node (W6, whole-node granularity). Seeds a textarea
- * from the node's current source (`serializeBody`), positioned on the slide so it
- * scales with zoom. Commits on blur or Ctrl/Cmd+Enter (re-parsed by the engine);
- * Escape cancels. A no-op edit doesn't commit, avoiding a needless re-serialize.
+ * Open an editor in a node's place (W6, whole-node granularity). The editor is a
+ * contenteditable div mounted in the slide's own content layer, carrying the node's
+ * classes and the rendered node's inline geometry — so it inherits the exact type the
+ * node renders with (family, cqw size, line-height, color, align) and editing reads as
+ * in-place, not as a box over the slide. The rendered node hides for the duration; the
+ * overlay's pointer events are suspended so clicks reach the editor (the slide is a
+ * stacking context, so the overlay always sits above it).
+ *
+ * Renderable content edits WYSIWYG (style-in-place): the editor holds the *rendered*
+ * runs via `editableHtml` (provenance-stamped styles, KaTeX math islands, indexed atom
+ * islands), live conversion is wired (`wireRichEditing`), and the commit reads the DOM
+ * back into one NodeContent transform (`readEditable` -> `editContentModel`, ADR 0016).
+ * Out-of-subset (`error`) content has no render to edit, so it falls back to the raw
+ * source editor (plaintext, `editContent`). Both modes: commit on blur or
+ * Ctrl/Cmd+Enter, Escape cancels, a no-op edit never commits, and `discardIfEmpty`
+ * (the just-created path) removes a node whose edit ends still empty.
  */
 function openInlineEditor(
   overlay: HTMLElement,
+  slideEl: HTMLElement,
   placed: PlacedNode,
   name: string,
   picture: TikzPicture,
   actions: CanvasActions,
+  opts: { discardIfEmpty?: boolean } = {},
 ): void {
-  if (overlay.querySelector('.sb-inline-editor')) return // already editing something
+  if (slideEl.querySelector('.sb-inline-editor')) return // already editing something
   const node = findNode(picture, name)
-  const seed = node ? serializeBody(node.content) : ''
+  const content: NodeContent = node?.content ?? { kind: 'empty' }
+  // WYSIWYG (style-in-place) for renderable content; an out-of-subset body has no
+  // render to edit, so error content falls back to the raw source editor.
+  const rich = content.kind !== 'error'
+  const atoms: TextRun[] = []
+  const seed = serializeBody(content)
 
-  const editor = document.createElement('textarea')
-  editor.className = 'sb-inline-editor'
-  editor.style.cssText = boxStyle(placed)
-  editor.value = seed
+  const contentLayer = slideEl.querySelector<HTMLElement>('.sb-content')
+  const contentEl = slideEl.querySelector<HTMLElement>(`.sb-node[data-node="${CSS.escape(name)}"]`)
+  const handle = overlay.querySelector<HTMLElement>(`.sb-handle[data-node="${CSS.escape(name)}"]`)
+
+  const editor = document.createElement('div')
+  editor.className = [
+    'sb-node',
+    ...placed.styleClasses.map((c) => `sb-style-${c}`),
+    'sb-inline-editor',
+  ].join(' ')
+  // Same box as the rendered content (left/top/width/min-height/transform), so the
+  // glyphs don't shift when the editor swaps in.
+  editor.style.cssText = contentEl?.style.cssText ?? boxStyle(placed)
+  // Growth: a `text width` node keeps its fixed width and wraps exactly as rendered; a
+  // natural-width node extends rightward as it's typed into (matching its natural-width
+  // render), wrapping only at the slide edge. The 18cqw floor gives a fresh empty box a
+  // comfortable landing size instead of a near-zero caret trap.
+  if (node === undefined || textWidth(node) === undefined) {
+    const width = editor.style.width || '0%'
+    const left = editor.style.left || '0%'
+    editor.style.width = 'auto'
+    editor.style.minWidth = `max(${width}, 18cqw)`
+    editor.style.maxWidth = `calc(100% - ${left})`
+  }
+  if (rich) {
+    editor.setAttribute('contenteditable', 'true')
+    editor.dataset.rich = ''
+    editor.innerHTML = editableHtml(content, atoms)
+    padIslands(editor)
+    wireRichEditing(editor)
+  } else {
+    editor.setAttribute('contenteditable', 'plaintext-only')
+    if (!editor.isContentEditable) editor.setAttribute('contenteditable', 'true')
+    editor.textContent = seed
+  }
   editor.spellcheck = false
+
+  // Seamless swap: hide the rendered node (same text, same place, now with a caret) and
+  // route pointer events past the overlay to the editor for the duration of the edit.
+  if (contentEl) contentEl.style.visibility = 'hidden'
+  overlay.style.pointerEvents = 'none'
+  handle?.classList.add('is-editing')
 
   let settled = false
   const close = (commit: boolean): void => {
     if (settled) return
-    settled = true // guard: removing a focused textarea fires blur, which must not re-enter
+    settled = true // guard: removing a focused editor fires blur, which must not re-enter
+    // Read before detaching: the rich walk resolves islands against `atoms`; the raw
+    // read needs layout for innerText (normalize its trailing placeholder newline).
+    const edited = rich ? readEditable(editor, atoms) : null
+    const text = rich ? null : editor.innerText.replace(/\n$/, '')
     editor.remove()
-    if (commit && editor.value !== seed) actions.editContent(name, editor.value)
+    overlay.style.pointerEvents = ''
+    handle?.classList.remove('is-editing')
+    if (contentEl) contentEl.style.visibility = ''
+    if (rich) {
+      if (opts.discardIfEmpty && edited!.kind === 'empty') {
+        actions.remove(name)
+        return
+      }
+      // One NodeContent transform per gesture (ADR 0016); a no-op edit (same
+      // serialized body) never commits, so open-and-close never reformats source.
+      if (commit && serializeBody(edited!) !== seed) actions.editContentModel(name, edited!)
+      return
+    }
+    if (opts.discardIfEmpty && text!.trim() === '') {
+      actions.remove(name)
+      return
+    }
+    if (commit && text !== seed) actions.editContent(name, text!)
   }
 
   editor.addEventListener('blur', () => close(true))
+  editor.addEventListener('pointerdown', (event) => event.stopPropagation())
   editor.addEventListener('keydown', (event) => {
     event.stopPropagation() // keep Delete / Space / zoom shortcuts out while typing
     if (event.key === 'Escape') {
@@ -255,9 +351,22 @@ function openInlineEditor(
     }
   })
 
-  overlay.append(editor)
-  editor.focus()
-  editor.select()
+  ;(contentLayer ?? slideEl).append(editor)
+  const focusEditor = (): void => {
+    editor.focus()
+    // Replace-on-type: select the whole seed (an empty node yields a collapsed caret).
+    const selection = window.getSelection()
+    if (selection) {
+      const range = document.createRange()
+      range.selectNodeContents(editor)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+  }
+  // The auto-edit paint (W5) runs while the deck builds its cards detached; focus is a
+  // no-op off-document, so defer it a frame until the card is mounted.
+  if (editor.isConnected) focusEditor()
+  else requestAnimationFrame(focusEditor)
 }
 
 /** What a drag will commit: an absolute move (E1, also the detach path) or a relative

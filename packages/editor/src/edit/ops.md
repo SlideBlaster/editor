@@ -53,6 +53,12 @@ are the writer.
 message }` and re-serializes verbatim (ADR 0015) — data-safe by construction. The
   shell seeds the raw editor with `serializeBody(content)` and re-parses on commit, so
   `setNodeContent(p, name, parseContent(serializeBody(c)))` round-trips.
+- `setNodeStyleClass(picture, name, styleClass | null)` — set (or clear on `null`) the
+  node's style class: drops every bare class token (the `tikz/options.styleClasses`
+  predicate) and prepends the new one, so a node carries at most the picked class.
+  Key=value options, placements, and arrow shorthands are untouched. No-op if the node
+  is absent. This is the styles-dropdown op (a deliberate reclassify — distinct from
+  region seeding, which stays creation-only per ADR 0017).
 - `setNodeOverlay(picture, name, spec)` — set (raw spec string) or clear (`null`/blank)
   a node's whole-node `overlay=<spec>` reveal (ADR 0018), the properties-panel half of
   the two-level overlay model. Stored brace-wrapped (`overlay={1,3}`) so a spec's commas
