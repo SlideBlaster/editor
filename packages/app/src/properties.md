@@ -26,13 +26,14 @@ render.
   with `isValidSpec` — a valid spec writes via `setNodeOverlay`, blank clears it, a
   malformed spec is left uncommitted with a red outline. The whole-node half of the
   two-level model; inline `\pause`/`\only` live in the node body.
-- **Selected node -> Style (E5).** The shape/paint knobs: Shape (rectangle/ellipse segmented
-  control), Fill (toggle + colour swatch), Stroke (draw toggle + colour, with Line width and
-  Dash selects that disable while undrawn), Corners (rectangles only, pt), and three alphas
-  (Opacity / Fill α / Stroke α). Each control reads a `tikz/options` derived view
-  (`nodeShape`, `fillColor`, `isDrawn`, `strokeColor`, `lineWidthName`, `dashPattern`,
-  `cornerRadiusPt`, the opacities) and, on change, rewrites just that knob with a
-  [`shapes/nodeStyle`](./shapes/nodeStyle.md) helper (`withShape`, `withFillColor`, …) from
+- **Selected node -> Style (E5).** The paint knobs: Fill (toggle + colour swatch), Stroke
+  (draw toggle + colour, with Line width and Dash selects that disable while undrawn), Corners
+  (rectangles only, pt), and three alphas (Opacity / Fill α / Stroke α). The shape itself is
+  not edited here — it is chosen from the shapes panel (drag/drop); the Style section only
+  reads `nodeShape` to gate the rectangle-only Corners control. Each control reads a
+  `tikz/options` derived view (`fillColor`, `isDrawn`, `strokeColor`, `lineWidthName`,
+  `dashPattern`, `cornerRadiusPt`, the opacities) and, on change, rewrites just that knob with
+  a [`shapes/nodeStyle`](./shapes/nodeStyle.md) helper (`withFillColor`, …) from
   the node's CURRENT `options`, committing the whole array via `setNodeStyle` ->
   `setNodeOptions`. Colour swatches are `#rrggbb`; a named/expression colour shows as black
   until changed but is otherwise left intact. Because it maps to the same tokens TikZ uses, a

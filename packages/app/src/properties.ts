@@ -6,7 +6,7 @@
  * curved segment is focused, that segment's cubic controls as polar angle/pull fields (via
  * `updateConnectorPath`). For a selected node it reads and edits placement — absolute
  * `at (x,y)` (`moveNode`) or relative `below=<gap> of ref` (`bindNode`) — its size/reveal,
- * and (E5) its Style: shape, fill, stroke (draw/colour/width/dash), opacities, and rounded
+ * and (E5) its Style: fill, stroke (draw/colour/width/dash), opacities, and rounded
  * corners, each read from a `tikz/options` view and written through a `shapes/nodeStyle`
  * helper + `setNodeStyle`. Frame-bound by the controller; this module is frame-agnostic.
  */
@@ -30,7 +30,6 @@ import {
   cornerRadiusPt,
   LINE_WIDTHS,
   DASH_PATTERNS,
-  type NodeShape,
   type LineWidthName,
   type DashPattern,
   type NodeStatement,
@@ -41,7 +40,6 @@ import {
 } from '@slideblaster/editor'
 import type { CurveFocus } from './connectorEditor'
 import {
-  withShape,
   withFillColor,
   withStroke,
   withStrokeColor,
@@ -421,7 +419,7 @@ function paintNode(
 }
 
 /**
- * The Style section: the shape/paint knobs of the selected node, each reading a `tikz/options`
+ * The Style section: the paint knobs of the selected node, each reading a `tikz/options`
  * derived view and writing through a `shapes/nodeStyle` helper + `setNodeStyle`. Every control
  * recomputes its edit from the node's CURRENT `options`, so it only rewrites its own knob and
  * leaves the role class, placement, and size intact. Stroke sub-controls disable while the box
@@ -440,17 +438,9 @@ function paintNodeStyle(
   sub.textContent = 'Style'
   host.append(sub)
 
+  // The shape itself is chosen from the shapes panel (drag/drop), not here; the Style
+  // section edits only paint knobs. `shape` still gates the rectangle-only corners control.
   const shape = nodeShape(node)
-  row(host, 'Shape').append(
-    segmented(
-      [
-        { value: 'rectangle', label: '▭' },
-        { value: 'ellipse', label: '⬭' },
-      ],
-      shape,
-      (v) => apply(withShape(node.options, v as NodeShape)),
-    ),
-  )
 
   // Fill: a toggle plus a colour swatch (disabled when unfilled).
   const fill = fillColor(node)

@@ -69,3 +69,48 @@ describe('shapeGeometrySvg', () => {
     expect(svg).toContain('class="sb-box sb-drawn sb-style-note"')
   })
 })
+
+describe('shapeGeometrySvg outlines', () => {
+  // RECT is {0,0,4,2}: centre (2,1), half-extents (2,1).
+  it('diamond is a 4-point polygon at the edge midpoints', () => {
+    const svg = shapeGeometrySvg(node('draw', 'diamond'), RECT)
+    expect(svg).toContain('<polygon')
+    expect(svg).toContain('points="2,0 4,1 2,2 0,1"')
+  })
+
+  it('triangle (isosceles triangle) is an apex-up 3-point polygon', () => {
+    expect(shapeGeometrySvg(node('draw', 'isosceles triangle'), RECT)).toContain(
+      'points="2,0 4,2 0,2"',
+    )
+  })
+
+  it('trapezium narrows the top edge', () => {
+    expect(shapeGeometrySvg(node('draw', 'trapezium'), RECT)).toContain('points="1,0 3,0 4,2 0,2"')
+  })
+
+  it('parallelogram slants the top edge right', () => {
+    expect(shapeGeometrySvg(node('draw', 'parallelogram'), RECT)).toContain(
+      'points="1,0 4,0 3,2 0,2"',
+    )
+  })
+
+  it('regular polygon walks `sides` points around the box, first vertex at top', () => {
+    const svg = shapeGeometrySvg(node('draw', 'regular polygon', 'regular polygon sides=6'), RECT)
+    expect(svg).toContain('<polygon')
+    expect(svg).toContain('2,0') // top vertex
+    expect(svg).toContain('3.7321,0.5') // upper-right vertex (rx*cos30, ry*sin(-30))
+  })
+
+  it('cylinder is a <path> with elliptical caps (rx=w/2)', () => {
+    const svg = shapeGeometrySvg(node('draw', 'cylinder'), RECT)
+    expect(svg).toContain('<path')
+    expect(svg).toContain('A 2,0.32') // cap arc: rx=2, ry=min(h*0.16, rx*0.6)=0.32
+  })
+
+  it('rounded rectangle renders as a stadium (rect fully rounded, rx=min(w,h)/2)', () => {
+    const svg = shapeGeometrySvg(node('draw', 'rounded rectangle'), RECT)
+    expect(svg).toContain('<rect')
+    expect(svg).toMatch(/rx="1"/)
+    expect(svg).toMatch(/ry="1"/)
+  })
+})

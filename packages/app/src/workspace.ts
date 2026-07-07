@@ -18,6 +18,8 @@ export interface AppPorts {
 }
 
 export const DOC_EXTENSION = '.slideBlaster.md'
+/** A standalone TikZ figure: a bare slide-picture body, no frontmatter or headings. */
+export const TIKZ_EXTENSION = '.tikz'
 const LAST_DOC_KEY = 'slideblaster.last-doc'
 const REMOTE_KEY = 'slideblaster.remote'
 const AUTOSAVE_DELAY_MS = 400
@@ -55,6 +57,16 @@ export function writeRemote(remote: RemoteConfig | null): void {
 
 export function isDocPath(path: string): boolean {
   return path.endsWith(DOC_EXTENSION)
+}
+
+/** A standalone `.tikz` figure file (edited on the canvas like a single-slide deck). */
+export function isTikzPath(path: string): boolean {
+  return path.endsWith(TIKZ_EXTENSION)
+}
+
+/** Any file the editor can open on the canvas: a deck or a standalone figure. */
+export function isEditablePath(path: string): boolean {
+  return isDocPath(path) || isTikzPath(path)
 }
 
 /** All documents in the working copy, recursive, `.git` excluded, sorted. */

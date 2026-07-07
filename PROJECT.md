@@ -64,6 +64,8 @@ the render path is fully client-side.
   subset, measure->resolve->render layout, edit ops, connectors, invariants.
 - **M2 (editor app):** built in `packages/app` — canvas deck, code pane, deck
   navigator, properties, creation menu, undo/redo, snapping, zoom, export.
+  Inline editing is WYSIWYG style-in-place (`app/richText` + the `app/styleToolbar`
+  text-style bar; raw source editor remains the error-content fallback).
 - **M3 (browser working copy):** landed. `packages/adapters-browser` has the
   Storage port (`FsStorageAdapter`) and Git port (`IsomorphicGitAdapter`, incl.
   `init`) over **one shared LightningFS/IndexedDB fs** (`createBrowserWorkspace`,

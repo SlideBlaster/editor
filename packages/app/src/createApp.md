@@ -32,8 +32,19 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.
-- **Node-scoped content commit (ADR 0016).** Content edits (`editContent` from the inline
-  editor, `editContentModel` from the column grid affordance) take `commitContent` instead
+- **Async repaints yield to an open edit.** The out-of-band re-renders (table compile /
+  citation resolve `onReady`) rebuild the deck DOM; while an inline editor is open they
+  are held (`renderWhenEditingSettles`) until the edit commits or cancels, so a
+  resolving table can never destroy an edit mid-type.
+- **Text-style toolbar.** The app-bar `#text-actions` group mounts
+  [styleToolbar.ts](./styleToolbar.md): B/I/U/S act directly on the rich inline
+  editor's DOM selection (no controller plumbing), while the theme-styles dropdown
+  reclassifies the selected node via the engine's `setNodeStyleClass` through the
+  standard `commit`. `refresh()` runs on every render and on the repaint-free
+  `select` path, so the dropdown tracks selection without a redraw.
+- **Node-scoped content commit (ADR 0016).** Content edits (`editContent` from the raw
+  inline editor, `editContentModel` from the WYSIWYG editor and the column grid
+  affordance) take `commitContent` instead
   of the whole-doc `commit`: it swaps the one node's content, then derives both deltas —
   the code pane is spliced at the single changed range (`minimalDiff`,
   [sourceDelta.md](./sourceDelta.md), caret kept) and only that frame's card + thumbnail

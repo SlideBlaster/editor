@@ -11,7 +11,10 @@ picture; every object is a node.)
 - `ShapeDef` = `{ id, label, category, keywords, options, size, body }`. `options` is the
   shape's essence (e.g. `['draw','ellipse']`); `size` is the default drop size in slide
   units; `body` is the initial raw content (usually empty).
-- `SHAPES` is the ordered library. This is the list agents grow to fill the panel.
+- `SHAPES` is the ordered library — currently the P0 launch set (shapes-inventory.md):
+  General/Basic (rectangle, rounded/square, ellipse/circle, diamond, triangle, trapezoid,
+  parallelogram, hexagon, cylinder) and Flowchart (process, decision, terminator, data). This
+  is the list agents grow for P1+.
 - `shapeById(id)` resolves the drag payload / click id. `shapeCategories()` groups the
   library into panel sections in first-seen order. `shapeNodeOptions(shape)` returns the
   options a dropped node carries — the essence plus `minimum width/height` size floors (so

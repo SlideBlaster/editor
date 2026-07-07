@@ -13,11 +13,14 @@ empty box lands visible), and `nodeOverlay` (the whole-node
 `overlay=<spec>` reveal, ADR 0018 — stored brace-wrapped so a spec's commas survive
 option tokenizing; returns the raw `OverlaySpec` for `content/overlay` to interpret).
 
-Shape reads: `nodeShape` (`rectangle` default, or `ellipse` for a bare `ellipse`/`circle`
-token — the `NodeShape` switch the renderer maps to an SVG element), `isDrawn` (a bare
-`draw` OR a `draw=<color>` option — a visible outline; a plain text node has neither so its
-box stays invisible), and `fillColor` (the `fill=<color>` value passed straight to the SVG
-`fill`).
+Shape reads: `nodeShape` — the `NodeShape` outline the renderer maps to an SVG element:
+`rectangle` (default), `ellipse` (also `circle`), the straight-edged `diamond` / `triangle`
+/ `trapezoid` / `parallelogram` / `regularPolygon` (one `<polygon>` each), `cylinder`
+(a `<path>`), and `stadium` (a fully-rounded rect, from a `rounded rectangle` token). The
+token->shape table is `SHAPE_TOKENS`. `polygonSides` reads `regular polygon sides=<n>`
+(default 5). `isDrawn` (a bare `draw` OR a `draw=<color>` option — a visible outline; a
+plain text node has neither so its box stays invisible), and `fillColor` (the `fill=<color>`
+value passed straight to the SVG `fill`).
 
 Style-knob reads (the style panel's vocabulary, all honoured by `../render/shape`):
 
@@ -32,8 +35,9 @@ Style-knob reads (the style panel's vocabulary, all honoured by `../render/shape
 - `cornerRadiusPt` / `cornerRadiusUnits` — the `rounded corners[=<pt>]` radius (bare token
   == `DEFAULT_ROUNDED_PT` = 4pt) in pt / slide units (rectangles only).
 
-`isStyleKnobToken` marks the bare knob tokens (`draw`, `ellipse`, `circle`, `rectangle`,
-`rounded corners`, the widths, the dashes) so callers can tell a knob apart from a theme
+`isStyleKnobToken` marks the bare knob tokens (`draw`, `rectangle`, `rounded corners`, every
+shape token in `SHAPE_TOKENS` — `ellipse`, `circle`, `diamond`, `trapezium`, … — the widths,
+the dashes) so callers can tell a knob apart from a theme
 role — the style dropdown (`currentClass`) and `setNodeStyleClass` both keep knobs and only
 treat the _other_ bare tokens as roles. Colour/width/opacity keys carry `=`, so
 `styleClasses` never sees them as roles at all.

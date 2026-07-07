@@ -380,9 +380,7 @@ describe('setNodeStyleClass', () => {
 
   it('sets a class on an unclassed node and clears on null', () => {
     const bare = parsePicture('\\node (n1) at (1,1) {x};')
-    expect(serializePicture(setNodeStyleClass(bare, 'n1', 'title'))).toContain(
-      '\\node[title] (n1)',
-    )
+    expect(serializePicture(setNodeStyleClass(bare, 'n1', 'title'))).toContain('\\node[title] (n1)')
     const cleared = setNodeStyleClass(picture(), 'o2', null)
     expect(serializePicture(cleared)).toContain('\\node (o2)')
   })

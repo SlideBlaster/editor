@@ -18,23 +18,30 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   element lands in edit mode with an empty caret — and, if the edit is abandoned while
   still empty (blur or Escape), the node is `remove`d again rather than left as a
   near-invisible orphan. The controller supplies (and then clears) `autoEdit`.
-- **Inline content editing (W6, whole-node, in place).** Double-click a handle swaps
-  the node for a contenteditable raw-body editor (`.sb-inline-editor`) mounted **in the
+- **Inline content editing (W6, whole-node, in place, WYSIWYG).** Double-click a handle
+  swaps the node for a contenteditable editor (`.sb-inline-editor`) mounted **in the
   slide's own content layer**, carrying the node's classes and the rendered node's
   inline box — so it inherits the exact rendered type (family, cqw size, line-height,
   color, align) and scales with zoom; editing reads as in-place, not as a box over the
   slide. The rendered node hides (`visibility`) for the duration, and the overlay's
   pointer events are suspended (the slide is a stacking context, so the overlay always
-  sits above the editor); the node's handle gets `is-editing`. Seeded from the engine's
-  `serializeBody(content)`, selected for replace-on-type. A `text width` node keeps its
-  fixed width (wraps as rendered); a natural-width node grows rightward as typed into,
-  with an 18cqw floor so a fresh empty box opens at a comfortable size. It **commits on
-  blur or Ctrl/Cmd+Enter** by firing `editContent(name, body)`; plain Enter stays a
-  newline (lists, `\\`); **Escape cancels**. A no-op edit does not commit. The
-  controller re-parses the body (`parseContent`) — out-of-subset input becomes
-  preserved error content (ADR 0015), never a crash. `keydown` is stopped so Delete /
-  Space / zoom shortcuts stay inert while typing. Per-construct (sub-node) editing is a
-  later refinement; this replaces the whole node body.
+  sits above the editor); the node's handle gets `is-editing`.
+  Renderable content edits **WYSIWYG** (style-in-place, [richText.ts](./richText.md)):
+  the editor holds the *rendered* runs — provenance-stamped style elements, KaTeX math
+  islands, indexed atom islands, editable lists — with live conversion wired (typed
+  `$…$` / `\textbf{…}` / `**…**` convert on the fly; Backspace re-opens a math island
+  as source; paste is plain text); the commit reads the DOM back into **one
+  NodeContent transform** and fires `editContentModel` (ADR 0016). Out-of-subset
+  (`error`) content has no render to edit, so it falls back to the raw source editor
+  (plaintext-only, seeded from `serializeBody`, committing via `editContent` ->
+  `parseContent`, ADR 0015). Both modes: seed selected for replace-on-type; a
+  `text width` node keeps its fixed width (wraps as rendered) while a natural-width
+  node grows rightward as typed into, with an 18cqw floor so a fresh empty box opens
+  at a comfortable size; **commit on blur or Ctrl/Cmd+Enter**; plain Enter stays a
+  newline; **Escape cancels**; a no-op edit (identical serialized body) never commits.
+  `keydown` is stopped so Delete / Space / zoom shortcuts stay inert while typing.
+  Per-construct (sub-construct raw targeting) is a later refinement; this replaces the
+  whole node body.
 - **Live drag: bind, snap, or detach.** Each move computes a `DragOutcome`. First it
   asks the [binding resolver](./binding.md) whether the node should bind relative to a
   peer (E2); if so the outcome is `bind` and the preview lands at the binding's resolved

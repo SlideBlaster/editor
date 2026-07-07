@@ -96,15 +96,50 @@ export function minWidth(node: NodeStatement): number | undefined {
   return numericOption(node, /^minimum\s+width\s*=/)
 }
 
-/** The geometric outline a node draws. `rectangle` is the default box; a bare `ellipse`
- *  or `circle` option makes it elliptical (tikz-subset.md). This is the shape switch the
- *  renderer maps to an SVG element and the shape catalogue selects with an option preset. */
-export type NodeShape = 'rectangle' | 'ellipse'
+/** The geometric outline a node draws — the shape switch the renderer maps to an SVG
+ *  element and the catalogue selects with an option preset (tikz-subset.md). `rectangle` is
+ *  the default box; `ellipse` covers circles; the straight-edged outlines all render as one
+ *  `<polygon>`; `cylinder` as a `<path>`; `stadium` (a pill / flowchart terminator) as a
+ *  fully-rounded `<rect>`. */
+export type NodeShape =
+  | 'rectangle'
+  | 'ellipse'
+  | 'diamond'
+  | 'triangle'
+  | 'trapezoid'
+  | 'parallelogram'
+  | 'regularPolygon'
+  | 'cylinder'
+  | 'stadium'
 
-/** The node's shape, from a bare shape token; defaults to `rectangle`. */
+/** Bare shape tokens and the `NodeShape` each selects, in detection order (first match wins).
+ *  `circle` renders as an equal-radii ellipse; `rounded rectangle` as a stadium. These tokens
+ *  and their kin are style KNOBS (see `STYLE_KNOB_TOKENS`), never theme roles. */
+const SHAPE_TOKENS: ReadonlyArray<readonly [token: string, shape: NodeShape]> = [
+  ['ellipse', 'ellipse'],
+  ['circle', 'ellipse'],
+  ['diamond', 'diamond'],
+  ['isosceles triangle', 'triangle'],
+  ['triangle', 'triangle'],
+  ['trapezium', 'trapezoid'],
+  ['parallelogram', 'parallelogram'],
+  ['regular polygon', 'regularPolygon'],
+  ['cylinder', 'cylinder'],
+  ['rounded rectangle', 'stadium'],
+]
+
+/** The node's shape, from its first matching bare shape token; defaults to `rectangle`. */
 export function nodeShape(node: NodeStatement): NodeShape {
   const classes = styleClasses(node)
-  return classes.includes('ellipse') || classes.includes('circle') ? 'ellipse' : 'rectangle'
+  for (const [token, shape] of SHAPE_TOKENS) if (classes.includes(token)) return shape
+  return 'rectangle'
+}
+
+/** The `regular polygon sides=<n>` count for a regular-polygon node (clamped to >= 3);
+ *  default 5, matching TikZ. Drives how many `<polygon>` points the renderer emits. */
+export function polygonSides(node: NodeStatement): number {
+  const n = numericOption(node, /^regular\s+polygon\s+sides\s*=/)
+  return n !== undefined && n >= 3 ? Math.floor(n) : 5
 }
 
 /** Whether the node paints a visible outline — a bare `draw` or a `draw=<color>` option
@@ -260,9 +295,8 @@ export function cornerRadiusUnits(node: NodeStatement): number | undefined {
 const STYLE_KNOB_TOKENS: ReadonlySet<string> = new Set<string>([
   'draw',
   'rectangle',
-  'ellipse',
-  'circle',
   'rounded corners',
+  ...SHAPE_TOKENS.map(([token]) => token),
   ...LINE_WIDTHS,
   ...DASH_PATTERNS,
 ])

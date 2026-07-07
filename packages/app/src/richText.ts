@@ -80,7 +80,8 @@ function runTag(run: TextRun): string | undefined {
 function runFromTag(tag: string, children: TextRun[]): TextRun | undefined {
   if (tag.startsWith('latex:')) {
     const command = tag.slice(6)
-    if (LATEX_COMMANDS.has(command)) return { kind: 'latex', command: command as LatexCommand, children }
+    if (LATEX_COMMANDS.has(command))
+      return { kind: 'latex', command: command as LatexCommand, children }
   }
   if (tag === 'md:*' || tag === 'md:**') {
     return { kind: 'markdown', marker: tag.slice(3) as '*' | '**', children }
@@ -228,17 +229,27 @@ function readNodes(nodes: Iterable<Node>, atoms: readonly TextRun[], out: TextRu
     }
     if (tag in BARE_STYLE_TAGS) {
       // Browser-authored styling (execCommand / Ctrl+B): html dialect — the documented
-      // default for new canvas content.
+      // default for new canvas content. A wrapper holding only whitespace (execCommand
+      // wraps every fragment when a selection crosses lines) is noise: unwrap it.
       const children: TextRun[] = []
       readNodes(node.childNodes, atoms, children)
-      if (children.length > 0) out.push({ kind: 'html', tag: BARE_STYLE_TAGS[tag]!, children })
+      if (children.length === 0) continue
+      if (children.every((run) => run.kind === 'text' && run.value.trim() === '')) {
+        for (const run of children) pushText(out, (run as { value: string }).value)
+      } else {
+        out.push({ kind: 'html', tag: BARE_STYLE_TAGS[tag]!, children })
+      }
       continue
     }
     if (tag === 'div') {
       // A contenteditable line: Chromium leaves the first line bare and wraps the rest
       // in <div>s; an empty line is <div><br></div> (one newline, not two).
       pushText(out, '\n')
-      if (!(node.childNodes.length === 1 && node.firstChild instanceof HTMLElement && node.firstChild.tagName === 'BR')) {
+      if (!(
+        node.childNodes.length === 1 &&
+        node.firstChild instanceof HTMLElement &&
+        node.firstChild.tagName === 'BR'
+      )) {
         readNodes(node.childNodes, atoms, out)
       }
       continue
@@ -277,8 +288,7 @@ function nestStyles(tags: string[], children: TextRun[]): TextRun {
 
 function readList(el: HTMLElement, atoms: readonly TextRun[]): TextRun {
   const provenance = el.dataset.run
-  const dialect =
-    provenance === 'list:latex' ? 'latex' : provenance === 'list:html' ? 'html' : 'md'
+  const dialect = provenance === 'list:latex' ? 'latex' : provenance === 'list:html' ? 'html' : 'md'
   const items: ListItem[] = []
   for (const li of el.children) {
     if (li.tagName !== 'LI' || !(li instanceof HTMLElement)) continue
@@ -540,7 +550,14 @@ export function wireRichEditing(editor: HTMLElement): void {
     if (trigger === '$') {
       const m = matchMath(upto)
       if (m) {
-        replaceSource(editor, at.node, m.start, at.offset, mathIslandHtml(m.source, m.display, true), 'after')
+        replaceSource(
+          editor,
+          at.node,
+          m.start,
+          at.offset,
+          mathIslandHtml(m.source, m.display, true),
+          'after',
+        )
         padIslands(editor)
       }
       return
@@ -574,8 +591,7 @@ export function wireRichEditing(editor: HTMLElement): void {
 
   // Clicking an island selects it whole — visible feedback for "this is one unit".
   editor.addEventListener('click', (event) => {
-    const island =
-      event.target instanceof Element ? event.target.closest('.rt-atom') : null
+    const island = event.target instanceof Element ? event.target.closest('.rt-atom') : null
     if (!island || !editor.contains(island)) return
     const sel = window.getSelection()
     if (!sel) return

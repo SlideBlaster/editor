@@ -23,8 +23,10 @@ import {
   isDrawn,
   nodeShape,
   opacity,
+  polygonSides,
   strokeColor,
   strokeWidthUnits,
+  type NodeShape,
 } from '../tikz/options'
 
 /** A box in SVG user units (y-down, top-left origin) — already mapped out of slide space. */
@@ -80,14 +82,106 @@ export function shapeGeometrySvg(
   if (op !== undefined) decls.push(`opacity:${r(op)}`)
   const style = decls.length ? ` style="${decls.join(';')}"` : ''
 
-  if (nodeShape(node) === 'ellipse') {
+  const shape = nodeShape(node)
+  if (shape === 'ellipse') {
     const cx = rect.x + rect.width / 2
     const cy = rect.y + rect.height / 2
     return `<ellipse class="${classes}" cx="${r(cx)}" cy="${r(cy)}" rx="${r(rect.width / 2)}" ry="${r(rect.height / 2)}"${style}/>`
   }
-  const radius = cornerRadiusUnits(node)
+  if (POLYGON_SHAPES.has(shape)) {
+    const points = polygonPoints(shape, rect, polygonSides(node))
+    return `<polygon class="${classes}" points="${points}"${style}/>`
+  }
+  if (shape === 'cylinder') {
+    return `<path class="${classes}" d="${cylinderPath(rect)}"${style}/>`
+  }
+  // rectangle (with optional `rounded corners`) or stadium (fully rounded — a pill).
+  const radius =
+    shape === 'stadium' ? Math.min(rect.width, rect.height) / 2 : cornerRadiusUnits(node)
   const rounded = radius !== undefined ? ` rx="${r(radius)}" ry="${r(radius)}"` : ''
   return `<rect class="${classes}" x="${r(rect.x)}" y="${r(rect.y)}" width="${r(rect.width)}" height="${r(rect.height)}"${rounded}${style}/>`
+}
+
+/** The straight-edged outlines, all rendered as one `<polygon>` (a different point list each). */
+const POLYGON_SHAPES: ReadonlySet<NodeShape> = new Set<NodeShape>([
+  'diamond',
+  'triangle',
+  'trapezoid',
+  'parallelogram',
+  'regularPolygon',
+])
+
+/** The `points` attribute for a polygon shape inscribed in `rect`. Straight-edged shapes are
+ *  fixed vertex formulas; a regular polygon walks `sides` points around the box's inscribed
+ *  ellipse, first vertex at the top (TikZ orientation). */
+function polygonPoints(shape: NodeShape, rect: Rect, sides: number): string {
+  const { x, y, width: w, height: h } = rect
+  const pts: Array<[number, number]> =
+    shape === 'diamond'
+      ? [
+          [x + w / 2, y],
+          [x + w, y + h / 2],
+          [x + w / 2, y + h],
+          [x, y + h / 2],
+        ]
+      : shape === 'triangle'
+        ? [
+            [x + w / 2, y],
+            [x + w, y + h],
+            [x, y + h],
+          ]
+        : shape === 'trapezoid'
+          ? [
+              [x + w * 0.25, y],
+              [x + w * 0.75, y],
+              [x + w, y + h],
+              [x, y + h],
+            ]
+          : shape === 'parallelogram'
+            ? [
+                [x + w * 0.25, y],
+                [x + w, y],
+                [x + w * 0.75, y + h],
+                [x, y + h],
+              ]
+            : regularPolygonPoints(rect, sides)
+  return pts.map(([px, py]) => `${r(px)},${r(py)}`).join(' ')
+}
+
+/** `sides` points of a regular polygon inscribed in `rect`'s ellipse, first vertex at top. */
+function regularPolygonPoints(rect: Rect, sides: number): Array<[number, number]> {
+  const cx = rect.x + rect.width / 2
+  const cy = rect.y + rect.height / 2
+  const rx = rect.width / 2
+  const ry = rect.height / 2
+  const pts: Array<[number, number]> = []
+  for (let i = 0; i < sides; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / sides
+    pts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)])
+  }
+  return pts
+}
+
+/** SVG path for a database cylinder in `rect`: a full top ellipse, two side walls, and a
+ *  front bottom arc. `ry` is the elliptical cap depth (clamped so tall/short boxes stay sane). */
+function cylinderPath(rect: Rect): string {
+  const { x, y, width: w, height: h } = rect
+  const rx = w / 2
+  const ry = Math.min(h * 0.16, rx * 0.6)
+  const topY = y + ry
+  const botY = y + h - ry
+  return [
+    // full top ellipse (two arcs, same sweep, endpoints swapped)
+    `M ${r(x)},${r(topY)}`,
+    `A ${r(rx)},${r(ry)} 0 0 0 ${r(x + w)},${r(topY)}`,
+    `A ${r(rx)},${r(ry)} 0 0 0 ${r(x)},${r(topY)}`,
+    `Z`,
+    // side walls + front bottom curve
+    `M ${r(x)},${r(topY)}`,
+    `L ${r(x)},${r(botY)}`,
+    `A ${r(rx)},${r(ry)} 0 0 1 ${r(x + w)},${r(botY)}`,
+    `L ${r(x + w)},${r(topY)}`,
+  ].join(' ')
 }
 
 /** Escape a raw color token for an attribute/style context. Colors are simple tokens; this

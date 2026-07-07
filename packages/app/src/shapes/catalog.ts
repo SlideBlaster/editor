@@ -33,18 +33,147 @@ export interface ShapeDef {
 }
 
 /**
- * The library. One archetype for now — an ellipse, which exercises the whole path: a
- * catalogue preset, an SVG element chosen from a shape token, a visible stroke, and a
- * default size. Agents extend THIS list (and, per new outline, `render/shape`).
+ * The library — the P0 launch set (shapes-inventory.md): the shapes a presentation/diagram
+ * user reaches for daily. Every entry is a preset of TikZ node options the engine already
+ * renders (rect / ellipse / polygon / cylinder / stadium outlines). Agents extend THIS list
+ * for P1+ (and, only for a NEW outline, add a `NodeShape` case in `render/shape`).
  */
 export const SHAPES: ShapeDef[] = [
+  // General / Basic
+  {
+    id: 'rectangle',
+    label: 'Rectangle',
+    category: 'General',
+    keywords: ['box', 'rect', 'square'],
+    options: ['draw'],
+    size: { width: 3.2, height: 2 },
+    body: '',
+  },
+  {
+    id: 'rounded-rectangle',
+    label: 'Rounded Rectangle',
+    category: 'General',
+    keywords: ['box', 'rounded', 'rect'],
+    options: ['draw', 'rounded corners'],
+    size: { width: 3.2, height: 2 },
+    body: '',
+  },
+  {
+    id: 'square',
+    label: 'Square',
+    category: 'General',
+    keywords: ['box', 'rect'],
+    options: ['draw'],
+    size: { width: 2.2, height: 2.2 },
+    body: '',
+  },
   {
     id: 'ellipse',
     label: 'Ellipse',
     category: 'General',
-    keywords: ['oval', 'circle', 'round'],
+    keywords: ['oval', 'round'],
     options: ['draw', 'ellipse'],
     size: { width: 3.2, height: 2 },
+    body: '',
+  },
+  {
+    id: 'circle',
+    label: 'Circle',
+    category: 'General',
+    keywords: ['round', 'dot', 'oval'],
+    options: ['draw', 'circle'],
+    size: { width: 2.2, height: 2.2 },
+    body: '',
+  },
+  {
+    id: 'diamond',
+    label: 'Diamond',
+    category: 'General',
+    keywords: ['rhombus', 'decision'],
+    options: ['draw', 'diamond'],
+    size: { width: 2.8, height: 2.2 },
+    body: '',
+  },
+  {
+    id: 'triangle',
+    label: 'Triangle',
+    category: 'General',
+    keywords: ['delta', 'arrow'],
+    options: ['draw', 'isosceles triangle'],
+    size: { width: 2.6, height: 2.4 },
+    body: '',
+  },
+  {
+    id: 'trapezoid',
+    label: 'Trapezoid',
+    category: 'General',
+    keywords: ['trapezium'],
+    options: ['draw', 'trapezium'],
+    size: { width: 3, height: 2 },
+    body: '',
+  },
+  {
+    id: 'parallelogram',
+    label: 'Parallelogram',
+    category: 'General',
+    keywords: ['data', 'skew', 'rhomboid'],
+    options: ['draw', 'parallelogram'],
+    size: { width: 3.2, height: 2 },
+    body: '',
+  },
+  {
+    id: 'hexagon',
+    label: 'Hexagon',
+    category: 'General',
+    keywords: ['polygon', 'preparation', 'six'],
+    options: ['draw', 'regular polygon', 'regular polygon sides=6'],
+    size: { width: 2.8, height: 2.4 },
+    body: '',
+  },
+  {
+    id: 'cylinder',
+    label: 'Cylinder',
+    category: 'General',
+    keywords: ['database', 'db', 'disk', 'storage'],
+    options: ['draw', 'cylinder'],
+    size: { width: 2.4, height: 2.8 },
+    body: '',
+  },
+  // Flowchart (reuses the General outlines with flowchart-conventional defaults)
+  {
+    id: 'flow-process',
+    label: 'Process',
+    category: 'Flowchart',
+    keywords: ['action', 'step', 'rectangle'],
+    options: ['draw'],
+    size: { width: 3.2, height: 1.8 },
+    body: '',
+  },
+  {
+    id: 'flow-decision',
+    label: 'Decision',
+    category: 'Flowchart',
+    keywords: ['branch', 'if', 'diamond'],
+    options: ['draw', 'diamond'],
+    size: { width: 3, height: 2.2 },
+    body: '',
+  },
+  {
+    id: 'flow-terminator',
+    label: 'Terminator',
+    category: 'Flowchart',
+    keywords: ['start', 'end', 'stadium', 'pill'],
+    options: ['draw', 'rounded rectangle'],
+    size: { width: 3, height: 1.6 },
+    body: '',
+  },
+  {
+    id: 'flow-data',
+    label: 'Data',
+    category: 'Flowchart',
+    keywords: ['io', 'input', 'output', 'parallelogram'],
+    options: ['draw', 'parallelogram'],
+    size: { width: 3.2, height: 1.8 },
     body: '',
   },
 ]

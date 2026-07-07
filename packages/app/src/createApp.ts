@@ -20,6 +20,8 @@
 import {
   fromMarkdown,
   toMarkdown,
+  parsePicture,
+  serializePicture,
   getMeta,
   slideStylesheet,
   renderSlide,
@@ -105,6 +107,8 @@ import {
   rememberDoc,
   readRemote,
   writeRemote,
+  isDocPath,
+  isTikzPath,
   type AppPorts,
 } from './workspace'
 import { paintFileTree } from './fileTree'
@@ -152,13 +156,52 @@ const CATALOGUE: CatalogueEntry[] = [
   { id: 'math', label: 'Math', hint: '$…$', options: [], body: '$x$' },
 ]
 
-/** Tolerant parse: a malformed edit keeps the last good render instead of blanking. */
-function parse(source: string): { doc: SlideDocument } | { error: string } {
-  try {
-    return { doc: fromMarkdown(source) }
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
-  }
+/**
+ * A document codec: how an open file's on-disk text maps to the `SlideDocument` the
+ * controller edits, and back. A deck (`.slideBlaster.md`) is markdown — frontmatter plus
+ * `slide`/`notes` blocks. A figure (`.tikz`) is a bare slide-picture body wrapped as one
+ * anonymous frame, so the entire controller (canvas, edit ops, undo, code pane) works on
+ * it unchanged; only these two seam functions differ.
+ */
+interface DocCodec {
+  kind: 'deck' | 'figure'
+  /** Tolerant parse: a malformed edit keeps the last good render instead of blanking. */
+  parse(source: string): { doc: SlideDocument } | { error: string }
+  serialize(doc: SlideDocument): string
+}
+
+const deckCodec: DocCodec = {
+  kind: 'deck',
+  parse(source) {
+    try {
+      return { doc: fromMarkdown(source) }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  },
+  serialize: toMarkdown,
+}
+
+/**
+ * A standalone `.tikz` figure: the file IS the picture body, so it becomes a single
+ * frame with empty frontmatter (theme resolves to `default`) and no heading. `parsePicture`
+ * never throws — unmodeled statements fall back to verbatim — so parse always succeeds.
+ */
+const figureCodec: DocCodec = {
+  kind: 'figure',
+  parse(source) {
+    return {
+      doc: { meta: { entries: [] }, frames: [{ id: 'figure', title: '', picture: parsePicture(source) }] },
+    }
+  },
+  serialize(doc) {
+    return serializePicture(doc.frames[0]?.picture ?? { statements: [] })
+  },
+}
+
+/** The codec for an open path: `.tikz` is a figure; everything else edits as a deck. */
+function codecFor(path: string | null): DocCodec {
+  return path && isTikzPath(path) ? figureCodec : deckCodec
 }
 
 /** A document with one frame's picture swapped — the unit of a canvas edit. */
@@ -280,6 +323,8 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const propsHost = qs('#props')
   const editorHead = qs('#editor-head')
   let currentDoc: SlideDocument | null = null
+  // How the open file's text maps to/from the edited document; set per-open in `openDoc`.
+  let codec: DocCodec = deckCodec
   let codePane: CodePane
   let deckHandle: DeckHandle | null = null
   let navHandle: NavHandle | null = null
@@ -304,14 +349,17 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   }
   const decorateDeck = (): void => {
     const total = currentDoc?.frames.length ?? 0
+    // A figure is a standalone picture, not a slide in a deck: no page-number/logo furniture.
+    const furniture = codec.kind !== 'figure'
     deck.querySelectorAll<HTMLElement>('.sb-slide').forEach((slide) => {
       const card = slide.closest<HTMLElement>('[data-frame]')
       const index = card ? Number(card.dataset.frame) : 0
       slide.querySelector('.sb-furniture')?.remove()
-      const chrome = furnitureHtml(activeTheme, { index, total })
+      const chrome = furniture ? furnitureHtml(activeTheme, { index, total }) : ''
       if (chrome) slide.insertAdjacentHTML('beforeend', chrome)
       slide.querySelector('.sb-theme-regions')?.remove()
-      if (showRegions) slide.insertAdjacentHTML('beforeend', regionsOverlayHtml(activeTheme, currentBox()))
+      if (showRegions)
+        slide.insertAdjacentHTML('beforeend', regionsOverlayHtml(activeTheme, currentBox()))
     })
   }
   applyThemeCss()
@@ -450,7 +498,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     undoStack.push(state.source) // the pre-edit source is the undo target
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
     redoStack.length = 0 // a new edit invalidates the redo branch
-    state.source = toMarkdown(doc)
+    state.source = codec.serialize(doc)
     codePane.setValue(state.source)
     persist()
     void render()
@@ -463,12 +511,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
    * renders/moves/resizes/serializes it with no special case. Selects the new node (no
    * auto-edit — a shape is a box; double-click adds a label later).
    */
-  const insertShapeAt = (
-    frame: number,
-    surface: Surface,
-    center: Point,
-    shapeId: string,
-  ): void => {
+  const insertShapeAt = (frame: number, surface: Surface, center: Point, shapeId: string): void => {
     const shape = shapeById(shapeId)
     const target = currentDoc?.frames[frame]
     const source = target ? pictureOf(target, surface) : undefined
@@ -502,7 +545,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     undoStack.push(state.source)
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift()
     redoStack.length = 0
-    const next = toMarkdown(doc)
+    const next = codec.serialize(doc)
     const edit = minimalDiff(state.source, next)
     codePane.replaceRange(edit.start, edit.end, edit.text)
     state.source = next
@@ -766,7 +809,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   )
 
   const render = async (): Promise<void> => {
-    const result = parse(state.source)
+    const result = codec.parse(state.source)
     if ('error' in result) {
       errorBanner.textContent = result.error
       errorBanner.hidden = false
@@ -795,6 +838,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     state.autoEdit = null // consumed by this paint (value captured in props below)
     const handle = await paintDeck(deck, {
       frames: doc.frames,
+      notes: codec.kind !== 'figure', // a bare figure has no presenter-notes sidecar
       selected: state.selected,
       selectedConnector: state.selectedConnector,
       selectedCurve: state.focusedCurve
@@ -824,13 +868,17 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (handle === null) return // a newer render superseded this one
     deckHandle = handle
     decorateDeck() // theme furniture + optional region boundaries over the painted deck
-    navHandle = await paintDeckNav(deckRail, {
-      frames: doc.frames,
-      active: state.active,
-      measurer,
-      slideWidth: currentBox().width,
-      onSelect: (index) => deckHandle?.scrollToSlide(index),
-    })
+    // A figure is a single picture: no deck rail (the navigator is a multi-slide affordance).
+    navHandle =
+      codec.kind === 'figure'
+        ? null
+        : await paintDeckNav(deckRail, {
+            frames: doc.frames,
+            active: state.active,
+            measurer,
+            slideWidth: currentBox().width,
+            onSelect: (index) => deckHandle?.scrollToSlide(index),
+          })
     undoButton.disabled = undoStack.length === 0
     redoButton.disabled = redoStack.length === 0
     setStatus()
@@ -839,12 +887,23 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     styleToolbar.refresh()
   }
 
+  // An out-of-band repaint (a table/citation resolving) rebuilds the deck DOM, which
+  // would silently destroy an open inline editor mid-type — losing the edit. Hold the
+  // repaint until the edit settles (commit/cancel both remove the editor).
+  const renderWhenEditingSettles = (): void => {
+    if (root.querySelector('.sb-inline-editor')) {
+      setTimeout(renderWhenEditingSettles, 400)
+      return
+    }
+    void render()
+  }
+
   // Compile port (latexml tables): compile out of band, then drop the placeholder
   // measurement and re-render so the table appears at its true size (tableCompiler.md).
   installTableCompiler(ports?.compile, {
     onReady: () => {
       measurer.reset()
-      void render()
+      renderWhenEditingSettles()
     },
   })
 
@@ -853,7 +912,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   installCiteCompiler(ports?.storage, {
     onReady: () => {
       measurer.reset()
-      void render()
+      renderWhenEditingSettles()
     },
   })
 
@@ -1098,7 +1157,8 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
           // page matches the canvas (default theme's CSS is the fallback inside export).
           const themeCss = `${themeStylesheet(activeTheme)}\n${furnitureCss(activeTheme)}`
           const slideWidth = currentBox().width // aspect ratio (ADR 0017)
-          if (button.dataset.export === 'print') await printDeck(slides, { title, themeCss, slideWidth })
+          if (button.dataset.export === 'print')
+            await printDeck(slides, { title, themeCss, slideWidth })
           else await downloadDeckHtml(slides, { title, themeCss, slideWidth })
         } catch (err) {
           status.textContent = `Export failed: ${err instanceof Error ? err.message : String(err)}`
