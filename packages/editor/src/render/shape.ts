@@ -24,10 +24,12 @@ import {
   nodeShape,
   opacity,
   polygonSides,
+  stencilId,
   strokeColor,
   strokeWidthUnits,
   type NodeShape,
 } from '../tikz/options'
+import { placeStencilPath, stencilPath } from './stencils'
 
 /** A box in SVG user units (y-down, top-left origin) — already mapped out of slide space. */
 export interface Rect {
@@ -83,6 +85,14 @@ export function shapeGeometrySvg(
   const style = decls.length ? ` style="${decls.join(';')}"` : ''
 
   const shape = nodeShape(node)
+  if (shape === 'stencil') {
+    const d = stencilPath(stencilId(node) ?? '')
+    // An imported stencil is its normalized path placed into the box, in absolute units.
+    // An unknown id falls through to the default box so the node keeps its hit geometry.
+    if (d !== undefined) {
+      return `<path class="${classes}" d="${placeStencilPath(d, rect)}"${style}/>`
+    }
+  }
   if (shape === 'ellipse') {
     const cx = rect.x + rect.width / 2
     const cy = rect.y + rect.height / 2

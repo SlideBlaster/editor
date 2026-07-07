@@ -7,7 +7,8 @@ slide space by the caller).
 It reads the shape essence from the node's option tokens via the `tikz/options` derived
 views: `nodeShape` chooses the element (`rectangle` -> `<rect>`, `ellipse` -> `<ellipse>`,
 the straight-edged shapes -> one `<polygon>`, `cylinder` -> `<path>`, `stadium` -> a fully
-rounded `<rect>`) and `isDrawn` adds the `sb-drawn` class (a visible stroke). Every paint knob is emitted as
+rounded `<rect>`, an imported `stencil` -> one absolute `<path>` from the registry) and
+`isDrawn` adds the `sb-drawn` class (a visible stroke). Every paint knob is emitted as
 an inline `style` declaration, because inline CSS is what beats the `.sb-drawn` stylesheet
 rule — SVG presentation attributes lose to it:
 
@@ -20,7 +21,9 @@ rule — SVG presentation attributes lose to it:
 - A rectangle's `cornerRadiusUnits` becomes geometric `rx`/`ry`; a `stadium` forces
   `rx=ry=min(w,h)/2` (a pill). The straight-edged outlines emit a `<polygon>` point list
   inscribed in the rect (a regular polygon walks `polygonSides` points, first vertex at top),
-  and `cylinder` a `<path>` with elliptical caps.
+  and `cylinder` a `<path>` with elliptical caps. An imported **stencil** (`stencil=<id>` token,
+  `nodeShape` -> `'stencil'`) is its registry path placed into the box by
+  [`render/stencils`](./stencils.md) `placeStencilPath`; an unknown id falls through to the box.
 
 ## Contract
 

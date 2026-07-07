@@ -762,12 +762,70 @@ button.tree-row {
   color: var(--muted);
 }
 
-.shapes-cat-name {
-  margin: 0.5rem 0.25rem 0.3rem;
+/* A collapsible family section. The big stencil families start closed so the panel mounts
+   instantly and only fills a family's grid the first time it is opened. */
+.shapes-family {
+  margin: 0.15rem 0;
+}
+
+.shapes-fam-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.35rem 0.25rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.shapes-fam-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Disclosure caret, rotating when the family opens. */
+.shapes-fam-summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border: 0.28rem solid transparent;
+  border-left-color: var(--muted);
+  border-right-width: 0;
+  transition: transform 0.12s ease;
+}
+
+.shapes-family[open] > .shapes-fam-summary::before {
+  transform: rotate(90deg);
+}
+
+.shapes-fam-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 5px;
+}
+
+.shapes-fam-name {
+  flex: 1;
   font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  color: var(--muted);
+}
+
+.shapes-fam-count {
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.02rem 0.35rem;
+}
+
+.shapes-more {
+  margin: 0.5rem 0.25rem 0;
+  font-size: 0.7rem;
   color: var(--muted);
 }
 
@@ -823,6 +881,25 @@ button.tree-row {
 .sb-shape-label {
   font-size: 0.7rem;
   color: var(--muted);
+}
+
+/* Attribution footer: draw.io stencils ship under CC BY 4.0, which requires a visible credit.
+   Pinned below the scrolling list. */
+.shapes-credit {
+  flex: none;
+  padding: 0.4rem 0.8rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.64rem;
+  color: var(--muted);
+}
+
+.shapes-credit a {
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+.shapes-credit a:hover {
+  color: var(--accent);
 }
 
 /* Highlight the deck while a shape is dragged over it (a drop will insert at the cursor). */

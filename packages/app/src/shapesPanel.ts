@@ -12,7 +12,7 @@
  *    inserts at the cursor point (wired in createApp; this module only sets the payload).
  */
 import { shapeGeometrySvg, type NodeStatement } from '@slideblaster/editor'
-import { shapeCategories, shapeMatches, type ShapeDef } from './shapes/catalog'
+import { SHAPES, shapeFamilies, shapeMatches, type ShapeDef } from './shapes/catalog'
 
 /** The dataTransfer type carrying a dragged shape's id from a panel cell to the canvas. */
 export const SHAPE_DRAG_MIME = 'application/x-slideblaster-shape'
@@ -46,39 +46,95 @@ export function renderShapesPanel(host: HTMLElement, opts: ShapesPanelOptions): 
   empty.textContent = 'No shapes match.'
   empty.hidden = true
 
+  // Empty query: one collapsible <details> per family, its cells rendered lazily on first open
+  // (drawing all 2000+ thumbnails up front would be far too heavy). A query: a flat, capped grid
+  // of matches across every family.
+  const SEARCH_CAP = 300
   const renderList = (query: string): void => {
     list.replaceChildren()
-    let any = false
-    for (const category of shapeCategories()) {
-      const shapes = category.shapes.filter((shape) => shapeMatches(shape, query))
-      if (shapes.length === 0) continue
-      any = true
-      list.append(categorySection(category.name, shapes, opts))
+    const q = query.trim()
+    if (q === '') {
+      for (const family of shapeFamilies()) {
+        list.append(familySection(family.name, family.shapes, opts))
+      }
+      empty.hidden = SHAPES.length > 0
+      return
     }
-    empty.hidden = any
+    const matches = SHAPES.filter((shape) => shapeMatches(shape, q))
+    empty.hidden = matches.length > 0
+    const grid = document.createElement('div')
+    grid.className = 'shapes-grid'
+    for (const shape of matches.slice(0, SEARCH_CAP)) grid.append(shapeCell(shape, opts))
+    list.append(grid)
+    if (matches.length > SEARCH_CAP) {
+      const more = document.createElement('p')
+      more.className = 'shapes-more'
+      more.textContent = `Showing ${SEARCH_CAP} of ${matches.length} — refine your search to see the rest.`
+      list.append(more)
+    }
   }
 
-  search.addEventListener('input', () => renderList(search.value))
+  // Debounce: filtering is cheap, but rendering up to SEARCH_CAP thumbnails per keystroke is not.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  search.addEventListener('input', () => {
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(() => renderList(search.value), 120)
+  })
 
-  host.append(head, search, list, empty)
+  host.append(head, search, list, empty, attribution())
   renderList('')
 }
 
-/** One category: a heading and a grid of its shape cells. */
-function categorySection(name: string, shapes: ShapeDef[], opts: ShapesPanelOptions): HTMLElement {
-  const section = document.createElement('section')
-  section.className = 'shapes-category'
+/** The stencil library is derived from draw.io shapes under CC BY 4.0; that license requires a
+ *  visible credit + link. See packages/app/THIRD_PARTY_NOTICES.md. */
+function attribution(): HTMLElement {
+  const credit = document.createElement('div')
+  credit.className = 'shapes-credit'
+  const source = document.createElement('a')
+  source.href = 'https://github.com/jgraph/drawio'
+  source.target = '_blank'
+  source.rel = 'noopener noreferrer'
+  source.textContent = 'draw.io'
+  const license = document.createElement('a')
+  license.href = 'https://creativecommons.org/licenses/by/4.0/'
+  license.target = '_blank'
+  license.rel = 'noopener noreferrer'
+  license.textContent = 'CC BY 4.0'
+  credit.append('Stencils from ', source, ' · ', license)
+  return credit
+}
 
-  const heading = document.createElement('h3')
-  heading.className = 'shapes-cat-name'
-  heading.textContent = name
+/** One family: a collapsible section whose grid of cells is rendered lazily the first time it
+ *  opens. General/Flowchart start open; the big stencil families start closed so the panel
+ *  mounts instantly. */
+function familySection(name: string, shapes: ShapeDef[], opts: ShapesPanelOptions): HTMLElement {
+  const details = document.createElement('details')
+  details.className = 'shapes-family'
+  details.open = name === 'General' || name === 'Flowchart'
+
+  const summary = document.createElement('summary')
+  summary.className = 'shapes-fam-summary'
+  const label = document.createElement('span')
+  label.className = 'shapes-fam-name'
+  label.textContent = name
+  const count = document.createElement('span')
+  count.className = 'shapes-fam-count'
+  count.textContent = String(shapes.length)
+  summary.append(label, count)
 
   const grid = document.createElement('div')
   grid.className = 'shapes-grid'
-  for (const shape of shapes) grid.append(shapeCell(shape, opts))
+  const populate = (): void => {
+    if (grid.childElementCount > 0) return
+    for (const shape of shapes) grid.append(shapeCell(shape, opts))
+  }
+  if (details.open) populate()
+  details.addEventListener('toggle', () => {
+    if (details.open) populate()
+  })
 
-  section.append(heading, grid)
-  return section
+  details.append(summary, grid)
+  return details
 }
 
 /** One draggable, clickable shape cell: its thumbnail over its label. */

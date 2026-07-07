@@ -111,6 +111,7 @@ export type NodeShape =
   | 'regularPolygon'
   | 'cylinder'
   | 'stadium'
+  | 'stencil'
 
 /** Bare shape tokens and the `NodeShape` each selects, in detection order (first match wins).
  *  `circle` renders as an equal-radii ellipse; `rounded rectangle` as a stadium. These tokens
@@ -128,11 +129,22 @@ const SHAPE_TOKENS: ReadonlyArray<readonly [token: string, shape: NodeShape]> = 
   ['rounded rectangle', 'stadium'],
 ]
 
-/** The node's shape, from its first matching bare shape token; defaults to `rectangle`. */
+/** The node's shape. An imported stencil (`stencil=<id>`) wins over the bare shape tokens
+ *  (it is a `key=value` token, invisible to `styleClasses`); otherwise the first matching
+ *  bare shape token decides; defaults to `rectangle`. */
 export function nodeShape(node: NodeStatement): NodeShape {
+  if (stencilId(node) !== undefined) return 'stencil'
   const classes = styleClasses(node)
   for (const [token, shape] of SHAPE_TOKENS) if (classes.includes(token)) return shape
   return 'rectangle'
+}
+
+/** The imported-stencil id from a `stencil=<id>` option token (e.g. `flowchart.decision`),
+ *  else undefined. The renderer resolves it to a path via the stencil registry
+ *  (`render/stencils`); the token round-trips verbatim as raw option text. */
+export function stencilId(node: NodeStatement): string | undefined {
+  const token = node.options.find((t) => /^stencil\s*=/.test(t))
+  return token === undefined ? undefined : token.slice(token.indexOf('=') + 1).trim() || undefined
 }
 
 /** The `regular polygon sides=<n>` count for a regular-polygon node (clamped to >= 3);

@@ -16,9 +16,11 @@ option tokenizing; returns the raw `OverlaySpec` for `content/overlay` to interp
 Shape reads: `nodeShape` — the `NodeShape` outline the renderer maps to an SVG element:
 `rectangle` (default), `ellipse` (also `circle`), the straight-edged `diamond` / `triangle`
 / `trapezoid` / `parallelogram` / `regularPolygon` (one `<polygon>` each), `cylinder`
-(a `<path>`), and `stadium` (a fully-rounded rect, from a `rounded rectangle` token). The
-token->shape table is `SHAPE_TOKENS`. `polygonSides` reads `regular polygon sides=<n>`
-(default 5). `isDrawn` (a bare `draw` OR a `draw=<color>` option — a visible outline; a
+(a `<path>`), `stadium` (a fully-rounded rect, from a `rounded rectangle` token), and
+`stencil` (an imported draw.io stencil — wins over the bare tokens). The token->shape table
+is `SHAPE_TOKENS`. `polygonSides` reads `regular polygon sides=<n>` (default 5). `stencilId`
+reads the `stencil=<id>` token (the id the renderer resolves via `../render/stencils`; the
+token round-trips verbatim); see `design/format/stencil-pipeline.md`. `isDrawn` (a bare `draw` OR a `draw=<color>` option — a visible outline; a
 plain text node has neither so its box stays invisible), and `fillColor` (the `fill=<color>`
 value passed straight to the SVG `fill`).
 

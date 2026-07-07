@@ -10,6 +10,7 @@
  * library. Adding a shape is one entry here (plus, only if it needs a NEW outline, one
  * `NodeShape` case in the engine's `render/shape`).
  */
+import { STENCIL_SHAPES } from './stencils.generated'
 
 export interface ShapeDef {
   /** Stable id — the drag payload and the catalogue key. */
@@ -176,6 +177,9 @@ export const SHAPES: ShapeDef[] = [
     size: { width: 3.2, height: 1.8 },
     body: '',
   },
+  // The imported draw.io stencil library (GENERATED — see design/format/stencil-pipeline.md).
+  // Curated shapes come first so `shapeCategories`/`shapeFamilies` list General/Flowchart on top.
+  ...STENCIL_SHAPES,
 ]
 
 /** Look a shape up by id (the drag payload / a panel click carries the id). */
@@ -197,6 +201,35 @@ export function shapeCategories(): { name: string; shapes: ShapeDef[] }[] {
     group.push(shape)
   }
   return order.map((name) => ({ name, shapes: byCategory.get(name)! }))
+}
+
+/** Families pinned to the top of the panel, in this order; the rest follow alphabetically. */
+const PINNED_FAMILIES = ['General', 'Flowchart']
+
+/** The shape's family — the part of its category before ` / ` (`Electrical / Resistors` ->
+ *  `Electrical`). The panel groups by family so the 2000+ stencil sub-sets collapse to ~17
+ *  headings instead of ~80. */
+export function shapeFamily(shape: ShapeDef): string {
+  return shape.category.split(' / ')[0] ?? shape.category
+}
+
+/** Shapes grouped by family for the panel: `PINNED_FAMILIES` first, then the rest alphabetical.
+ *  Within a family, shapes keep catalogue order (curated before stencils). */
+export function shapeFamilies(): { name: string; shapes: ShapeDef[] }[] {
+  const byFamily = new Map<string, ShapeDef[]>()
+  for (const shape of SHAPES) {
+    const family = shapeFamily(shape)
+    const group = byFamily.get(family)
+    if (group === undefined) byFamily.set(family, [shape])
+    else group.push(shape)
+  }
+  const names = [...byFamily.keys()].sort((a, b) => {
+    const pa = PINNED_FAMILIES.indexOf(a)
+    const pb = PINNED_FAMILIES.indexOf(b)
+    if (pa !== -1 || pb !== -1) return (pa === -1 ? Infinity : pa) - (pb === -1 ? Infinity : pb)
+    return a.localeCompare(b)
+  })
+  return names.map((name) => ({ name, shapes: byFamily.get(name)! }))
 }
 
 /** The node options a dropped shape carries: its essence plus its size floors. */
