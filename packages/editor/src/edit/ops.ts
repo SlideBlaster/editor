@@ -12,7 +12,7 @@
  */
 import type { NodeStatement, PathStatement, Point, TikzPicture } from '../model/tikz'
 import type { NodeContent } from '../model/content'
-import { isPlacementToken, placement, type Placement } from '../tikz/options'
+import { isPlacementToken, isStyleKnobToken, placement, type Placement } from '../tikz/options'
 import { serializeConnector, type ConnectorPath } from '../tikz/connector'
 import { formatNumber } from '../text/scanner'
 
@@ -134,9 +134,10 @@ export function setNodeOverlay(
 /**
  * Set (or clear, when `styleClass` is null) a node's style class — the bare option
  * token that binds it to a theme role (`title`, `body`, `note`, …). Drops every
- * existing bare class token and prepends the new one, so a node carries at most the
- * class the user picked; key=value options, placements, and arrow shorthands are
- * untouched. A no-op if the node is not found.
+ * existing bare ROLE token and prepends the new one, so a node carries at most the
+ * class the user picked; key=value options, placements, arrow shorthands, and bare
+ * style KNOBS (`draw`, `ellipse`, `thick`, `dashed`, … — `isStyleKnobToken`) are
+ * untouched, so restyling a shape keeps its outline/fill. A no-op if the node is not found.
  */
 export function setNodeStyleClass(
   picture: TikzPicture,
@@ -144,15 +145,31 @@ export function setNodeStyleClass(
   styleClass: string | null,
 ): TikzPicture {
   return mapNode(picture, name, (node) => {
-    const kept = node.options.filter((token) => !isStyleClassToken(token))
+    const kept = node.options.filter((token) => !isRoleClassToken(token))
     return { ...node, options: styleClass === null ? kept : [styleClass, ...kept] }
   })
+}
+
+/** A bare token that names a theme ROLE: a style-class token that is not a style knob. */
+function isRoleClassToken(token: string): boolean {
+  return isStyleClassToken(token) && !isStyleKnobToken(token)
 }
 
 /** Bare (non `key=value`, non arrow-shorthand) tokens name style classes — the same
  *  predicate `styleClasses` (tikz/options) reads with. */
 function isStyleClassToken(token: string): boolean {
   return !token.includes('=') && !/^[<|>.-]+$/.test(token)
+}
+
+/**
+ * Replace a node's whole `options` array (E5: style editing) — the node counterpart to
+ * `setConnectorOptions`. The style panel reads the node's current tokens, rewrites the one
+ * knob it changed with the pure `nodeStyle` helpers (preserving role classes, placement,
+ * and size), and commits the result here. A no-op if the node is not found; geometry,
+ * content, and identity (`name`) are untouched.
+ */
+export function setNodeOptions(picture: TikzPicture, name: string, options: string[]): TikzPicture {
+  return mapNode(picture, name, (node) => ({ ...node, options }))
 }
 
 /**

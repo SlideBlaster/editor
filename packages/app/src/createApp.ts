@@ -35,8 +35,10 @@ import {
   deleteNode,
   setNodeContent,
   setNodeStyleClass,
+  setNodeOptions,
   setNodeOverlay,
   styleClasses,
+  isStyleKnobToken,
   createConnector,
   deleteConnector,
   updateConnector,
@@ -420,6 +422,11 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
           if (currentDoc && p && frame !== null)
             commit(withSurface(currentDoc, frame, surface, setNodeOverlay(p, name, spec)))
         },
+        setNodeStyle: (name, options) => {
+          const p = target ? pictureOf(target, surface) : undefined
+          if (currentDoc && p && frame !== null)
+            commit(withSurface(currentDoc, frame, surface, setNodeOptions(p, name, options)))
+        },
       },
     })
   }
@@ -743,7 +750,9 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         const at = selectedPicture()
         const node = at ? findNode(at.picture, at.sel.name) : undefined
         if (!node) return undefined
-        return styleClasses(node)[0] ?? null
+        // The theme ROLE is the first bare token that is not a style knob (`draw`, `ellipse`,
+        // `thick`, …), so a shape's paint tokens are never mistaken for its role.
+        return styleClasses(node).find((c) => !isStyleKnobToken(c)) ?? null
       },
     },
     {

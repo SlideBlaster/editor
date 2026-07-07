@@ -14,12 +14,32 @@ empty box lands visible), and `nodeOverlay` (the whole-node
 option tokenizing; returns the raw `OverlaySpec` for `content/overlay` to interpret).
 
 Shape reads: `nodeShape` (`rectangle` default, or `ellipse` for a bare `ellipse`/`circle`
-token — the `NodeShape` switch the renderer maps to an SVG element), `isDrawn` (the bare
-`draw` option — a visible outline; a plain text node has none so its box stays invisible),
-and `fillColor` (the `fill=<color>` value passed straight to the SVG `fill`).
+token — the `NodeShape` switch the renderer maps to an SVG element), `isDrawn` (a bare
+`draw` OR a `draw=<color>` option — a visible outline; a plain text node has neither so its
+box stays invisible), and `fillColor` (the `fill=<color>` value passed straight to the SVG
+`fill`).
+
+Style-knob reads (the style panel's vocabulary, all honoured by `../render/shape`):
+
+- `strokeColor` — the `draw=<color>` stroke colour (bare `draw` keeps the default stroke).
+- `lineWidthName` / `lineWidthPt` / `strokeWidthUnits` — the stroke weight as a TikZ name
+  (`LINE_WIDTHS`: `ultra thin`…`ultra thick`), an explicit `line width=<pt>`, or the
+  resolved slide-unit stroke width the renderer emits (anchored so `thin` == the default
+  0.03; undefined means the stylesheet default applies).
+- `dashPattern` / `dashArray` — the dash as a TikZ token (`DASH_PATTERNS`) and its SVG
+  `stroke-dasharray` + round-cap flag (dotted draws round dots).
+- `opacity` / `fillOpacity` / `drawOpacity` — whole-node, fill-only, and stroke-only alpha.
+- `cornerRadiusPt` / `cornerRadiusUnits` — the `rounded corners[=<pt>]` radius (bare token
+  == `DEFAULT_ROUNDED_PT` = 4pt) in pt / slide units (rectangles only).
+
+`isStyleKnobToken` marks the bare knob tokens (`draw`, `ellipse`, `circle`, `rectangle`,
+`rounded corners`, the widths, the dashes) so callers can tell a knob apart from a theme
+role — the style dropdown (`currentClass`) and `setNodeStyleClass` both keep knobs and only
+treat the _other_ bare tokens as roles. Colour/width/opacity keys carry `=`, so
+`styleClasses` never sees them as roles at all.
 
 The layout pass (`../layout/resolve`) consumes width/placement; the render pass
-consumes the overlay and the shape reads.
+consumes the overlay and the shape/style reads.
 
 Kept derived so they can never disagree with the serialization truth. Structured
 placement/style editing (rewriting these tokens) comes with the edit ops and canvas.

@@ -8,6 +8,7 @@ export {
   deleteNode,
   setNodeContent,
   setNodeStyleClass,
+  setNodeOptions,
   setNodeOverlay,
   placeNodeRelative,
   adjustPlacement,

@@ -13,7 +13,7 @@
 import type { NodeStatement, PathStatement, Point, Statement, TikzPicture } from '../model/tikz'
 import type { Layout, PlacedNode } from '../model/layout'
 import { anchor as nodeAnchor, findPlaced, isAnchorName } from '../layout/resolve'
-import { minHeight, nodeOverlay, nodeScale } from '../tikz/options'
+import { minHeight, nodeOverlay, nodeScale, opacity } from '../tikz/options'
 import { activeAt, contentMaxStep, specMaxStep } from '../content/overlay'
 import { parseConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { renderContent, type RenderOptions } from './html'
@@ -185,6 +185,9 @@ function nodeDiv(
     scale.x !== 1 || scale.y !== 1
       ? `;transform-origin:top left;transform:scale(${r(scale.x)},${r(scale.y)})`
       : ''
+  // Whole-node `opacity` dims the content in step with the SVG box's `opacity`.
+  const op = opacity(source)
+  const opStyle = op !== undefined ? `;opacity:${r(op)}` : ''
   // Model identity in the DOM: lets an editor hit-test and address this node
   // (selection, drag, inline edit). Harmless in the export DOM (ADR 0014).
   const id = source.name !== undefined ? ` data-node="${source.name}"` : ''
@@ -196,7 +199,7 @@ function nodeDiv(
   const ovClass = ovHidden ? ' sb-ov-hidden' : ''
   const ovData =
     overlay !== undefined ? ` data-overlay="${overlay.raw.replace(/"/g, '&quot;')}"` : ''
-  return `<div class="${nodeClass(node)}${ovClass}"${id}${ovData} style="left:${left}%;top:${top}%;width:${width}%${minH}${scaled}">${renderContent(source.content, options)}</div>`
+  return `<div class="${nodeClass(node)}${ovClass}"${id}${ovData} style="left:${left}%;top:${top}%;width:${width}%${minH}${scaled}${opStyle}">${renderContent(source.content, options)}</div>`
 }
 
 /**

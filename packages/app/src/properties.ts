@@ -5,8 +5,10 @@
  * edits arrow style — head direction and dashing (via `setConnectorOptions`) — plus, when a
  * curved segment is focused, that segment's cubic controls as polar angle/pull fields (via
  * `updateConnectorPath`). For a selected node it reads and edits placement — absolute
- * `at (x,y)` (`moveNode`) or relative `below=<gap> of ref` (`bindNode`). Node style classes
- * and colours are deferred. Frame-bound by the controller; this module is frame-agnostic.
+ * `at (x,y)` (`moveNode`) or relative `below=<gap> of ref` (`bindNode`) — its size/reveal,
+ * and (E5) its Style: shape, fill, stroke (draw/colour/width/dash), opacities, and rounded
+ * corners, each read from a `tikz/options` view and written through a `shapes/nodeStyle`
+ * helper + `setNodeStyle`. Frame-bound by the controller; this module is frame-agnostic.
  */
 import {
   findNode,
@@ -16,12 +18,40 @@ import {
   nodeOverlay,
   isValidSpec,
   connectorOptions,
+  nodeShape,
+  isDrawn,
+  fillColor,
+  strokeColor,
+  lineWidthName,
+  dashPattern,
+  opacity,
+  fillOpacity,
+  drawOpacity,
+  cornerRadiusPt,
+  LINE_WIDTHS,
+  DASH_PATTERNS,
+  type NodeShape,
+  type LineWidthName,
+  type DashPattern,
+  type NodeStatement,
   type ConnectorPath,
   type CurveControls,
   type Point,
   type TikzPicture,
 } from '@slideblaster/editor'
 import type { CurveFocus } from './connectorEditor'
+import {
+  withShape,
+  withFillColor,
+  withStroke,
+  withStrokeColor,
+  withLineWidth,
+  withDash,
+  withOpacity,
+  withFillOpacity,
+  withDrawOpacity,
+  withCorners,
+} from './shapes/nodeStyle'
 
 export type PropSelection =
   { kind: 'node'; name: string } | { kind: 'connector'; index: number } | null
@@ -33,6 +63,9 @@ export interface PropertiesActions {
   bindNode(name: string, binding: { side: Side; gap: number; ref: string }): void
   /** Set (number) or clear (null) a node's explicit size options; omit a key to leave it. */
   resizeNode(name: string, patch: { textWidth?: number | null; minHeight?: number | null }): void
+  /** E5: replace a node's whole option-token array — the style panel writes fill/stroke/etc.
+   *  here, having rewritten one knob with the `shapes/nodeStyle` helpers. */
+  setNodeStyle(name: string, options: string[]): void
   setConnectorOptions(index: number, options: string[]): void
   /** E4+: replace a connector's shape — the panel uses this to write curve angles/pulls. */
   updateConnectorPath(index: number, path: ConnectorPath): void
@@ -329,6 +362,8 @@ function paintNode(
   })
   revealRow.append(reveal)
 
+  paintNodeStyle(host, node, name, actions)
+
   const place = placement(node)
 
   if (place) {
@@ -383,6 +418,173 @@ function paintNode(
   const y = numberInput(at.y)
   y.addEventListener('change', commit)
   yRow.append(y)
+}
+
+/**
+ * The Style section: the shape/paint knobs of the selected node, each reading a `tikz/options`
+ * derived view and writing through a `shapes/nodeStyle` helper + `setNodeStyle`. Every control
+ * recomputes its edit from the node's CURRENT `options`, so it only rewrites its own knob and
+ * leaves the role class, placement, and size intact. Stroke sub-controls disable while the box
+ * is undrawn; corners show only for rectangles.
+ */
+function paintNodeStyle(
+  host: HTMLElement,
+  node: NodeStatement,
+  name: string,
+  actions: PropertiesActions,
+): void {
+  const apply = (options: string[]): void => actions.setNodeStyle(name, options)
+
+  const sub = document.createElement('div')
+  sub.className = 'props-title props-subtitle'
+  sub.textContent = 'Style'
+  host.append(sub)
+
+  const shape = nodeShape(node)
+  row(host, 'Shape').append(
+    segmented(
+      [
+        { value: 'rectangle', label: '▭' },
+        { value: 'ellipse', label: '⬭' },
+      ],
+      shape,
+      (v) => apply(withShape(node.options, v as NodeShape)),
+    ),
+  )
+
+  // Fill: a toggle plus a colour swatch (disabled when unfilled).
+  const fill = fillColor(node)
+  const fillRow = row(host, 'Fill')
+  const fillControls = document.createElement('div')
+  fillControls.className = 'props-inline'
+  fillControls.append(
+    checkbox(fill !== undefined, (on) =>
+      apply(withFillColor(node.options, on ? (fill ?? '#cccccc') : null)),
+    ),
+    colorInput(fill, '#cccccc', fill === undefined, (c) => apply(withFillColor(node.options, c))),
+  )
+  fillRow.append(fillControls)
+
+  // Stroke: draw toggle plus colour; width and dash below (all inert while undrawn).
+  const drawn = isDrawn(node)
+  const strokeRow = row(host, 'Stroke')
+  const strokeControls = document.createElement('div')
+  strokeControls.className = 'props-inline'
+  strokeControls.append(
+    checkbox(drawn, (on) => apply(withStroke(node.options, on))),
+    colorInput(strokeColor(node), '#333333', !drawn, (c) =>
+      apply(withStrokeColor(node.options, c)),
+    ),
+  )
+  strokeRow.append(strokeControls)
+
+  const widthSel = styleSelect(['default', ...LINE_WIDTHS], lineWidthName(node) ?? 'default', (v) =>
+    apply(withLineWidth(node.options, v === 'default' ? null : (v as LineWidthName))),
+  )
+  widthSel.disabled = !drawn
+  row(host, 'Line').append(widthSel)
+
+  const dashSel = styleSelect(['solid', ...DASH_PATTERNS], dashPattern(node) ?? 'solid', (v) =>
+    apply(withDash(node.options, v === 'solid' ? null : (v as DashPattern))),
+  )
+  dashSel.disabled = !drawn
+  row(host, 'Dash').append(dashSel)
+
+  // Rounded corners are a rectangle-only knob (an ellipse has none).
+  if (shape === 'rectangle') {
+    const corners = optionalNumberInput(cornerRadiusPt(node))
+    corners.title = 'Corner radius in pt (blank = square)'
+    corners.addEventListener('change', () =>
+      apply(withCorners(node.options, corners.value === '' ? null : Number(corners.value))),
+    )
+    row(host, 'Corners').append(corners)
+  }
+
+  // Opacities: whole-node, fill-only, stroke-only (blank = fully opaque).
+  opacityRow(host, 'Opacity', opacity(node), (v) => apply(withOpacity(node.options, v)))
+  opacityRow(host, 'Fill α', fillOpacity(node), (v) => apply(withFillOpacity(node.options, v)))
+  opacityRow(host, 'Stroke α', drawOpacity(node), (v) => apply(withDrawOpacity(node.options, v)))
+}
+
+/** A segmented single-choice control (like the arrow Heads picker); highlights `current`. */
+function segmented(
+  choices: { value: string; label: string }[],
+  current: string,
+  onPick: (value: string) => void,
+): HTMLElement {
+  const group = document.createElement('div')
+  group.className = 'props-seg'
+  for (const choice of choices) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.textContent = choice.label
+    button.title = choice.value
+    button.className = choice.value === current ? 'is-active' : ''
+    button.addEventListener('click', () => onPick(choice.value))
+    group.append(button)
+  }
+  return group
+}
+
+function checkbox(checked: boolean, onChange: (on: boolean) => void): HTMLInputElement {
+  const input = document.createElement('input')
+  input.type = 'checkbox'
+  input.checked = checked
+  input.addEventListener('change', () => onChange(input.checked))
+  return input
+}
+
+/** A colour swatch. `<input type=color>` only shows `#rrggbb`, so a named/expression colour
+ *  (e.g. `red`, `blue!50`) renders as black until changed — but is left untouched until then. */
+function colorInput(
+  value: string | undefined,
+  fallback: string,
+  disabled: boolean,
+  onChange: (color: string) => void,
+): HTMLInputElement {
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.className = 'props-color'
+  input.disabled = disabled
+  input.value = /^#[0-9a-fA-F]{6}$/.test(value ?? '') ? value! : fallback
+  input.addEventListener('change', () => onChange(input.value))
+  return input
+}
+
+function styleSelect(
+  values: readonly string[],
+  current: string,
+  onChange: (value: string) => void,
+): HTMLSelectElement {
+  const select = document.createElement('select')
+  for (const value of values) {
+    const option = document.createElement('option')
+    option.value = value
+    option.textContent = value
+    if (value === current) option.selected = true
+    select.append(option)
+  }
+  select.addEventListener('change', () => onChange(select.value))
+  return select
+}
+
+/** A 0..1 alpha field, blank when unset (fully opaque); clearing it resets to opaque. */
+function opacityRow(
+  host: HTMLElement,
+  label: string,
+  value: number | undefined,
+  onChange: (value: number | null) => void,
+): void {
+  const input = document.createElement('input')
+  input.type = 'number'
+  input.step = '0.1'
+  input.min = '0'
+  input.max = '1'
+  input.placeholder = '1'
+  input.className = 'props-num'
+  input.value = value === undefined ? '' : String(value)
+  input.addEventListener('change', () => onChange(input.value === '' ? null : Number(input.value)))
+  row(host, label).append(input)
 }
 
 function numberInput(value: number): HTMLInputElement {

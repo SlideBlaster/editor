@@ -694,6 +694,23 @@ button.tree-row {
   color: var(--ink);
 }
 
+/* Colour swatch in the Style section: a compact square that pairs with the fill/stroke
+   toggle in a .props-inline row. */
+.props-color {
+  width: 1.6rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.props-color:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Shapes panel (draw.io-style library): a docked right rail — the trailing `auto` track of
    .workspace. A shape drags or clicks onto the canvas, where it becomes a \node (a curated
    preset of TikZ options). Thumbnails are drawn by the engine's shapeGeometrySvg. */
