@@ -21,6 +21,12 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   in one continuous vertical scroll; each is live-editable. A carousel `deckNav`
   ([deckNav.ts](./deckNav.md)) rail jumps between slides. Math renders via KaTeX
   ([math.ts](./math.md)) on every surface. See ux/deck-navigation.md.
+- **Deck structure edits.** Two edits change the frame list itself, both undoable through
+  `commit` like any node edit. `addSlide` appends a blank frame (`withNewFrame`) and reveals
+  it (`pendingScroll`, consumed by the next render) — one action behind two triggers, the
+  top-bar `#new-slide` button and the carousel's bottom "+ New slide" affordance (`onAdd`).
+  Delete with nothing on-slide selected removes the active frame (`withoutFrame`). Both are
+  deck-only (a `.tikz` figure is a single picture) and the last slide is never deletable.
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
   `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
   `requestCreate -> creation menu -> createNode` (W5), `remove -> deleteNode`,
@@ -28,7 +34,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `selectConnector` (connector selection, exclusive with node selection),
   `updateConnector -> updateConnector` (reshape endpoints/waypoints/curves). A connect-mode
   toolbar toggle (`#connect-toggle`, Esc to exit) flips dragging into arrow-drawing;
-  Delete removes the selected node or connector (`deleteConnector`). Each applies to the
+  Delete removes the selected node or connector (`deleteConnector`). With nothing on-slide
+  selected, Delete removes the whole active slide — the one the carousel highlights
+  (`state.active`) — via `withoutFrame`, guarding the last slide (a deck keeps at least one)
+  and skipped for a standalone `.tikz` figure. Each applies to the
   last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.

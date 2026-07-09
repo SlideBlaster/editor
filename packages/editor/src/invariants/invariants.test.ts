@@ -6,6 +6,7 @@ import fc from 'fast-check'
 import type { SlideDocument } from '../model/document'
 import type { NodeStatement } from '../model/tikz'
 import { parseContent } from '../content/parse'
+import { parsePicture } from '../tikz/parse'
 import { fromMarkdown } from '../markdown/fromMarkdown'
 import { toMarkdown } from '../markdown/toMarkdown'
 import { modelRoundTrips, textIsCanonical, identityPreserved, nodeNames } from './invariants'
@@ -174,6 +175,31 @@ describe('presenter-notes sidecar (ADR 0019, round-trip law 6)', () => {
   it('round-trips a model that has notes (invariant 1)', () => {
     const doc = fromMarkdown(withNotes)
     expect(modelRoundTrips(doc)).toBe(true)
+  })
+})
+
+describe('blank slide (the app "new slide" action appends one) round-trips', () => {
+  // withNewFrame (createApp.ts) appends exactly this shape: empty title, empty picture, a
+  // fresh `slide-N` id. If a blank frame did not round-trip, a new slide would vanish or
+  // error on the next parse — so lock the base case down here at the format level.
+  const doc: SlideDocument = {
+    meta: { entries: [{ key: 'title', value: 'Deck' }] },
+    frames: [
+      { id: 's1', title: 'One', picture: parsePicture('\\node[title] (t) {Hi};') },
+      { id: 'slide-2', title: '', picture: { statements: [] } },
+    ],
+  }
+
+  it('survives the model round-trip (invariant 1)', () => {
+    expect(modelRoundTrips(doc)).toBe(true)
+  })
+
+  it('re-parses to the same frames, the appended one still blank', () => {
+    const reparsed = fromMarkdown(toMarkdown(doc))
+    expect(reparsed.frames).toHaveLength(2)
+    expect(reparsed.frames[1]!.id).toBe('slide-2')
+    expect(reparsed.frames[1]!.title).toBe('')
+    expect(reparsed.frames[1]!.picture.statements).toEqual([])
   })
 })
 

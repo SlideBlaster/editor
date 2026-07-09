@@ -16,6 +16,7 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
       <span class="app-name">SlideBlaster</span>
       <span class="app-doc" id="doc-title"></span>
       <div class="tool-actions" role="group" aria-label="Tools">
+        <button type="button" id="new-slide" aria-label="New slide" title="New slide (adds a blank slide to the end)">+ Slide</button>
         <button type="button" id="undo" aria-label="Undo" title="Undo (Ctrl+Z)">Undo</button>
         <button type="button" id="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
         <button type="button" id="connect-toggle" aria-pressed="false">&rarr; Connect</button>

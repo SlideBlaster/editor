@@ -231,6 +231,26 @@ function withFrame(doc: SlideDocument, index: number, picture: TikzPicture): Sli
   }
 }
 
+/** A document with one frame removed — the unit of a slide deletion (carousel + Delete). */
+function withoutFrame(doc: SlideDocument, index: number): SlideDocument {
+  return {
+    meta: doc.meta,
+    frames: doc.frames.filter((_, i) => i !== index),
+  }
+}
+
+/** A document with a fresh blank slide appended — the unit of a "new slide" action. The id
+ *  is the first `slide-N` not already taken, so it stays unique across earlier deletes. */
+function withNewFrame(doc: SlideDocument): SlideDocument {
+  const used = new Set(doc.frames.map((f) => f.id))
+  let n = doc.frames.length + 1
+  while (used.has(`slide-${n}`)) n++
+  return {
+    meta: doc.meta,
+    frames: [...doc.frames, { id: `slide-${n}`, title: '', picture: { statements: [] } }],
+  }
+}
+
 /** The picture behind a (frame, surface): the audience slide, or its notes sidecar (ADR 0019). */
 function pictureOf(frame: Frame, surface: Surface): TikzPicture | undefined {
   return surface === 'notes' ? frame.notes : frame.picture
@@ -350,6 +370,9 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   const measurer = createDomMeasurer()
   // Monotonic render token: a slow async paint that finishes after a newer edit is dropped.
   let renderSeq = 0
+  // A slide to scroll the canvas to once the next render has painted the (rebuilt) deck DOM
+  // — set by a structural edit (new slide) whose commit re-renders asynchronously.
+  let pendingScroll: number | null = null
 
   // Working copy (M3): which document is open, its debounced persistence, and the
   // side-panel views. All null/absent when the shell wired no ports (in-memory mode).
@@ -521,6 +544,22 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     codePane.setValue(state.source)
     persist()
     void render()
+  }
+
+  /**
+   * Append a blank slide and reveal it — the "new slide" action shared by the top-bar button
+   * and the carousel's add affordance (one semantic action, two triggers). Undoable like any
+   * edit (it goes through commit). Deck-only: a standalone `.tikz` figure is a single picture.
+   */
+  const addSlide = (): void => {
+    if (!currentDoc || codec.kind === 'figure') return
+    const doc = withNewFrame(currentDoc)
+    const index = doc.frames.length - 1
+    state.active = index // focus the freshly added slide
+    state.selected = null
+    state.selectedConnector = null
+    pendingScroll = index // scroll the canvas to it once the rebuilt deck paints
+    commit(doc)
   }
 
   /**
@@ -890,19 +929,24 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       actions,
       measurer,
       isStale: () => seq !== renderSeq,
-      onActiveChange: (index) => {
-        const changed = index !== state.active
-        state.active = index
-        navHandle?.setActive(index)
-        // Overlay preview is per active slide; scrolling to another returns it to all-visible.
-        if (changed && state.preview && state.preview.frame !== index) clearPreview()
-        updateStepControl()
-      },
+      // A scroll report: reflect it in the highlight + step control. It must NOT scroll back
+      // (the scroll is what triggered this) — recentering is selectSlide's job on an explicit
+      // jump. Decoupled so an already-in-view slide still updates the highlight on click.
+      onActiveChange: (index) => setActiveSlide(index),
     })
     if (handle === null) return // a newer render superseded this one
     deckHandle = handle
     decorateDeck() // theme furniture + optional region boundaries over the painted deck
+    // A structural edit (new slide) asked to reveal a slide once its deck DOM exists.
+    if (pendingScroll !== null) {
+      deckHandle.scrollToSlide(pendingScroll)
+      pendingScroll = null
+    }
     // A figure is a single picture: no deck rail (the navigator is a multi-slide affordance).
+    // Capture whether the rail holds focus BEFORE it is rebuilt, so a re-render the carousel
+    // itself caused (deleting a slide) can hand focus back to the active thumb — keeping the
+    // rail "directly selected" for a follow-up Delete/arrow.
+    const railHadFocus = deckRail.contains(document.activeElement)
     navHandle =
       codec.kind === 'figure'
         ? null
@@ -911,7 +955,11 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
             active: state.active,
             measurer,
             slideWidth: currentBox().width,
-            onSelect: (index) => deckHandle?.scrollToSlide(index),
+            // Click/arrow selects a slide: highlight it immediately (not after a scroll that
+            // may never come — e.g. the 2nd of two slides already in view) AND recentre.
+            onSelect: (index) => selectSlide(index),
+            onAdd: addSlide,
+            focusActive: railHadFocus,
           })
     undoButton.disabled = undoStack.length === 0
     redoButton.disabled = redoStack.length === 0
@@ -974,6 +1022,9 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
   // Undo / redo toolbar buttons (keyboard: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z).
   undoButton.addEventListener('click', () => undo())
   redoButton.addEventListener('click', () => redo())
+
+  // New slide: the top-bar twin of the carousel's add affordance — one action, two triggers.
+  qs<HTMLButtonElement>('#new-slide').addEventListener('click', () => addSlide())
 
   // Keyboard: undo/redo, Delete, Escape — but never while typing in a field (the code
   // pane, the inline editor, or the creation-menu filter keep their native behaviour,
@@ -1048,6 +1099,35 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     button.addEventListener('click', () => stepBy(button.dataset.step === 'next' ? 1 : -1))
   })
 
+  /**
+   * Make `index` the active slide and reflect it everywhere at once — the carousel highlight,
+   * the step control, and any per-slide overlay preview. This is the single owner of "which
+   * slide is current", called both by a scroll report (`onActiveChange`) and by an explicit
+   * jump (`selectSlide`). Setting the highlight here, instead of waiting for a scroll event,
+   * is what fixes selecting a slide that is already in view (e.g. the 2nd of two slides): the
+   * scroll can't move, so no scroll event would ever arrive to move the highlight.
+   */
+  const setActiveSlide = (index: number): void => {
+    const last = currentDoc ? currentDoc.frames.length - 1 : 0
+    const clamped = Math.min(Math.max(index, 0), Math.max(0, last))
+    const changed = clamped !== state.active
+    state.active = clamped
+    navHandle?.setActive(clamped)
+    // Overlay preview is per active slide; moving to another returns it to all-visible.
+    if (changed && state.preview && state.preview.frame !== clamped) clearPreview()
+    updateStepControl()
+  }
+
+  /**
+   * Jump to a slide from an explicit gesture (carousel click/arrows, PageUp/Down, Home/End):
+   * make it active immediately (highlight now) and best-effort recentre the canvas on it.
+   * Decoupling the highlight from the scroll is the fix for the two-slide case above.
+   */
+  const selectSlide = (index: number): void => {
+    setActiveSlide(index)
+    deckHandle?.scrollToSlide(state.active)
+  }
+
   document.addEventListener('keydown', (event) => {
     const el = document.activeElement
     const typing = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
@@ -1069,26 +1149,29 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       setConnectMode(false)
       return
     }
-    // Slide navigation by keyboard (PageUp/Down, Home/End).
+    // Slide navigation by keyboard (PageUp/Down, Home/End). Route through selectSlide so the
+    // carousel highlight follows even when the canvas can't scroll further (e.g. the last
+    // slide can't be centred) — the same decoupling that fixes a carousel click. selectSlide
+    // clamps, so out-of-range targets are safe.
     const last = currentDoc ? currentDoc.frames.length - 1 : 0
     if (event.key === 'PageDown') {
       event.preventDefault()
-      deckHandle?.scrollToSlide(Math.min(state.active + 1, last))
+      selectSlide(state.active + 1)
       return
     }
     if (event.key === 'PageUp') {
       event.preventDefault()
-      deckHandle?.scrollToSlide(Math.max(state.active - 1, 0))
+      selectSlide(state.active - 1)
       return
     }
     if (event.key === 'Home') {
       event.preventDefault()
-      deckHandle?.scrollToSlide(0)
+      selectSlide(0)
       return
     }
     if (event.key === 'End') {
       event.preventDefault()
-      deckHandle?.scrollToSlide(last)
+      selectSlide(last)
       return
     }
     // Overlay step scrubbing on the active slide (ADR 0018): `.` forward, `,` back.
@@ -1109,6 +1192,19 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     } else if (state.selected) {
       event.preventDefault()
       actions.remove(state.selected.frame, state.selected.surface, state.selected.name)
+    } else if (codec.kind !== 'figure' && currentDoc && deckRail.contains(document.activeElement)) {
+      // A slide is *directly selected* in the carousel (the rail holds focus), so Delete
+      // targets the whole active slide — the one the carousel highlights (state.active).
+      // When focus is anywhere else the highlight is only a "you are here" indicator, so
+      // Delete does nothing to slides (removing one on an unfocused rail is too destructive).
+      // Undoable like any edit (via commit); a deck needs at least one slide, so the last is
+      // never deletable.
+      event.preventDefault()
+      if (currentDoc.frames.length <= 1) {
+        status.textContent = 'Cannot delete the last slide — a deck needs at least one.'
+      } else {
+        commit(withoutFrame(currentDoc, state.active))
+      }
     }
   })
 
@@ -1299,7 +1395,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     const deckOnly = codec.kind !== 'figure'
     deckRail.style.display = deckOnly ? '' : 'none'
     if (!deckOnly) deckRail.replaceChildren() // drop stale thumbnails so nothing lingers hidden
-    for (const id of ['#present-actions', '#export-actions']) {
+    for (const id of ['#present-actions', '#export-actions', '#new-slide']) {
       qs<HTMLElement>(id).style.display = deckOnly ? '' : 'none'
     }
   }

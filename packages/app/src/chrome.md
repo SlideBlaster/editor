@@ -11,8 +11,8 @@ shape library ([shapesPanel.ts](./shapesPanel.md)).
 It exists so the two shells share one DOM structure instead of each carrying the
 markup in its own `index.html`. The element IDs the controller
 ([createApp.ts](./createApp.md)) queries (`#deck`, `#code`, `#deck-rail`, `#props`,
-`#zoom-control`, `#export-actions`, `#connect-toggle`, `#undo`, `#redo`, `#status`,
-`#error`, `#doc-title`, `#zoom-readout`, `#side-panel`, `#file-tree`,
+`#zoom-control`, `#export-actions`, `#connect-toggle`, `#new-slide`, `#undo`, `#redo`,
+`#status`, `#error`, `#doc-title`, `#zoom-readout`, `#side-panel`, `#file-tree`,
 `#git-panel`, `#shapes-panel`, `#editor-head`, `#text-actions`) are defined here and
 must stay in sync with that controller. `#text-actions` is the empty text-style group
 the controller fills with the styles dropdown + B/I/U/S buttons
