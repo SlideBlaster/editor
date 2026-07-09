@@ -58,11 +58,11 @@ jobs:
           VITE_SB_AUTH_URL: ${{ vars.VITE_SB_AUTH_URL }}
           VITE_SB_GIT_PROXY: ${{ vars.VITE_SB_GIT_PROXY }}
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: packages/web-shell
-          # Output dir comes from wrangler.toml (pages_build_output_dir); --branch=main
-          # marks this as the production deployment (project production branch = main).
-          command: pages deploy --branch=main
+        working-directory: packages/web-shell
+        # wrangler-action installs wrangler with `npm i`, which fails on this repo's
+        # workspace:* deps (EUNSUPPORTEDPROTOCOL). Run wrangler via pnpm dlx instead;
+        # output dir + project name come from wrangler.toml, --branch=main = production.
+        run: pnpm dlx wrangler@3.90.0 pages deploy --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
