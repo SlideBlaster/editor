@@ -3,7 +3,7 @@
 Keeps a node's attached arrows tracking it **during** a drag/resize, instead of leaving
 them frozen until the commit re-render jumps them to their new endpoints (the "snappy"
 feel). Used by the node-move gesture ([canvas.ts](./canvas.md) `wireHandle`) and both
-resize gestures ([resizeHandles.ts](./resizeHandles.md)). The connector *reshape* editor
+resize gestures ([resizeHandles.ts](./resizeHandles.md)). The connector _reshape_ editor
 ([connectorEditor.ts](./connectorEditor.md)) already refreshes its own arrow live — this
 covers the other side: the arrow moving because its **node** moved.
 

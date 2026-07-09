@@ -19,7 +19,7 @@ Sync is two-way and lives in the controller:
 
 - **Select -> highlight now, then scroll.** A thumbnail click (or ArrowUp/Down while the
   rail is focused) fires `onSelect(index)`; the controller's `selectSlide` sets the active
-  slide **immediately** (highlight + step control) and *then* best-effort re-centres the
+  slide **immediately** (highlight + step control) and _then_ best-effort re-centres the
   canvas (`deckHandle.scrollToSlide`). Decoupling the highlight from the scroll is
   deliberate: selecting a slide already in view (e.g. the 2nd of two slides, where the
   scroll can't move) still updates the highlight, because it no longer waits for a scroll

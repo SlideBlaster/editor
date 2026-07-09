@@ -107,8 +107,7 @@ function anchorRestPos(
   h: number,
 ): { left: number; top: number } {
   const { col, row } = anchorAxes(a)
-  const left =
-    col < 0 ? safe.left * cw : col > 0 ? cw - safe.right * cw - w : cw / 2 - w / 2
+  const left = col < 0 ? safe.left * cw : col > 0 ? cw - safe.right * cw - w : cw / 2 - w / 2
   const top = row < 0 ? safe.top * ch : row > 0 ? ch - safe.bottom * ch - h : ch / 2 - h / 2
   return { left, top }
 }
@@ -172,7 +171,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
   )
   closeBtn.addEventListener('click', () => close())
   topbar.append(
-    el('strong', { textContent: 'Theme studio' }, 'font-size:.82rem;letter-spacing:.02em;color:#888'),
+    el(
+      'strong',
+      { textContent: 'Theme studio' },
+      'font-size:.82rem;letter-spacing:.02em;color:#888',
+    ),
     nameInput,
     el('span', { textContent: 'aspect' }, 'font-size:.72rem;color:#999;margin-left:.4rem'),
     aspectSel,
@@ -188,7 +191,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     'flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:1.4rem;' +
       'background:repeating-conic-gradient(#eceef2 0 25%,#f6f7f9 0 50%) 0 0/22px 22px',
   )
-  const preview = el('div', { id: 'sb-te-preview' }, 'position:relative;box-shadow:0 4px 18px rgba(0,0,0,.18)')
+  const preview = el(
+    'div',
+    { id: 'sb-te-preview' },
+    'position:relative;box-shadow:0 4px 18px rgba(0,0,0,.18)',
+  )
   const slide = el(
     'div',
     { className: 'sb-slide' },
@@ -246,7 +253,8 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
       handle.setPointerCapture(ev.pointerId)
       const startX = ev.clientX
       const startY = ev.clientY
-      const move = (e: PointerEvent): void => onMove((e.clientX - startX) / cw, (e.clientY - startY) / ch, e)
+      const move = (e: PointerEvent): void =>
+        onMove((e.clientX - startX) / cw, (e.clientY - startY) / ch, e)
       const up = (): void => {
         handle.removeEventListener('pointermove', move)
         handle.removeEventListener('pointerup', up)
@@ -294,12 +302,20 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
   }
   function guideX(x: number): void {
     guideLayer.append(
-      el('div', {}, `position:absolute;left:${x * 100}%;top:0;bottom:0;width:0;border-left:1px dashed #ff8800`),
+      el(
+        'div',
+        {},
+        `position:absolute;left:${x * 100}%;top:0;bottom:0;width:0;border-left:1px dashed #ff8800`,
+      ),
     )
   }
   function guideY(y: number): void {
     guideLayer.append(
-      el('div', {}, `position:absolute;top:${y * 100}%;left:0;right:0;height:0;border-top:1px dashed #ff8800`),
+      el(
+        'div',
+        {},
+        `position:absolute;top:${y * 100}%;left:0;right:0;height:0;border-top:1px dashed #ff8800`,
+      ),
     )
   }
 
@@ -326,8 +342,17 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     )
     // Ghost of what a node created here inherits, styled by the theme for a real preview.
     if (rg.defaultClass && theme.style.classes[rg.defaultClass]) {
-      const ghost = el('div', { className: 'sb-content' }, 'position:absolute;inset:0;padding:2%;pointer-events:none;opacity:.55;overflow:hidden')
-      ghost.append(el('div', { className: `sb-style-${rg.defaultClass}`, textContent: sampleFor(rg.defaultClass) }))
+      const ghost = el(
+        'div',
+        { className: 'sb-content' },
+        'position:absolute;inset:0;padding:2%;pointer-events:none;opacity:.55;overflow:hidden',
+      )
+      ghost.append(
+        el('div', {
+          className: `sb-style-${rg.defaultClass}`,
+          textContent: sampleFor(rg.defaultClass),
+        }),
+      )
       box.append(ghost)
     }
 
@@ -347,10 +372,22 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
         const ys = snapYs(index)
         const sxl = snap(nx, xs)
         const sxr = snap(nx + rect.w, xs)
-        if (sxl !== nx) { nx = sxl; guideX(sxl) } else if (sxr !== nx + rect.w) { nx = sxr - rect.w; guideX(sxr) }
+        if (sxl !== nx) {
+          nx = sxl
+          guideX(sxl)
+        } else if (sxr !== nx + rect.w) {
+          nx = sxr - rect.w
+          guideX(sxr)
+        }
         const syt = snap(ny, ys)
         const syb = snap(ny + rect.h, ys)
-        if (syt !== ny) { ny = syt; guideY(syt) } else if (syb !== ny + rect.h) { ny = syb - rect.h; guideY(syb) }
+        if (syt !== ny) {
+          ny = syt
+          guideY(syt)
+        } else if (syb !== ny + rect.h) {
+          ny = syb - rect.h
+          guideY(syb)
+        }
         rect.x = nx
         rect.y = ny
         box.style.left = `${nx * 100}%`
@@ -368,11 +405,18 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
 
     // resize handles: only on the selected region (keeps unselected boundaries uncluttered).
     // hx/hy in {-1,0,1} = which edge each grip controls.
-    const grips: Array<[number, number]> = selected ? [
-      [-1, -1], [0, -1], [1, -1],
-      [-1, 0], [1, 0],
-      [-1, 1], [0, 1], [1, 1],
-    ] : []
+    const grips: Array<[number, number]> = selected
+      ? [
+          [-1, -1],
+          [0, -1],
+          [1, -1],
+          [-1, 0],
+          [1, 0],
+          [-1, 1],
+          [0, 1],
+          [1, 1],
+        ]
+      : []
     for (const [hx, hy] of grips) {
       const cx = hx < 0 ? '0' : hx > 0 ? '100%' : '50%'
       const cy = hy < 0 ? '0' : hy > 0 ? '100%' : '50%'
@@ -391,18 +435,45 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
           if (!s0) s0 = { ...rect }
           clearGuides()
           let { x, y, w, h } = s0
-          if (hx < 0) { const nx = snap(clamp01(x + dx), snapXs(index)); w = w + (x - nx); x = nx; if (nx !== clamp01(s0.x + dx)) guideX(nx) }
-          if (hx > 0) { const nr = snap(clamp01(x + w + dx), snapXs(index)); w = nr - x; if (nr !== clamp01(s0.x + s0.w + dx)) guideX(nr) }
-          if (hy < 0) { const ny = snap(clamp01(y + dy), snapYs(index)); h = h + (y - ny); y = ny; if (ny !== clamp01(s0.y + dy)) guideY(ny) }
-          if (hy > 0) { const nb = snap(clamp01(y + h + dy), snapYs(index)); h = nb - y; if (nb !== clamp01(s0.y + s0.h + dy)) guideY(nb) }
+          if (hx < 0) {
+            const nx = snap(clamp01(x + dx), snapXs(index))
+            w = w + (x - nx)
+            x = nx
+            if (nx !== clamp01(s0.x + dx)) guideX(nx)
+          }
+          if (hx > 0) {
+            const nr = snap(clamp01(x + w + dx), snapXs(index))
+            w = nr - x
+            if (nr !== clamp01(s0.x + s0.w + dx)) guideX(nr)
+          }
+          if (hy < 0) {
+            const ny = snap(clamp01(y + dy), snapYs(index))
+            h = h + (y - ny)
+            y = ny
+            if (ny !== clamp01(s0.y + dy)) guideY(ny)
+          }
+          if (hy > 0) {
+            const nb = snap(clamp01(y + h + dy), snapYs(index))
+            h = nb - y
+            if (nb !== clamp01(s0.y + s0.h + dy)) guideY(nb)
+          }
           w = Math.max(0.03, w)
           h = Math.max(0.03, h)
-          rect.x = x; rect.y = y; rect.w = w; rect.h = h
-          box.style.left = `${x * 100}%`; box.style.top = `${y * 100}%`
-          box.style.width = `${w * 100}%`; box.style.height = `${h * 100}%`
+          rect.x = x
+          rect.y = y
+          rect.w = w
+          rect.h = h
+          box.style.left = `${x * 100}%`
+          box.style.top = `${y * 100}%`
+          box.style.width = `${w * 100}%`
+          box.style.height = `${h * 100}%`
           emit()
         },
-        () => { s0 = null; clearGuides(); select({ kind: 'region', index }) },
+        () => {
+          s0 = null
+          clearGuides()
+          select({ kind: 'region', index })
+        },
       )
       box.append(grip)
     }
@@ -444,7 +515,8 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
         const cyFrac = clamp01((top + restH / 2) / ch)
         const a = anchorFromCentre(cxFrac, cyFrac)
         if (kind === 'logo' && theme.furniture.logo) theme.furniture.logo.anchor = a
-        if (kind === 'pageNumber' && theme.furniture.pageNumber) theme.furniture.pageNumber.anchor = a
+        if (kind === 'pageNumber' && theme.furniture.pageNumber)
+          theme.furniture.pageNumber.anchor = a
         emit()
       },
       () => {
@@ -471,7 +543,10 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
           chip.style.height = `${Math.max(20, restW * 0.4)}px`
           emit()
         },
-        () => { select({ kind: 'logo' }); emit() },
+        () => {
+          select({ kind: 'logo' })
+          emit()
+        },
       )
       chip.append(grip)
     }
@@ -505,13 +580,18 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     )
   }
   function railRow(label: string, control: HTMLElement): HTMLElement {
-    const r = el('label', {}, 'display:flex;align-items:center;gap:.5rem;margin:.3rem 0;font-size:.78rem;color:#444')
+    const r = el(
+      'label',
+      {},
+      'display:flex;align-items:center;gap:.5rem;margin:.3rem 0;font-size:.78rem;color:#444',
+    )
     r.append(el('span', { textContent: label }, 'flex:0 0 5.5rem;color:#666'), control)
     return r
   }
   function anchorSelect(value: Anchor9, onPick: (a: Anchor9) => void): HTMLSelectElement {
     const sel = el('select', {}, 'flex:1;font-size:.76rem;padding:.15rem')
-    for (const a of ANCHORS) sel.append(el('option', { value: a, textContent: a, selected: a === value }))
+    for (const a of ANCHORS)
+      sel.append(el('option', { value: a, textContent: a, selected: a === value }))
     sel.addEventListener('change', () => onPick(sel.value as Anchor9))
     return sel
   }
@@ -519,11 +599,15 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
   // palette
   rail.append(section('Palette'))
   for (const key of ['bg', 'ink', 'accent'] as const) {
-    const input = el('input', {
-      type: 'color',
-      id: `sb-te-color-${key}`,
-      value: toHexColor(theme.style.palette[key]),
-    }, 'width:2.4rem;height:1.5rem;padding:0;border:1px solid #ccc;border-radius:4px')
+    const input = el(
+      'input',
+      {
+        type: 'color',
+        id: `sb-te-color-${key}`,
+        value: toHexColor(theme.style.palette[key]),
+      },
+      'width:2.4rem;height:1.5rem;padding:0;border:1px solid #ccc;border-radius:4px',
+    )
     input.addEventListener('input', () => {
       theme.style.palette[key] = input.value
       applyPreviewCss()
@@ -541,12 +625,20 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
   )
   addRegionBtn.addEventListener('click', () => {
     const idx = theme.layout.regions.length
-    theme.layout.regions.push({ name: `region ${idx + 1}`, rect: { x: 0.3, y: 0.3, w: 0.4, h: 0.3 }, defaultClass: 'body' })
+    theme.layout.regions.push({
+      name: `region ${idx + 1}`,
+      rect: { x: 0.3, y: 0.3, w: 0.4, h: 0.3 },
+      defaultClass: 'body',
+    })
     renderCanvas()
     select({ kind: 'region', index: idx })
     emit()
   })
-  const logoToggle = el('input', { type: 'checkbox', id: 'sb-te-logo-show', checked: !!theme.furniture.logo })
+  const logoToggle = el('input', {
+    type: 'checkbox',
+    id: 'sb-te-logo-show',
+    checked: !!theme.furniture.logo,
+  })
   logoToggle.addEventListener('change', () => {
     theme.furniture.logo = logoToggle.checked
       ? { asset: '', anchor: 'bottom-right', size: 0.12 }
@@ -555,7 +647,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     select(logoToggle.checked ? { kind: 'logo' } : null)
     emit()
   })
-  const pnToggle = el('input', { type: 'checkbox', id: 'sb-te-pn-show', checked: theme.furniture.pageNumber?.show ?? false })
+  const pnToggle = el('input', {
+    type: 'checkbox',
+    id: 'sb-te-pn-show',
+    checked: theme.furniture.pageNumber?.show ?? false,
+  })
   pnToggle.addEventListener('change', () => {
     theme.furniture.pageNumber = {
       show: pnToggle.checked,
@@ -578,8 +674,13 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     inspector.textContent = ''
     if (selection === null) {
       inspector.append(
-        el('div', { textContent: 'Click a boundary, the logo, or the page number on the slide to edit it.' },
-          'font-size:.74rem;color:#999;line-height:1.4'),
+        el(
+          'div',
+          {
+            textContent: 'Click a boundary, the logo, or the page number on the slide to edit it.',
+          },
+          'font-size:.74rem;color:#999;line-height:1.4',
+        ),
       )
       return
     }
@@ -587,7 +688,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
       const idx = selection.index
       const rg = theme.layout.regions[idx]
       if (!rg) return
-      const name = el('input', { type: 'text', value: rg.name }, 'flex:1;font-size:.76rem;padding:.15rem')
+      const name = el(
+        'input',
+        { type: 'text', value: rg.name },
+        'flex:1;font-size:.76rem;padding:.15rem',
+      )
       name.addEventListener('input', () => {
         rg.name = name.value
         renderCanvas()
@@ -619,23 +724,43 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
       })
       const dims = el(
         'div',
-        { textContent: `x ${pct(rg.rect.x)} · y ${pct(rg.rect.y)} · w ${pct(rg.rect.w)} · h ${pct(rg.rect.h)}` },
+        {
+          textContent: `x ${pct(rg.rect.x)} · y ${pct(rg.rect.y)} · w ${pct(rg.rect.w)} · h ${pct(rg.rect.h)}`,
+        },
         'font-size:.7rem;color:#aaa;margin-top:.3rem',
       )
-      inspector.append(railRow('name', name), railRow('seeds class', cls), railRow('seeds anchor', anch), dims, del)
+      inspector.append(
+        railRow('name', name),
+        railRow('seeds class', cls),
+        railRow('seeds anchor', anch),
+        dims,
+        del,
+      )
       return
     }
     if (selection.kind === 'logo') {
       const lg = theme.furniture.logo
       if (!lg) return
-      const asset = el('input', { type: 'text', placeholder: 'assets/logo.svg', value: lg.asset }, 'flex:1;font-size:.76rem;padding:.15rem')
+      const asset = el(
+        'input',
+        { type: 'text', placeholder: 'assets/logo.svg', value: lg.asset },
+        'flex:1;font-size:.76rem;padding:.15rem',
+      )
       asset.addEventListener('input', () => {
         lg.asset = asset.value.trim()
         renderCanvas()
         emit()
       })
-      const size = el('input', { type: 'range', min: '4', max: '50', value: String(Math.round(lg.size * 100)) }, 'flex:1')
-      const sizeOut = el('span', { textContent: `${Math.round(lg.size * 100)}%` }, 'font-size:.72rem;color:#888;width:2.4rem')
+      const size = el(
+        'input',
+        { type: 'range', min: '4', max: '50', value: String(Math.round(lg.size * 100)) },
+        'flex:1',
+      )
+      const sizeOut = el(
+        'span',
+        { textContent: `${Math.round(lg.size * 100)}%` },
+        'font-size:.72rem;color:#888;width:2.4rem',
+      )
       size.addEventListener('input', () => {
         lg.size = Number(size.value) / 100
         sizeOut.textContent = `${size.value}%`
@@ -655,7 +780,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     // pageNumber
     const pn = theme.furniture.pageNumber
     if (!pn) return
-    const fmt = el('input', { type: 'text', value: pn.format ?? '{n}' }, 'flex:1;font-size:.76rem;padding:.15rem')
+    const fmt = el(
+      'input',
+      { type: 'text', value: pn.format ?? '{n}' },
+      'flex:1;font-size:.76rem;padding:.15rem',
+    )
     fmt.addEventListener('input', () => {
       pn.format = fmt.value
       emit()
@@ -668,7 +797,11 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     inspector.append(
       railRow('format', fmt),
       railRow('anchor', anch),
-      el('div', { textContent: '{n} = number, {total} = deck length' }, 'font-size:.7rem;color:#aaa;margin-top:.3rem'),
+      el(
+        'div',
+        { textContent: '{n} = number, {total} = deck length' },
+        'font-size:.7rem;color:#aaa;margin-top:.3rem',
+      ),
     )
   }
 
@@ -698,7 +831,8 @@ export function openThemeEditor(opts: ThemeEditorOptions): ThemeEditorHandle {
     status.textContent = 'Saving…'
     Promise.resolve(opts.onSave(theme)).then(
       () => (status.textContent = 'Saved'),
-      (e: unknown) => (status.textContent = 'Failed: ' + (e instanceof Error ? e.message : String(e))),
+      (e: unknown) =>
+        (status.textContent = 'Failed: ' + (e instanceof Error ? e.message : String(e))),
     )
   })
   actions.append(saveBtn, status)

@@ -7,7 +7,7 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
 
 ## Contract
 
-- **`editableHtml(content, atoms) -> html`** — a NodeContent rendered for *editing*:
+- **`editableHtml(content, atoms) -> html`** — a NodeContent rendered for _editing_:
   like the engine render but stamping what the render omits. Style runs become semantic
   elements (`strong/em/u/s`, or the html run's own span/div) carrying their exact run
   identity in `data-run` (`latex:textbf`, `md:**`, `html:b`, …) — provenance the DOM
@@ -36,7 +36,7 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
   stack stays coherent** (Ctrl+Z after a conversion restores the literal typed source):
   - `$…$` / `$$…$$` converts to a math island when the closing `$` is typed;
     `\textbf{`/`\emph{`/`\textit{`/`\underline{` converts the moment `{` completes —
-    an empty styled element with the caret *inside* (live "you are in bold" tracking),
+    an empty styled element with the caret _inside_ (live "you are in bold" tracking),
     and `}` exits past it (brace consumed); `**…**`/`*…*` convert on the closing
     marker with `md` provenance. Scans never cross a text-node boundary.
   - Backspace after a math island re-opens it as its `$…$` source (caret at end);

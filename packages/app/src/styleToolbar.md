@@ -20,7 +20,7 @@ Underline / Strike buttons — the toolbar half of style-in-place
   carries the style (Docs semantics), including the collapsed-caret pending style.
   Disabled when no rich editor is open or the selection is outside it.
 - **Styles dropdown**: `state.classes()` (the active theme's role classes) applied to
-  the *selected node* via `actions.setStyleClass` (engine `setNodeStyleClass` through
+  the _selected node_ via `actions.setStyleClass` (engine `setNodeStyleClass` through
   the standard commit: one undo step, source splice, repaint). `state.currentClass()`
   returns the node's class, `null` for an unclassed node, or `undefined` for no
   selection (dropdown disables). Opening the dropdown focuses it, which blurs — and

@@ -1,7 +1,7 @@
 # shared connector anchor snapping (connectorAnchors.ts)
 
-The single anchor-port view both connector gestures share, so an arrow is *created* and
-*reshaped* against the same set of snap targets. Used by the connect-mode create gesture
+The single anchor-port view both connector gestures share, so an arrow is _created_ and
+_reshaped_ against the same set of snap targets. Used by the connect-mode create gesture
 ([canvas.ts](./canvas.md)) and the reshape editor ([connectorEditor.ts](./connectorEditor.md)).
 
 A connector endpoint attaches either to one of a node's border **ports** — N/S/E/W, the four
@@ -11,7 +11,7 @@ coordinate `(x,y)`. This module resolves a slide-space point to a port and paint
 - **`nearestAnchor(p, nodes)`** — the port to snap a dragged endpoint to: the node whose box
   (plus a small margin) contains `p` (nearest centre wins ties), then that node's port nearest
   `p`. `null` when the pointer is over no node — the endpoint stays a free point.
-- **`nearestAnchorOn(p, node)`** — the nearest port of a *given* node; never null (the source
+- **`nearestAnchorOn(p, node)`** — the nearest port of a _given_ node; never null (the source
   you pressed on always resolves to one of its ports).
 - **`snapToAnchor(snap)`** — the engine `Anchor` for a `Snap`; the centre drops its suffix (a
   node's default anchor is its centre). Feeds `createConnector` / `updateConnector`
@@ -26,4 +26,5 @@ coordinate `(x,y)`. This module resolves a slide-space point to a port and paint
 
 Invariants: dots are indicators only (`.sb-snap-dot` is `pointer-events: none`); geometry is
 slide space (y-up) and only `paintSnapDots` flips y for the SVG viewBox. The module is pure DOM
-+ geometry — it holds no gesture state; the caller owns the drag.
+
+- geometry — it holds no gesture state; the caller owns the drag.

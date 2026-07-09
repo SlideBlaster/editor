@@ -27,7 +27,7 @@ W4: direct manipulation of the rendered slide, driving the engine's E1 edit ops.
   pointer events are suspended (the slide is a stacking context, so the overlay always
   sits above the editor); the node's handle gets `is-editing`.
   Renderable content edits **WYSIWYG** (style-in-place, [richText.ts](./richText.md)):
-  the editor holds the *rendered* runs — provenance-stamped style elements, KaTeX math
+  the editor holds the _rendered_ runs — provenance-stamped style elements, KaTeX math
   islands, indexed atom islands, editable lists — with live conversion wired (typed
   `$…$` / `\textbf{…}` / `**…**` convert on the fly; Backspace re-opens a math island
   as source; paste is plain text); the commit reads the DOM back into **one

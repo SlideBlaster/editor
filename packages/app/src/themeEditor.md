@@ -26,7 +26,7 @@ A centred modal with two areas:
 Behaviour:
 
 - Edits a `structuredClone` working copy; every change streams through `onChange(theme,
-  {showRegions})` for **live preview** on the real deck behind, and `onSave(theme)` persists.
+{showRegions})` for **live preview** on the real deck behind, and `onSave(theme)` persists.
 - Coupling is only the engine `Theme` model + `themeStylesheet`, so the module needs no
   `app.css` and is safe to build/verify against the engine alone. Stable ids above are
   the automation contract.

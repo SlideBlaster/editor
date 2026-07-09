@@ -195,7 +195,11 @@ export const defaultTheme: Theme = {
       body: { size: 2.6, color: 'ink' },
       caption: { size: 2.1, color: 'ink' },
       box: { border: { width: 0.1, color: 'accent', radius: 0.6 } },
-      note: { size: 2.2, background: '#fffbe6', border: { width: 0.1, color: '#e8d97a', radius: 0.4 } },
+      note: {
+        size: 2.2,
+        background: '#fffbe6',
+        border: { width: 0.1, color: '#e8d97a', radius: 0.4 },
+      },
     },
     nodeDistance: 0.5,
   },

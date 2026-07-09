@@ -1,8 +1,8 @@
 # resizeHandles — contract
 
-The node **resize** affordance on the interactive canvas. Over the *selected* node's
+The node **resize** affordance on the interactive canvas. Over the _selected_ node's
 `.sb-handle`, `wireResizeGrips` attaches eight drag grips (four corners + four edges). What a
-drag *does* depends on the node kind — `isReflowable(node.content)` picks the mode:
+drag _does_ depends on the node kind — `isReflowable(node.content)` picks the mode:
 
 - A **text** node (prose, or an empty text box — anything whose content is text and holds no
   image / table / column-group run) **reflows**: the drag sets the box's `text width` /

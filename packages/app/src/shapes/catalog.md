@@ -18,7 +18,7 @@ picture; every object is a node.)
   A stencil `ShapeDef` carries a `stencil=<id>` option; the engine resolves it to a path via
   `render/stencils`. Curated-first order keeps General/Flowchart at the top of the panel.
 - `shapeById(id)` resolves the drag payload / click id. `shapeCategories()` groups by exact
-  category in first-seen order; `shapeFamily(shape)` is the category before ` / `
+  category in first-seen order; `shapeFamily(shape)` is the category before `/`
   (`Electrical / Resistors` -> `Electrical`) and `shapeFamilies()` groups by it — pinning
   General/Flowchart first, the rest alphabetical — so the ~80 stencil sub-sets collapse to
   ~17 panel headings. `shapeNodeOptions(shape)` returns the options a dropped node carries —

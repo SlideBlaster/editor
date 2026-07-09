@@ -25,8 +25,9 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `commit` like any node edit. `addSlide` appends a blank frame (`withNewFrame`) and reveals
   it (`pendingScroll`, consumed by the next render) — one action behind two triggers, the
   top-bar `#new-slide` button and the carousel's bottom "+ New slide" affordance (`onAdd`).
-  Delete with nothing on-slide selected removes the active frame (`withoutFrame`). Both are
-  deck-only (a `.tikz` figure is a single picture) and the last slide is never deletable.
+  Delete removes the active frame (`withoutFrame`) only when nothing on-slide is selected
+  **and the carousel holds focus** (the rail is "directly selected" — see Keyboard). Both
+  are deck-only (a `.tikz` figure is a single picture) and the last slide is never deletable.
 - **Frame-addressed edits.** `DeckActions` carry the frame the gesture landed on:
   `move -> moveNodeTo` (also the detach path), `bind -> placeNodeRelative` (E2),
   `requestCreate -> creation menu -> createNode` (W5), `remove -> deleteNode`,
@@ -35,9 +36,11 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `updateConnector -> updateConnector` (reshape endpoints/waypoints/curves). A connect-mode
   toolbar toggle (`#connect-toggle`, Esc to exit) flips dragging into arrow-drawing;
   Delete removes the selected node or connector (`deleteConnector`). With nothing on-slide
-  selected, Delete removes the whole active slide — the one the carousel highlights
-  (`state.active`) — via `withoutFrame`, guarding the last slide (a deck keeps at least one)
-  and skipped for a standalone `.tikz` figure. Each applies to the
+  selected AND the carousel focused (a slide "directly selected"), Delete removes the whole
+  active slide — the one the carousel highlights (`state.active`) — via `withoutFrame`,
+  guarding the last slide (a deck keeps at least one) and skipped for a standalone `.tikz`
+  figure. When the rail is unfocused its highlight is only a "you are here" indicator, so
+  Delete leaves the deck alone. Each applies to the
   last good parsed
   document, swaps the one edited frame (`withFrame`), re-serializes with `toMarkdown`,
   pushes the new source into the code pane (`setValue`), and re-renders.
@@ -113,16 +116,25 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   the current selection — on selection (no deck re-render) and after every render. It
   edits arrow style (`setConnectorOptions`) and node placement (`move`/`bind`); its actions
   are bound to the selected frame. Scoped to arrows + placement for now.
-- **Scroll <-> navigator sync.** The deck reports the slide most in view
-  (`onActiveChange` -> `state.active` -> `navHandle.setActive`); a navigator click
-  (`onSelect`) scrolls the deck (`deckHandle.scrollToSlide`). Neither re-renders.
+- **Scroll <-> navigator sync.** Two paths, one owner. `setActiveSlide(index)` is the sole
+  writer of "which slide is current": it sets `state.active`, moves the highlight
+  (`navHandle.setActive`), and syncs the step control. A scroll report drives it
+  (`onActiveChange -> setActiveSlide`, no scroll-back — the scroll is what fired it). An
+  explicit jump (carousel click/arrow, PageUp/Down, Home/End) drives it through
+  `selectSlide`, which sets the highlight **immediately** and _then_ best-effort re-centres
+  the canvas (`deckHandle.scrollToSlide`). The immediate highlight fixes selecting a slide
+  already in view — the scroll can't move, so a scroll-driven highlight would never update.
+  Neither path re-renders.
 - **Navigator.** A single carousel rail (`#deck-rail`, the vertical strip between the
   editor and the canvas) painted by `paintDeckNav`; the earlier filmstrip style was
   removed. Repainting the navigator never touches the canvas, its scroll, or the active
   slide.
-- **Keyboard.** Delete removes the selected node or connector; undo/redo as above; Esc
-  exits connect mode; PageUp/PageDown and Home/End move between slides
-  (`deckHandle.scrollToSlide`). All are ignored while a text field (code pane, inline
+- **Keyboard.** Delete removes the selected node or connector, else the active slide when
+  the carousel holds focus (above); undo/redo as above; Esc exits connect mode; PageUp/Down
+  and Home/End move between slides through `selectSlide` (so the highlight follows even when
+  the canvas can't scroll further). ArrowUp/Down also move between slides, but only while the
+  carousel rail is focused — handled inside [deckNav.ts](./deckNav.md), so arrow keys stay
+  free for the canvas elsewhere. All are ignored while a text field (code pane, inline
   editor, menu filter) is focused, so those keep their native behaviour. The zoom control
   also has a **Fit** button (`zoom.fitWidth`).
 - **Canvas edits canonicalize.** `toMarkdown` re-emits the whole document in canonical
