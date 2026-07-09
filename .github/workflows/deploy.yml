@@ -1,0 +1,87 @@
+name: Deploy
+
+# Continuous deployment of the web shell to Cloudflare Pages (ADR 0020).
+# Approach A: build in a GitHub Actions runner, then upload the static output with
+# Wrangler (Pages Direct Upload). This keeps full control of the pnpm-workspace
+# build and Git LFS (the 20 MB latexml engine), in one pipeline alongside the
+# Workers. Runbook + account setup: infra/README.md, infra/cloudflare.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One production deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The exact CI checks must pass on a clean checkout before anything ships.
+  # Stays skipped until Cloudflare is wired: set repo variable DEPLOY_PAGES=true.
+  gate:
+    if: ${{ vars.DEPLOY_PAGES == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  deploy-pages:
+    needs: gate
+    if: ${{ vars.DEPLOY_PAGES == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      # checkout fetches LFS, but make the working-tree bytes explicit: the latexml
+      # engine must be the real payload, not a pointer, or the deploy ships broken.
+      - run: git lfs pull
+      - name: Guard - LFS engine materialized (not a pointer)
+        run: |
+          f=packages/adapters-shared/src/compile/engine/dist/perl-web.data
+          sz=$(stat -c%s "$f")
+          echo "engine payload: $sz bytes"
+          test "$sz" -gt 1000000 || {
+            echo "::error::$f is $sz bytes - Git LFS not materialized"
+            exit 1
+          }
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build web shell
+        run: pnpm --filter @slideblaster/web-shell build
+        env:
+          # Unset -> the shell uses the offline DevAuthAdapter (works with no backend).
+          # When the auth Worker + custom domain are live, set these as GitHub repo
+          # Variables (Settings > Secrets and variables > Actions > Variables):
+          #   VITE_SB_AUTH_URL  = /                             (same-origin auth Worker)
+          #   VITE_SB_GIT_PROXY = https://git.slideblaster.app
+          VITE_SB_AUTH_URL: ${{ vars.VITE_SB_AUTH_URL }}
+          VITE_SB_GIT_PROXY: ${{ vars.VITE_SB_GIT_PROXY }}
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: packages/web-shell
+          # Output dir comes from wrangler.toml (pages_build_output_dir); --branch=main
+          # marks this as the production deployment (project production branch = main).
+          command: pages deploy --branch=main

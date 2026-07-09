@@ -1,0 +1,9 @@
+# Cloudflare Pages deploy config for the web shell (ADR 0020).
+# Deployed by CI (Direct Upload) via .github/workflows/deploy.yml, which runs:
+#   wrangler pages deploy --branch=main   (output dir read from pages_build_output_dir)
+# Local preview: `pnpm --filter @slideblaster/web-shell build` then `wrangler pages dev dist`.
+# The Pages project must exist first: `wrangler pages project create slideblaster-app
+# --production-branch=main` (see infra/cloudflare.md).
+name = "slideblaster-app"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
