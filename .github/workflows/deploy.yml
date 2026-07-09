@@ -32,9 +32,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm typecheck
-      - run: pnpm test
+      - run: make check
 
   deploy-pages:
     needs: gate
@@ -63,7 +61,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build web shell
-        run: pnpm --filter @slideblaster/web-shell build
+        run: make build
         env:
           # Unset -> the shell uses the offline DevAuthAdapter (works with no backend).
           # When the auth Worker + custom domain are live, set these as GitHub repo
