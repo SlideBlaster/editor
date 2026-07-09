@@ -281,6 +281,27 @@ describe('createConnector', () => {
     expect(serializePicture(createConnector(picture(), 'title', 'ghost'))).toBe(SOURCE)
     expect(serializePicture(createConnector(picture(), 'ghost', 'o2'))).toBe(SOURCE)
   })
+
+  it('attaches endpoints to border anchors', () => {
+    const out = createConnector(
+      picture(),
+      { kind: 'node', name: 'title', anchor: 'east' },
+      { kind: 'node', name: 'o2', anchor: 'west' },
+    )
+    expect(serializePicture(out)).toContain('\\draw[->] (title.east) -- (o2.west);')
+    expect(roundTrips(out)).toBe(true)
+  })
+
+  it('lets an endpoint land in free space as a coordinate', () => {
+    const out = createConnector(picture(), 'title', { kind: 'point', at: { x: 5, y: 3 } })
+    expect(serializePicture(out)).toContain('\\draw[->] (title) -- (5,3);')
+    expect(roundTrips(out)).toBe(true)
+  })
+
+  it('still rejects a missing node even when the other end is a free point', () => {
+    const out = createConnector(picture(), 'ghost', { kind: 'point', at: { x: 1, y: 1 } })
+    expect(serializePicture(out)).toBe(SOURCE)
+  })
 })
 
 describe('updateConnector', () => {

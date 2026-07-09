@@ -18,6 +18,8 @@ the primary surface; the navigator ([deckNav.ts](./deckNav.md)) is secondary.
   placeholder with an "Add notes" button (`actions.addNotes(frame)` seeds an empty notes
   picture and opens it for editing). The notes card is the same interactive canvas as the
   slide — nothing about `paintCanvas` changes, only which picture and actions it is given.
+  `props.notes: false` drops the notes column entirely — used when editing a standalone
+  `.tikz` figure, which is a single picture with no presenter-notes surface.
 
 - **Zoom wrapper.** Slides sit inside a `.deck-canvas` wrapper; the CSS scales the
   slide width (and the wrapper's gaps/padding) by `--zoom`, which `zoom.ts` sets on

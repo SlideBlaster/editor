@@ -71,6 +71,18 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   `render` schedules a debounced compile of the doc's tables; when one finishes, the
   measurer is reset and the deck re-renders so the table appears at its true size.
   `collectSlides` awaits `ensureTables` first so an export never races the compile.
+- **Document codec (deck vs figure).** The on-disk text ⇄ `SlideDocument` mapping is a
+  per-open-file `DocCodec` picked by `codecFor(path)`. A **deck** (`.slideBlaster.md`)
+  uses `fromMarkdown`/`toMarkdown`. A **figure** (`.tikz`,
+  [workspace.md](./workspace.md)) is a bare slide-picture body wrapped as one anonymous
+  frame with empty frontmatter — parse is `parsePicture`, serialize is
+  `serializePicture` of `frames[0].picture` — so the whole controller (canvas, edit ops,
+  undo, code pane) works on it unchanged; the three seam calls (`render`'s parse,
+  `commit`, `commitContent`) route through the codec. `openDoc` sets the codec (before
+  render) and `applyDocModeChrome` hides deck-only UI for a figure: the `#deck-rail`
+  navigator, the presenter-notes column ([deck.md](./deck.md) `notes:false`), theme
+  furniture, and the present/export/theme controls. A figure's empty frontmatter makes
+  the theme resolve to `default`, and it never clobbers the last-opened-deck memory.
 - **Working copy (M3).** With `opts.ports` (`AppPorts`: storage/git/auth from
   [workspace.ts](./workspace.md)) the open document lives in the working copy:
   boot seeds/selects via `bootDocument` and every source change persists through

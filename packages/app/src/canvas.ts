@@ -16,6 +16,7 @@ import {
   connectorsOf,
   serializeBody,
   textWidth,
+  type Anchor,
   type ConnectorPath,
   type Layout,
   type NodeContent,
@@ -24,14 +25,24 @@ import {
   type TextRun,
   type TikzPicture,
 } from '@slideblaster/editor'
+import {
+  nearestAnchor,
+  nearestAnchorOn,
+  paintSnapDots,
+  setActiveSnaps,
+  snapKey,
+  snapToAnchor,
+  type Snap,
+} from './connectorAnchors'
 import { renderOptions } from './tableCompiler'
 import { editableHtml, padIslands, readEditable, wireRichEditing } from './richText'
 import { paintColumnEditors } from './columnEditor'
 import { paintTableEditors } from './tableEditor'
-import { wireResizeGrips } from './resizeHandles'
+import { wireResizeGrips, isReflowable } from './resizeHandles'
 import { resolveSnap, type SnapBox, type SnapLine, type SnapSize } from './snap'
 import { findBinding, type BindBox, type Binding } from './binding'
 import { paintConnectorEditor, type CurveFocus } from './connectorEditor'
+import { rerouteConnectors } from './liveConnectors'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -69,8 +80,9 @@ export interface CanvasActions {
       center?: Point
     },
   ): void
-  /** E4: draw a connector from one node to another (connect mode). */
-  connect(from: string, to: string): void
+  /** E4: draw a connector between two endpoints (connect mode). Each endpoint is a node
+   *  border anchor (`(name.north)` / centre) or a free point in space. */
+  connect(from: Anchor, to: Anchor): void
   /** Select an existing connector by its index (or clear with null). */
   selectConnector(index: number | null): void
   /** E4+: replace a connector's shape (endpoints, waypoints, curves). */
@@ -156,7 +168,7 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
     handle.style.cssText = boxStyle(node, slideWidth)
     handle.dataset.node = name
     if (props.connectMode) {
-      wireConnect(handle, node, slideEl, overlay, props.actions, slideWidth)
+      wireConnect(handle, node, props.layout.nodes, slideEl, overlay, props.actions, slideWidth)
     } else {
       wireHandle(
         handle,
@@ -167,19 +179,26 @@ export function paintCanvas(stage: HTMLElement, props: CanvasProps): void {
         stage,
         overlay,
         props.actions,
+        props.picture,
+        props.layout,
         props.snapRefs,
         slideWidth,
       )
-      // Resize grips (corners + edges), hidden by CSS until this handle is selected. They
-      // scale the node's content, so they need its current scale (from its options).
+      // Resize grips (corners + edges), hidden by CSS until this handle is selected. A text
+      // node reflows (rewraps at a constant font size); every other node scales its content,
+      // for which the grips need the node's current scale (from its options).
       const src = findNode(props.picture, name)
       wireResizeGrips(
         handle,
         node,
         src ? nodeScale(src) : { x: 1, y: 1 },
+        src ? isReflowable(src.content) : true,
         slideEl,
         stage,
         props.actions,
+        props.picture,
+        props.layout,
+        overlay,
         slideWidth,
       )
       // Double-click a node to edit its raw body in place (commits on blur / Ctrl+Enter).
@@ -382,6 +401,8 @@ function wireHandle(
   stage: HTMLElement,
   overlay: HTMLElement,
   actions: CanvasActions,
+  picture: TikzPicture,
+  layout: Layout,
   snapRefs?: { xs: readonly number[]; ys: readonly number[] },
   slideWidth: number = SLIDE_W,
 ): void {
@@ -467,6 +488,17 @@ function wireHandle(
     // Compose with the node's own scale so a scaled node (table/image) stays scaled while it
     // moves, instead of snapping to natural size for the duration of the drag.
     if (content) content.style.transform = `${transform} ${drag.contentScale}`.trim()
+    // Arrows attached to this node re-route live to its resolved position, instead of staying
+    // frozen and only jumping to the new endpoints on drop.
+    if (drag.moved)
+      rerouteConnectors(
+        picture,
+        layout,
+        node,
+        { center: target, size: node.size },
+        slideEl,
+        overlay,
+      )
     drawGuides(overlay, guides, slideWidth)
     setBindBadge(overlay, outcome.kind === 'bind' ? outcome.binding : null, slideWidth)
   })
@@ -577,53 +609,95 @@ function paintConnectors(
   overlay.append(svg)
 }
 
-/** Connect-mode gesture (E4): drag from this node to another to draw an arrow. */
+/**
+ * Connect-mode gesture (E4): drag from a node to draw an arrow. Reuses the connector editor's
+ * anchor-point view — the snap dots (`connectorAnchors`) and the same nearest-port snapping — so
+ * a new arrow attaches exactly the way a reshaped one does: the source end binds to the pressed
+ * node's border anchor nearest the press; the destination snaps to the anchor of whatever node
+ * the pointer releases over, or lands in free space as a bare point when released over none.
+ */
 function wireConnect(
   handle: HTMLElement,
   node: PlacedNode,
+  nodes: readonly PlacedNode[],
   slideEl: HTMLElement,
   overlay: HTMLElement,
   actions: CanvasActions,
   slideWidth = SLIDE_W,
 ): void {
   const name = node.name!
-  let dragging = false
+  const others = nodes.filter((n) => n.name && n.name !== name) // never self-connect
+  let source: Snap | null = null
+  let origin: Point | null = null // press point — a barely-moved click shouldn't drop an arrow
+
+  const toSlide = (clientX: number, clientY: number): Point => {
+    const rect = slideEl.getBoundingClientRect()
+    return {
+      x: ((clientX - rect.left) / rect.width) * slideWidth,
+      y: SLIDE_H - ((clientY - rect.top) / rect.height) * SLIDE_H,
+    }
+  }
 
   handle.addEventListener('pointerdown', (event) => {
     event.stopPropagation()
-    dragging = true
     actions.selectConnector(null)
     handle.setPointerCapture(event.pointerId)
+    origin = toSlide(event.clientX, event.clientY)
+    source = nearestAnchorOn(origin, node)
+    const layer = ensureSnapLayer(overlay, slideWidth)
+    paintSnapDots(layer, nodes)
+    setActiveSnaps(layer, [snapKey(source.name, source.port)])
+    drawRubberBand(overlay, source.point, source.point, slideWidth)
   })
 
   handle.addEventListener('pointermove', (event) => {
-    if (!dragging) return
-    const rect = slideEl.getBoundingClientRect()
-    const to: Point = {
-      x: ((event.clientX - rect.left) / rect.width) * slideWidth,
-      y: SLIDE_H - ((event.clientY - rect.top) / rect.height) * SLIDE_H,
+    if (!source) return
+    const to = toSlide(event.clientX, event.clientY)
+    const target = nearestAnchor(to, others)
+    drawRubberBand(overlay, source.point, target ? target.point : to, slideWidth)
+    const layer = overlay.querySelector<SVGElement>('svg.sb-snap-layer')
+    if (layer) {
+      const keys = [snapKey(source.name, source.port)]
+      if (target) keys.push(snapKey(target.name, target.port))
+      setActiveSnaps(layer, keys)
     }
-    drawRubberBand(overlay, node.center, to, slideWidth)
   })
 
   const end = (event: PointerEvent): void => {
-    if (!dragging) return
-    dragging = false
+    if (!source || !origin) return
+    const src = source
+    const from = origin
+    source = null
+    origin = null
     handle.releasePointerCapture(event.pointerId)
     clearRubberBand(overlay)
-    const target = nodeUnderPointer(event.clientX, event.clientY, name)
-    if (target) actions.connect(name, target)
+    clearSnapLayer(overlay)
+    const to = toSlide(event.clientX, event.clientY)
+    const target = nearestAnchor(to, others)
+    // A stray click (no target node, barely moved) shouldn't spawn a degenerate free-space arrow.
+    if (!target && Math.hypot(to.x - from.x, to.y - from.y) < 0.5) return
+    actions.connect(snapToAnchor(src), target ? snapToAnchor(target) : { kind: 'point', at: to })
   }
   handle.addEventListener('pointerup', end)
   handle.addEventListener('pointercancel', end)
 }
 
-/** The name of the node handle under a client point, excluding `self` (or null). */
-function nodeUnderPointer(clientX: number, clientY: number, self: string): string | null {
-  const el = document.elementFromPoint(clientX, clientY)
-  const handle = el instanceof Element ? el.closest<HTMLElement>('.sb-handle') : null
-  const name = handle?.dataset.node ?? null
-  return name && name !== self ? name : null
+/** The overlay's persistent snap-dot layer (kept across pointermoves, unlike the rubber band's
+ *  own svg which is redrawn each move). Created lazily on drag start. */
+function ensureSnapLayer(overlay: HTMLElement, slideWidth: number): SVGSVGElement {
+  let svg = overlay.querySelector<SVGSVGElement>('svg.sb-snap-layer')
+  if (!svg) {
+    svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('class', 'sb-snap-layer')
+    svg.setAttribute('viewBox', `0 0 ${slideWidth} ${SLIDE_H}`)
+    svg.setAttribute('preserveAspectRatio', 'none')
+    overlay.append(svg)
+  }
+  return svg
+}
+
+function clearSnapLayer(overlay: HTMLElement): void {
+  overlay.querySelector('svg.sb-snap-layer')?.remove()
 }
 
 /** Draw/update the connect-mode rubber band from a node center to the pointer. */

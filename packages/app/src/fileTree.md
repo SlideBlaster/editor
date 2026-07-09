@@ -9,14 +9,17 @@ all through the Storage port.
 - `paintFileTree(host, { storage, currentPath, onOpen, onMutate })` — repaints
   the whole panel from a fresh recursive `storage.list` walk. `.git` is hidden;
   directory expansion state survives repaints (per host).
-- `*.slideBlaster.md` files open via `onOpen`; other files (assets) are listed
-  but inert. The current document is highlighted.
-- The title bar carries four create affordances. The three that need a name open
+- **Editable** files open via `onOpen`: `*.slideBlaster.md` decks and `*.tikz`
+  figures (`isEditablePath`, [workspace.md](./workspace.md)). Other files (assets)
+  are listed but inert. The current document is highlighted.
+- The title bar carries five create affordances. The four that need a name open
   an **inline field in the tree** (never a popup) — Enter commits, Escape cancels,
   blur commits a non-empty value; a name clash marks the field and keeps it open:
   - **New deck** (▤) writes a minimal valid `*.slideBlaster.md` and opens it.
+  - **New figure** (◈) writes a starter `*.tikz` picture body and opens it on the
+    canvas (a standalone figure, no frontmatter/heading).
   - **New file** (＋) writes an empty file at an arbitrary path (subfolders
-    auto-created by `storage.write`); a deck opens, other files just appear.
+    auto-created by `storage.write`); a deck/figure opens, other files just appear.
   - **New folder** (🗀) seeds `<dir>/.gitkeep` (git does not track empty dirs).
   - **Upload** (⬆) reads chosen files and writes them into the working-copy root,
     binary-safe (`storage.write` takes bytes) — no name entry, so no field.

@@ -25,13 +25,18 @@ import {
   findPlaced,
   isAnchorName,
   type Anchor,
-  type AnchorName,
   type ConnectorPath,
   type CurveControls,
   type Layout,
-  type PlacedNode,
   type Point,
 } from '@slideblaster/editor'
+import {
+  nearestAnchor,
+  paintSnapDots,
+  setActiveSnaps,
+  snapKey,
+  type Snap,
+} from './connectorAnchors'
 
 const SLIDE_W = 16
 const SLIDE_H = 9
@@ -294,28 +299,9 @@ export function paintConnectorEditor(
   const snapLayer = document.createElementNS(SVG_NS, 'g')
   snapLayer.setAttribute('class', 'sb-snap-layer')
   svg.append(snapLayer)
-  let snapped: { name: string; port: AnchorName } | null = null
-  const showSnapDots = (): void => {
-    snapLayer.replaceChildren()
-    for (const node of layout.nodes) {
-      if (!node.name) continue
-      for (const port of PORTS) {
-        const pt = nodeAnchorPoint(node, port)
-        const d = document.createElementNS(SVG_NS, 'circle')
-        d.setAttribute('cx', String(pt.x))
-        d.setAttribute('cy', String(flip(pt.y)))
-        d.setAttribute('r', port === 'center' ? '0.1' : '0.08')
-        d.setAttribute('class', 'sb-snap-dot')
-        d.dataset.key = snapKey(node.name, port)
-        snapLayer.append(d)
-      }
-    }
-  }
-  const highlightSnap = (key: string | null): void => {
-    for (const child of Array.from(snapLayer.children)) {
-      child.classList.toggle('is-active', (child as SVGElement).dataset.key === key)
-    }
-  }
+  let snapped: Snap | null = null
+  const showSnapDots = (): void => paintSnapDots(snapLayer, layout.nodes)
+  const highlightSnap = (key: string | null): void => setActiveSnaps(snapLayer, key ? [key] : [])
 
   // Anchor handles last (on top). Drag snaps to the nearest border anchor of whatever node
   // the pointer is over; on release it attaches there (`(name.north)`, or `(name)` for the
@@ -327,7 +313,7 @@ export function paintConnectorEditor(
       handle,
       (p) => {
         const snap = nearestAnchor(p, layout.nodes)
-        snapped = snap ? { name: snap.name, port: snap.port } : null
+        snapped = snap
         const pos = snap ? snap.point : p
         pts[i] = pos
         move(handle, pos)
@@ -383,61 +369,6 @@ function snapArm(anchor: Point, p: Point, free: boolean): Point {
   while (diff < -Math.PI) diff += 2 * Math.PI
   if (Math.abs(diff) > ANGLE_TOL) return p
   return { x: anchor.x + len * Math.cos(snapped), y: anchor.y + len * Math.sin(snapped) }
-}
-
-/** The node border anchors an endpoint can snap to, in preference order (the centre last
- *  so it loses ties to an edge — arrows read better touching a border than buried inside). */
-const PORTS: readonly AnchorName[] = [
-  'north',
-  'south',
-  'east',
-  'west',
-  'north east',
-  'north west',
-  'south east',
-  'south west',
-  'center',
-]
-
-/** Stable id for a node's border-anchor dot (`name|port`), so a drag can highlight it. */
-function snapKey(name: string, port: AnchorName): string {
-  return `${name}|${port}`
-}
-
-/** The border anchor to snap a dragged endpoint to: pick the node whose box (with a small
- *  margin) contains `p` (nearest centre wins), then that node's anchor nearest to `p`. Null
- *  when the pointer is over no node — the endpoint stays a free point. */
-function nearestAnchor(
-  p: Point,
-  nodes: readonly PlacedNode[],
-): { name: string; port: AnchorName; point: Point } | null {
-  const MARGIN = 0.3
-  let node: PlacedNode | null = null
-  let nodeD = Infinity
-  for (const n of nodes) {
-    if (!n.name) continue
-    const hw = n.size.width / 2 + MARGIN
-    const hh = n.size.height / 2 + MARGIN
-    if (Math.abs(p.x - n.center.x) <= hw && Math.abs(p.y - n.center.y) <= hh) {
-      const d = Math.hypot(p.x - n.center.x, p.y - n.center.y)
-      if (d < nodeD) {
-        nodeD = d
-        node = n
-      }
-    }
-  }
-  if (!node?.name) return null
-  let best: { name: string; port: AnchorName; point: Point } | null = null
-  let bestD = Infinity
-  for (const port of PORTS) {
-    const point = nodeAnchorPoint(node, port)
-    const d = Math.hypot(p.x - point.x, p.y - point.y)
-    if (d < bestD) {
-      bestD = d
-      best = { name: node.name, port, point }
-    }
-  }
-  return best
 }
 
 function cloneAnchor(a: Anchor): Anchor {

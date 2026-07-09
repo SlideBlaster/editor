@@ -13,7 +13,7 @@
 import type { NodeStatement, PathStatement, Point, TikzPicture } from '../model/tikz'
 import type { NodeContent } from '../model/content'
 import { isPlacementToken, isStyleKnobToken, placement, type Placement } from '../tikz/options'
-import { serializeConnector, type ConnectorPath } from '../tikz/connector'
+import { serializeConnector, type Anchor, type ConnectorPath } from '../tikz/connector'
 import { formatNumber } from '../text/scanner'
 
 /** Find a node by its stable identity. */
@@ -281,18 +281,29 @@ export function deleteNode(picture: TikzPicture, name: string): TikzPicture {
  */
 export function createConnector(
   picture: TikzPicture,
-  from: string,
-  to: string,
+  from: string | Anchor,
+  to: string | Anchor,
   options: string[] = ['->'],
 ): TikzPicture {
-  if (findNode(picture, from) === undefined || findNode(picture, to) === undefined) return picture
+  // Endpoints attach to a node (optionally at a border anchor, `(name.north)`) or land in
+  // free space as a coordinate `(x,y)`. A bare string is shorthand for the node's centre.
+  const a = toEndpoint(from)
+  const b = toEndpoint(to)
+  const resolvable = (e: Anchor): boolean =>
+    e.kind === 'point' || findNode(picture, e.name) !== undefined
+  if (!resolvable(a) || !resolvable(b)) return picture
   const path: PathStatement = {
     kind: 'path',
     action: 'draw',
     options,
-    body: ` (${from}) -- (${to})`,
+    body: serializeConnector({ anchors: [a, b], curves: [null] }),
   }
   return { statements: [...picture.statements, path] }
+}
+
+/** A bare node name is shorthand for that node's centre anchor. */
+function toEndpoint(e: string | Anchor): Anchor {
+  return typeof e === 'string' ? { kind: 'node', name: e } : e
 }
 
 /**

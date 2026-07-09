@@ -10,8 +10,13 @@ working copy, the controller edits one of them at a time.
   app runs the in-memory sample exactly as before M3. `compile` (the latexml
   Compile port) is itself optional even when ports are present — absent, tables
   render as "render pending" placeholders ([tableCompiler.md](./tableCompiler.md)).
+- `isDocPath` / `isTikzPath` / `isEditablePath` — path classification. A **deck**
+  is `*.slideBlaster.md`; a **figure** is `*.tikz` (a bare slide-picture body — no
+  frontmatter or headings — authored on the canvas like a one-slide deck); an
+  **editable** file is either. Everything else is an inert asset in the tree.
 - `findDocs(storage)` — every `*.slideBlaster.md` in the working copy,
-  recursive, `.git` excluded, sorted.
+  recursive, `.git` excluded, sorted. Figures are intentionally excluded: they are
+  openable from the tree but never auto-booted (see `bootDocument`).
 - `bootDocument(storage, sampleSource, seedFiles?)` — startup document selection:
   seeds the bundled sample (and any `seedFiles` it references, e.g. its `refs.bib`
   bibliography) into an empty working copy, then prefers the last-opened doc

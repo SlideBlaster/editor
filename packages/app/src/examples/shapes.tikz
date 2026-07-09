@@ -1,0 +1,9 @@
+\node[title] (t) at (8,8.3) {Shape library};
+\node[draw, fill=#dbeafe, minimum width=2.6, minimum height=1.6] (rect) at (2.8,5.6) {Rectangle};
+\node[draw, ellipse, fill=#dcfce7, minimum width=2.9, minimum height=1.7] (ell) at (6.4,5.6) {Ellipse};
+\node[draw, diamond, fill=#fef9c3, minimum width=3, minimum height=2.1] (dia) at (10,5.6) {Diamond};
+\node[draw, circle, fill=#fee2e2, minimum width=1.9, minimum height=1.9] (cir) at (13.4,5.6) {Circle};
+\node[draw, regular polygon, regular polygon sides=6, fill=#ede9fe, minimum width=2.5, minimum height=2.5] (hex) at (3.2,2.4) {Hexagon};
+\node[draw, cylinder, fill=#e0f2fe, minimum width=2.3, minimum height=2.6] (cyl) at (6.8,2.4) {Store};
+\node[draw, trapezium, fill=#fef3c7, minimum width=3, minimum height=1.8] (trap) at (10.4,2.4) {Trapezoid};
+\node[draw, rounded corners=12pt, fill=#f1f5f9, minimum width=3, minimum height=1.6] (pill) at (13.6,2.4) {Rounded};

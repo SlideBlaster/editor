@@ -10,7 +10,7 @@
  * inline edit survive repaints.
  */
 import type { FileEntry, StoragePort } from '@slideblaster/editor'
-import { DOC_EXTENSION, isDocPath } from './workspace'
+import { DOC_EXTENSION, TIKZ_EXTENSION, isDocPath, isTikzPath, isEditablePath } from './workspace'
 import { alertDialog, confirmDialog } from './dialog'
 
 export interface FileTreeProps {
@@ -27,8 +27,11 @@ interface TreeNode extends FileEntry {
   children: TreeNode[]
 }
 
+/** The inline "create" affordances (a new blank item named in the tree). */
+type CreateKind = 'new-deck' | 'new-figure' | 'new-file' | 'new-folder'
+
 /** An in-progress inline edit. `rename` carries the path being renamed. */
-type EditState = { kind: 'new-deck' | 'new-file' | 'new-folder' } | { kind: 'rename'; path: string }
+type EditState = { kind: CreateKind } | { kind: 'rename'; path: string }
 
 /** A drag payload: which path is moving, and whether it is a file or a folder. */
 interface DragPayload {
@@ -54,12 +57,16 @@ const NEW_DOC_TEMPLATE = [
   '',
 ].join('\n')
 
-const CREATE_META: Record<'new-deck' | 'new-file' | 'new-folder', { glyph: string; hint: string }> =
-  {
-    'new-deck': { glyph: '▤', hint: 'talks/demo' },
-    'new-file': { glyph: '＋', hint: 'notes.md' },
-    'new-folder': { glyph: '🗀', hint: 'assets' },
-  }
+/** A standalone TikZ figure: a bare slide-picture body (no frontmatter/heading), edited
+ *  on the canvas like a one-slide deck. Empty is valid too, but a starter node helps. */
+const NEW_TIKZ_TEMPLATE = '\\node (a) at (8,4.5) {Hello};\n'
+
+const CREATE_META: Record<CreateKind, { glyph: string; hint: string }> = {
+  'new-deck': { glyph: '▤', hint: 'talks/demo' },
+  'new-figure': { glyph: '◈', hint: 'figures/tree.tikz' },
+  'new-file': { glyph: '＋', hint: 'notes.md' },
+  'new-folder': { glyph: '🗀', hint: 'assets' },
+}
 
 const SELECTED_BG = 'color-mix(in srgb, var(--accent) 14%, transparent)'
 const DROP_BG = 'color-mix(in srgb, var(--accent) 28%, transparent)'
@@ -125,6 +132,7 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
   actions.style.cssText = 'display:flex;gap:.25rem;flex-wrap:wrap;justify-content:flex-end'
   actions.append(
     titleAction('New deck', '▤', () => beginEdit({ kind: 'new-deck' })),
+    titleAction('New figure', '◈', () => beginEdit({ kind: 'new-figure' })),
     titleAction('New file', '＋', () => beginEdit({ kind: 'new-file' })),
     titleAction('New folder', '🗀', () => beginEdit({ kind: 'new-folder' })),
     titleAction('Upload file', '⬆', () => uploadFiles(props, selectedDir)),
@@ -138,7 +146,7 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
   // clash: keep editing and mark the field, unless a blur is taking focus away —
   // then just cancel so the user is never trapped.
   const commitCreate = async (
-    kind: 'new-deck' | 'new-file' | 'new-folder',
+    kind: CreateKind,
     raw: string,
     input: HTMLInputElement,
     fromBlur: boolean,
@@ -164,13 +172,21 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
       return
     }
 
-    const path = kind === 'new-deck' && !rel.endsWith(DOC_EXTENSION) ? rel + DOC_EXTENSION : rel
+    // Each editable kind ensures its extension and seeds a starter body; a plain file is bare.
+    const path =
+      kind === 'new-deck' && !rel.endsWith(DOC_EXTENSION)
+        ? rel + DOC_EXTENSION
+        : kind === 'new-figure' && !rel.endsWith(TIKZ_EXTENSION)
+          ? rel + TIKZ_EXTENSION
+          : rel
     if (await props.storage.exists(path)) return fromBlur ? cancelEdit() : markInvalid(input)
-    await props.storage.write(path, kind === 'new-deck' ? NEW_DOC_TEMPLATE : '')
+    const template =
+      kind === 'new-deck' ? NEW_DOC_TEMPLATE : kind === 'new-figure' ? NEW_TIKZ_TEMPLATE : ''
+    await props.storage.write(path, template)
     editingByHost.set(host, null)
     expandChain(dirname(path))
     props.onMutate()
-    if (kind === 'new-deck' || isDocPath(path)) props.onOpen(path)
+    if (isEditablePath(path)) props.onOpen(path)
   }
 
   const commitRename = async (
@@ -182,8 +198,13 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     if (!editingByHost.get(host)) return
     const next = raw.trim()
     if (!next || next === original) return cancelEdit()
+    // Preserve an editable file's extension if the user drops it while renaming.
     const target =
-      isDocPath(original) && !next.endsWith(DOC_EXTENSION) ? `${next}${DOC_EXTENSION}` : next
+      isDocPath(original) && !next.endsWith(DOC_EXTENSION)
+        ? `${next}${DOC_EXTENSION}`
+        : isTikzPath(original) && !next.endsWith(TIKZ_EXTENSION)
+          ? `${next}${TIKZ_EXTENSION}`
+          : next
     if (await props.storage.exists(target)) return fromBlur ? cancelEdit() : markInvalid(input)
     // The Storage port has no rename; copy+delete is equivalent for the working copy.
     await props.storage.write(target, await props.storage.read(original))
@@ -388,9 +409,9 @@ export async function paintFileTree(host: HTMLElement, props: FileTreeProps): Pr
     open.type = 'button'
     open.className = 'tree-name'
     open.textContent = basename(node.path)
-    if (isDocPath(node.path)) {
+    if (isEditablePath(node.path)) {
       open.title = node.path
-      // Opening a doc makes its folder the active target for new items.
+      // Opening an editable file makes its folder the active target for new items.
       open.addEventListener('click', () => {
         setSelected(dirname(node.path))
         props.onOpen(node.path)

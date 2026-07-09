@@ -68,6 +68,9 @@ import {
 } from '@slideblaster/editor'
 import initialSource from './sample.slideBlaster.md?raw'
 import sampleBib from './sample.refs.bib?raw'
+import exampleFlowchart from './examples/flowchart.tikz?raw'
+import exampleShapes from './examples/shapes.tikz?raw'
+import examplePipeline from './examples/pipeline.tikz?raw'
 import { createCodePane, type CodePane } from './codePane'
 import { minimalDiff } from './sourceDelta'
 import {
@@ -114,6 +117,19 @@ import {
 import { paintFileTree } from './fileTree'
 import { createGitPanel, type GitPanelHandle } from './gitPanel'
 import './app.css'
+
+/**
+ * Sibling assets seeded alongside the sample deck on a virgin working copy: the sample's
+ * bibliography, plus a handful of standalone `.tikz` figures under `examples/` so a new
+ * project opens with drawings to explore (open one from the file tree — each edits on the
+ * canvas like a single-slide deck).
+ */
+const SEED_FILES: Record<string, string> = {
+  'refs.bib': sampleBib,
+  'examples/flowchart.tikz': exampleFlowchart,
+  'examples/shapes.tikz': exampleShapes,
+  'examples/pipeline.tikz': examplePipeline,
+}
 
 /**
  * Per-shell knobs. `shellTag` is the app-bar badge (e.g. "web-shell · M3").
@@ -191,7 +207,10 @@ const figureCodec: DocCodec = {
   kind: 'figure',
   parse(source) {
     return {
-      doc: { meta: { entries: [] }, frames: [{ id: 'figure', title: '', picture: parsePicture(source) }] },
+      doc: {
+        meta: { entries: [] },
+        frames: [{ id: 'figure', title: '', picture: parsePicture(source) }],
+      },
     }
   },
   serialize(doc) {
@@ -661,10 +680,25 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
       commit(withSurface(currentDoc, frame, surface, createConnector(picture, from, to)))
     },
     selectConnector(frame, surface, index) {
-      state.selectedConnector = index === null ? null : { frame, surface, index }
+      // No-op when the selection is unchanged — critically, the connect-mode drag clears the
+      // connector selection on pointerdown (selectConnector(null)); if that already-null case
+      // still re-rendered, the full deck rebuild (host.replaceChildren) would destroy the node
+      // handle mid-gesture, dropping its pointer capture so the drag never draws an arrow.
+      const prev = state.selectedConnector
+      const next = index === null ? null : { frame, surface, index }
+      if (
+        (prev === null && next === null) ||
+        (prev !== null &&
+          next !== null &&
+          prev.frame === next.frame &&
+          prev.surface === next.surface &&
+          prev.index === next.index)
+      )
+        return
+      state.selectedConnector = next
       if (index !== null) state.selected = null // connector and node selection are exclusive
       state.focusedCurve = null // the editor re-emits fresh focus for the new arrow on paint
-      void render() // cheap re-render to reflect the connector highlight (no drag in flight)
+      void render() // re-render to reflect the connector highlight (no drag in flight here)
     },
     focusConnectorCurve(frame, surface, focus) {
       // Fired by the connector editor (on paint, and when a control handle is grabbed): pin
@@ -1255,6 +1289,21 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     })
   }
 
+  /**
+   * Show/hide deck-only chrome for the open document's kind. A figure (`.tikz`) is a single
+   * standalone picture, so it drops the slide navigator rail and the presenter/export/theme
+   * controls (all multi-slide/deck concepts). Inline `display` beats stylesheet rules — e.g.
+   * `.deck-rail{display:flex}` defeats the `[hidden]` attribute — so toggle it directly.
+   */
+  const applyDocModeChrome = (): void => {
+    const deckOnly = codec.kind !== 'figure'
+    deckRail.style.display = deckOnly ? '' : 'none'
+    if (!deckOnly) deckRail.replaceChildren() // drop stale thumbnails so nothing lingers hidden
+    for (const id of ['#present-actions', '#export-actions']) {
+      qs<HTMLElement>(id).style.display = deckOnly ? '' : 'none'
+    }
+  }
+
   /** Switch the editor to `path`: flush (or drop) pending saves, load, reset history. */
   const openDoc = async (path: string): Promise<void> => {
     if (!ports || !autosave) return
@@ -1263,7 +1312,10 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     else autosave.discard()
     const source = await ports.storage.readText(path)
     currentPath = path
-    rememberDoc(path)
+    codec = codecFor(path) // pick deck vs figure BEFORE render()/loadActiveTheme read the doc
+    // Only decks are auto-reopened on boot (findDocs is deck-only); don't let a figure
+    // clobber the last-deck memory a reload would otherwise fall back to.
+    if (isDocPath(path)) rememberDoc(path)
     editorHead.textContent = path
     undoStack.length = 0
     redoStack.length = 0
@@ -1273,6 +1325,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     state.selectedConnector = null
     state.autoEdit = null
     codePane.setValue(source)
+    applyDocModeChrome()
     await render()
     await loadActiveTheme() // the doc may select a saved theme; apply it over the fresh paint
     await refreshTree()
@@ -1284,7 +1337,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     if (currentPath && !(await ports.storage.exists(currentPath))) {
       autosave?.discard()
       currentPath = null
-      await openDoc(await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib }))
+      await openDoc(await bootDocument(ports.storage, initialSource, SEED_FILES))
     } else {
       await refreshTree()
     }
@@ -1306,7 +1359,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         const path =
           currentPath && (await ports.storage.exists(currentPath))
             ? currentPath
-            : await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib })
+            : await bootDocument(ports.storage, initialSource, SEED_FILES)
         await openDoc(path)
       },
       onError: (message) => {
@@ -1320,7 +1373,7 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     window.addEventListener('beforeunload', () => void autosave.flush())
     void (async () => {
       try {
-        await openDoc(await bootDocument(ports.storage, initialSource, { 'refs.bib': sampleBib }))
+        await openDoc(await bootDocument(ports.storage, initialSource, SEED_FILES))
       } catch (err) {
         errorBanner.textContent = `workspace failed to open: ${err instanceof Error ? err.message : String(err)}`
         errorBanner.hidden = false

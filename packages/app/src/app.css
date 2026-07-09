@@ -1547,14 +1547,25 @@ button.tree-row {
   fill: var(--accent);
 }
 
-/* Snap targets shown while dragging a connector endpoint; the active one is solid. */
-.sb-conn-edit .sb-snap-dot {
+/* The connect-mode snap-dot layer: a standalone svg over the overlay (the reshape editor draws
+   its dots into a <g> inside .sb-conn-edit instead — both share the .sb-snap-dot styling). */
+svg.sb-snap-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Snap targets shown while dragging (create) or reshaping a connector endpoint; active is solid. */
+.sb-snap-dot {
   fill: var(--accent);
   opacity: 0.35;
   pointer-events: none;
 }
 
-.sb-conn-edit .sb-snap-dot.is-active {
+.sb-snap-dot.is-active {
   opacity: 1;
   stroke: #fff;
   stroke-width: 0.04;

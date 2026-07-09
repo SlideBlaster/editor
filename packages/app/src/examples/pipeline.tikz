@@ -1,0 +1,9 @@
+\node[title] (t) at (8,8.3) {Render pipeline};
+\node[draw, fill=#eef2ff, minimum width=2.9, minimum height=1.3] (src) at (2.6,5) {Source .md};
+\node[draw, fill=#eef2ff, minimum width=2.9, minimum height=1.3] (parse) at (6.4,5) {Parse};
+\node[draw, fill=#eef2ff, minimum width=2.9, minimum height=1.3] (layout) at (10.2,5) {Layout};
+\node[draw, fill=#dcfce7, minimum width=2.9, minimum height=1.3] (slide) at (14,5) {Slide};
+\draw[->] (src) -- (parse);
+\draw[->] (parse) -- (layout);
+\draw[->] (layout) -- (slide);
+\node[body, text width=13] (cap) at (8,2.4) {Each stage is pure: $\text{md} \to \text{AST} \to \text{geometry} \to \text{SVG}$. Drag the corners of this caption to see it reflow.};

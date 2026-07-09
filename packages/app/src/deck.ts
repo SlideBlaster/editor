@@ -15,6 +15,7 @@
  */
 import {
   resolveLayoutAsync,
+  type Anchor,
   type BatchMeasurer,
   type ConnectorPath,
   type Frame,
@@ -61,7 +62,7 @@ export interface DeckActions {
       center?: Point
     },
   ): void
-  connect(frame: number, surface: Surface, from: string, to: string): void
+  connect(frame: number, surface: Surface, from: Anchor, to: Anchor): void
   selectConnector(frame: number, surface: Surface, index: number | null): void
   updateConnector(frame: number, surface: Surface, index: number, path: ConnectorPath): void
   /** E4+: focus an anchor (dot) for angle editing in the properties panel (null clears). */
@@ -88,6 +89,9 @@ export interface ConnectorSelection {
 
 export interface DeckProps {
   frames: Frame[]
+  /** Render the presenter-notes sidecar column (ADR 0019). Default true; a standalone
+   *  `.tikz` figure sets it false — a figure is one picture with no notes surface. */
+  notes?: boolean
   selected: Selection | null
   selectedConnector: ConnectorSelection | null
   /** Which anchor (dot) of the selected connector the panel edits (frame/surface-qualified). */
@@ -193,20 +197,23 @@ export async function paintDeck(host: HTMLElement, props: DeckProps): Promise<De
     paintSurface(slideCard, 'slide', index, frame.picture, layouts[index]!, props)
     row.append(slideCard)
 
-    const noteCard = document.createElement('div')
-    noteCard.className = 'deck-note'
-    noteCard.dataset.frame = String(index)
-    noteCard.dataset.surface = 'notes'
-    if (frame.notes) {
-      paintSurface(noteCard, 'notes', index, frame.notes, noteLayouts[index]!, props)
-    } else {
-      paintEmptyNotes(noteCard, index, props.actions)
+    // The presenter-notes sidecar column — omitted for a standalone figure (props.notes false).
+    if (props.notes !== false) {
+      const noteCard = document.createElement('div')
+      noteCard.className = 'deck-note'
+      noteCard.dataset.frame = String(index)
+      noteCard.dataset.surface = 'notes'
+      if (frame.notes) {
+        paintSurface(noteCard, 'notes', index, frame.notes, noteLayouts[index]!, props)
+      } else {
+        paintEmptyNotes(noteCard, index, props.actions)
+      }
+      row.append(noteCard)
+      noteCards.push(noteCard)
     }
-    row.append(noteCard)
 
     canvas.append(row)
     slideCards.push(slideCard)
-    noteCards.push(noteCard)
   })
   host.append(canvas)
 
