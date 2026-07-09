@@ -6,3 +6,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Retired Phoenix auth service (dropped in ADR 0020; replaced by services/auth-worker)
+/services/auth/
