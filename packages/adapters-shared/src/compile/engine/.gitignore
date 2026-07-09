@@ -5,11 +5,9 @@ tmp/
 *.wasm
 *.data
 
-# ...except the browser runtime under dist/, which ships so a fresh clone can run the
-# compiler without the 500 MB build toolchain: the glue (perl-web.js), its package.json and
-# harness go in as normal git; the two big blobs (perl-web.wasm/.data) via Git LFS (see
-# /.gitattributes). dist/ is re-included explicitly because the repo-root .gitignore excludes
-# every dist/, and a file can't be re-included while its parent dir is excluded.
+# The browser runtime under dist/ (perl-web.js/.wasm/.data) is NOT committed: it is fetched
+# from the "engine-v1" GitHub Release by fetch-dist.sh (checksum-pinned; see README.md). We
+# still track dist/ itself for the small harness.html + package.json, so re-include the dir
+# (the repo-root .gitignore excludes every dist/) but keep the three runtime blobs ignored.
 !dist/
-!dist/perl-web.wasm
-!dist/perl-web.data
+dist/perl-web.js

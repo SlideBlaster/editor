@@ -20,8 +20,9 @@ import {
   createWorkerLatexmlEngine,
 } from '@slideblaster/adapters-shared'
 import type { AuthPort, CompilePort } from '@slideblaster/editor'
-// The emscripten build lives once (Git LFS) in adapters-shared; `?url` hands Vite the
-// asset URLs to bundle without transforming the 220 KB CJS glue or the 20 MB payload.
+// The emscripten build lives in adapters-shared/.../engine/dist, fetched from the engine-v1
+// GitHub Release by `make build` (not committed); `?url` hands Vite the asset URLs to bundle
+// without transforming the 220 KB CJS glue or the 20 MB payload.
 import perlJsUrl from '../../adapters-shared/src/compile/engine/dist/perl-web.js?url'
 import perlWasmUrl from '../../adapters-shared/src/compile/engine/dist/perl-web.wasm?url'
 import perlDataUrl from '../../adapters-shared/src/compile/engine/dist/perl-web.data?url'

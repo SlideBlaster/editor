@@ -4,10 +4,10 @@
 #
 #   make          same as `make check` (the exact CI gate)
 #   make format   auto-fix formatting (prettier --write)
-#   make build    build the web shell (the Pages deploy artifact)
+#   make build    fetch the latexml engine + build the web shell (Pages artifact)
 
 .DEFAULT_GOAL := check
-.PHONY: install format format-check typecheck test check build
+.PHONY: install format format-check typecheck test check engine build
 
 install:
 	pnpm install --frozen-lockfile
@@ -26,5 +26,10 @@ test:
 
 check: format-check typecheck test
 
-build:
+# Fetch the prebuilt LaTeXML WASM runtime from the engine-v1 GitHub Release
+# (idempotent, sha256-verified). Only the web-shell build consumes it.
+engine:
+	bash packages/adapters-shared/src/compile/engine/fetch-dist.sh
+
+build: engine
 	pnpm --filter @slideblaster/web-shell build

@@ -40,19 +40,25 @@ package the Perl+LaTeXML tree into `emperl.data`.
 The JS wrapper (P4 output) is what `../wasmLatexmlCompiler.ts` imports as the
 engine. Golden-file tests compare its output to native `latexml` on a table corpus.
 
-## Runtime artifacts (Git LFS)
+## Runtime artifacts (GitHub Release)
 
-The browser runtime lives in `dist/`: `perl-web.js` (the Emscripten `createPerlModule`
-glue) plus `perl-web.wasm` (~7.9 MB) and `perl-web.data` (~12.7 MB, the preloaded LaTeXML
-filesystem). These ship in the repo so a fresh clone can run the compiler **without** the
-500 MB build toolchain — the two big blobs via **Git LFS** (see the repo-root
-`.gitattributes`); the glue and `package.json` as ordinary files.
+The browser runtime is three files — `perl-web.js` (the Emscripten `createPerlModule`
+glue), `perl-web.wasm` (~7.9 MB) and `perl-web.data` (~12.7 MB, the preloaded LaTeXML
+filesystem) — that together let a fresh clone run the compiler **without** the 500 MB
+build toolchain.
 
-**You need git-lfs to get them.** Install it once (`apt install git-lfs` / `brew install
-git-lfs`, then `git lfs install`). A clone made without git-lfs gets ~130-byte pointer files
-instead of the real blobs and the compiler will fail to instantiate; `git lfs pull` fixes an
-existing clone. Rebuilding them from source instead is `build-web.sh` (needs emsdk + the
-`vendor/` Perl tree).
+They are **not committed to git** (they are git-ignored). They are attached to the
+[`engine-v1`](https://github.com/SlideBlaster/editor/releases/tag/engine-v1) GitHub Release
+and fetched on demand by **`fetch-dist.sh`**, which is idempotent and sha256-pinned. `make
+build` runs it automatically before building the web shell; for a bare clone, run it directly:
+
+    bash packages/adapters-shared/src/compile/engine/fetch-dist.sh
+
+Only the web-shell build consumes these blobs (Vite `?url` in `web-shell/src/main.ts`); the
+Node golden tests use the `vendor/` Perl tree, so `make check` needs no fetch. Rebuild the
+runtime from source with `build-web.sh` (needs emsdk + the `vendor/` Perl tree), then cut a
+new `engine-vN` release (`gh release create engine-vN dist/perl-web.{js,wasm,data}`) and bump
+the tag + the three hashes in `fetch-dist.sh`.
 
 ## Files
 

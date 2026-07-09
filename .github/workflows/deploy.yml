@@ -3,8 +3,9 @@ name: Deploy
 # Continuous deployment of the web shell to Cloudflare Pages (ADR 0020).
 # Approach A: build in a GitHub Actions runner, then upload the static output with
 # Wrangler (Pages Direct Upload). This keeps full control of the pnpm-workspace
-# build and Git LFS (the 20 MB latexml engine), in one pipeline alongside the
-# Workers. Runbook + account setup: infra/README.md, infra/cloudflare.md.
+# build and the latexml engine fetch (make build pulls the ~21 MB WASM runtime from
+# the engine-v1 GitHub Release), in one pipeline alongside the Workers. Runbook +
+# account setup: infra/README.md, infra/cloudflare.md.
 on:
   push:
     branches: [main]
@@ -40,20 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
-      # checkout fetches LFS, but make the working-tree bytes explicit: the latexml
-      # engine must be the real payload, not a pointer, or the deploy ships broken.
-      - run: git lfs pull
-      - name: Guard - LFS engine materialized (not a pointer)
-        run: |
-          f=packages/adapters-shared/src/compile/engine/dist/perl-web.data
-          sz=$(stat -c%s "$f")
-          echo "engine payload: $sz bytes"
-          test "$sz" -gt 1000000 || {
-            echo "::error::$f is $sz bytes - Git LFS not materialized"
-            exit 1
-          }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
