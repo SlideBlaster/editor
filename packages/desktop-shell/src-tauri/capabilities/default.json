@@ -1,7 +1,27 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core permissions for the main editor window. Extend as native adapters (fs, git, dialog, print) are added.",
+  "description": "Core + adapter permissions for the main editor window: dialog (folder picker), fs (working-copy read/write/watch), process (relaunch after update), and the self-updater. SECURITY: fs is currently scoped to the user's home tree ($HOME/**) so any picked folder works; before shipping, prefer narrowing this to the opened directory at runtime (tauri-plugin-fs FsExt::fs_scope().allow_directory) and dropping the broad static scope below.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "process:default",
+    "process:allow-restart",
+    "updater:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-exists",
+    "fs:allow-stat",
+    "fs:allow-lstat",
+    "fs:allow-watch",
+    "fs:allow-unwatch",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$HOME/**" }]
+    }
+  ]
 }

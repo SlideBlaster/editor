@@ -1,0 +1,86 @@
+name: Desktop Release
+
+# Builds and publishes the desktop shell to GitHub Releases, signed for self-update.
+#
+# TWO SEPARATE UPDATE CHANNELS (by design):
+#   - This pipeline updates the APP BINARY. tauri-action builds each platform bundle,
+#     signs it with the minisign key, uploads the artifacts, and generates `latest.json`
+#     (the manifest tauri-plugin-updater reads from the Releases "latest" endpoint set in
+#     tauri.conf.json). Updatable targets: Linux AppImage, macOS .app, Windows NSIS/MSI.
+#   - A user's DECKS are local files / git repos and are NOT tied to GitHub or this release.
+#
+# Trigger: push a tag like `desktop-v1.2.3`.
+#
+# Prerequisites before the first release (kept dormant until then via RELEASE_DESKTOP):
+#   1. Generate a signing key:  pnpm --filter @slideblaster/desktop-shell tauri signer generate
+#   2. Repo secrets:  TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   3. tauri.conf.json:  set plugins.updater.pubkey to the generated PUBLIC key,
+#      and replace OWNER/REPO in plugins.updater.endpoints.
+#   4. Repo variable:  RELEASE_DESKTOP = true  (Settings > Variables) to enable this workflow.
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+
+# tauri-action creates/updates the GitHub Release and uploads the bundles + latest.json.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: ${{ vars.RELEASE_DESKTOP == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon
+            args: '--target aarch64-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin'
+          - platform: macos-latest # Intel
+            args: '--target x86_64-apple-darwin'
+            rust-targets: 'x86_64-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+            rust-targets: ''
+          - platform: windows-latest
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux bundle dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libappindicator3-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build, sign, and release desktop bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the bundles and latest.json so tauri-plugin-updater accepts them.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: packages/desktop-shell
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SlideBlaster Desktop ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
