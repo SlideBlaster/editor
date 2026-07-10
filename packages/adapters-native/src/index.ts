@@ -1,9 +1,17 @@
 /**
- * Native (Tauri) port adapters. Contract: see index.md.
+ * @slideblaster/adapters-native public surface. Contract: see index.md.
  *
- * Placeholder surface for milestone M5. The native implementations of the editor
- * ports — filesystem Storage, native Git, keychain Auth, Tauri print/export — land
- * here, built over `@tauri-apps/api` and `#[tauri::command]`s in the desktop shell's
- * Rust host. Nothing is exported yet.
+ * The native (desktop) working copy: Storage + Git over one real on-disk directory
+ * (createNativeWorkspace), the native peer of the browser working copy. The `fs`
+ * binding is injected, so this surface is runtime-agnostic and bundles into the Tauri
+ * webview; the `node:fs` binding lives in ./node (imported by Node consumers only).
  */
-export {}
+export { NativeFsStorageAdapter } from './storage/nativeFsStorageAdapter'
+export type { NativeFsStorageAdapterOptions, NativeWatch } from './storage/nativeFsStorageAdapter'
+export { NativeGitAdapter } from './git/nativeGitAdapter'
+export type { NativeGitAdapterOptions } from './git/nativeGitAdapter'
+export { createNativeWorkspace } from './workspace'
+export type { NativeWorkspace, NativeWorkspaceOptions } from './workspace'
+// Re-exported so a shell can type its injected filesystem/HTTP bindings without a
+// direct isomorphic-git dependency.
+export type { FsClient, HttpClient, PromiseFsClient } from 'isomorphic-git'
