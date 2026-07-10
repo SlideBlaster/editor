@@ -52,7 +52,10 @@ export:                deck       -> renderSlide  -> browser export     -> PDF /
   [styleToolbar.ts](./styleToolbar.md): B/I/U/S act directly on the rich inline
   editor's DOM selection (no controller plumbing), while the theme-styles dropdown
   reclassifies the selected node via the engine's `setNodeStyleClass` through the
-  standard `commit`. `refresh()` runs on every render and on the repaint-free
+  standard `commit`. A per-node **font-size** control (A- / value / A+) reads the node's
+  effective size (its `font size` override else the theme role/base size) and commits
+  `setNodeOptions(withFontSize(...))`; resetting to the inherited size clears the token
+  (class < node). `refresh()` runs on every render and on the repaint-free
   `select` path, so the dropdown tracks selection without a redraw.
 - **Node-scoped content commit (ADR 0016).** Content edits (`editContent` from the raw
   inline editor, `editContentModel` from the WYSIWYG editor and the column grid

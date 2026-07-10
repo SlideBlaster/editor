@@ -33,6 +33,8 @@ export function renderChrome(root: HTMLElement, opts: { shellTag: string }): HTM
       <div class="export-actions" id="export-actions" role="group" aria-label="Export">
         <button type="button" data-export="print">Print / PDF</button>
         <button type="button" data-export="html">Export HTML</button>
+        <button type="button" id="export-zip" title="Export the whole working copy as a .zip (move it between machines, no GitHub needed)" hidden>Export Zip</button>
+        <button type="button" id="import-zip" title="Import a .zip into the working copy (matching files are overwritten)" hidden>Import Zip</button>
       </div>
       <span class="app-tag">${escapeText(opts.shellTag)}</span>
     </header>

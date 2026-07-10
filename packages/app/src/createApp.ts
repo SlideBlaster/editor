@@ -41,6 +41,7 @@ import {
   setNodeOverlay,
   styleClasses,
   isStyleKnobToken,
+  fontSize,
   createConnector,
   deleteConnector,
   updateConnector,
@@ -84,6 +85,7 @@ import {
 import type { CurveFocus } from './connectorEditor'
 import { paintDeckNav, type NavHandle } from './deckNav'
 import { paintProperties, type PropSelection } from './properties'
+import { withFontSize } from './shapes/nodeStyle'
 import { openCreationMenu, type MenuItem } from './createMenu'
 import { renderShapesPanel, SHAPE_DRAG_MIME } from './shapesPanel'
 import { shapeById, shapeNodeOptions } from './shapes/catalog'
@@ -99,7 +101,8 @@ import {
 } from './tableCompiler'
 import { installCiteCompiler, scheduleCiteCompile, ensureCitations } from './citeCompiler'
 import { KATEX_CSS } from './katexInlineCss'
-import { downloadDeckHtml, printDeck } from './export'
+import { downloadDeckHtml, downloadZip, printDeck } from './export'
+import { exportWorkspaceZip, importWorkspaceZip } from './workspaceZip'
 import { present } from './presenter'
 import { renderChrome } from './chrome'
 import { mountStyleToolbar } from './styleToolbar'
@@ -855,6 +858,16 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
     return sel && picture ? { picture, sel } : undefined
   }
 
+  // The text size (cqw) a node inherits with no `font size` override: its theme role's size,
+  // else the base size. The toolbar reads this to seed the stepper and to detect a reset
+  // (a value back at the inherited size clears the override — font-size.md, class < node).
+  const inheritedFontSize = (node: NonNullable<ReturnType<typeof findNode>>): number => {
+    const role = styleClasses(node).find((c) => !isStyleKnobToken(c))
+    return (
+      (role ? activeTheme.style.classes[role]?.size : undefined) ?? activeTheme.style.type.baseSize
+    )
+  }
+
   // Text-style toolbar (style-in-place): theme-styles dropdown + B/I/U/S. The buttons
   // act on the rich inline editor's live selection (no app plumbing); the dropdown
   // reclassifies the selected node through the standard commit (undo, splice, repaint).
@@ -870,12 +883,35 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
         // `thick`, …), so a shape's paint tokens are never mistaken for its role.
         return styleClasses(node).find((c) => !isStyleKnobToken(c)) ?? null
       },
+      fontSize: () => {
+        const at = selectedPicture()
+        const node = at ? findNode(at.picture, at.sel.name) : undefined
+        if (!node) return undefined
+        // Effective size = the per-node override, else the size it inherits (class < node).
+        // step is the theme's modular ratio, so A-/A+ walk the same ramp the theme uses.
+        return {
+          value: fontSize(node) ?? inheritedFontSize(node),
+          step: activeTheme.style.type.scale,
+        }
+      },
     },
     {
       setStyleClass: (styleClass) => {
         const at = selectedPicture()
         if (!at || !currentDoc) return
         const picture = setNodeStyleClass(at.picture, at.sel.name, styleClass || null)
+        commit(withSurface(currentDoc, at.sel.frame, at.sel.surface, picture))
+      },
+      setFontSize: (cqw) => {
+        const at = selectedPicture()
+        if (!at || !currentDoc) return
+        const node = findNode(at.picture, at.sel.name)
+        if (!node) return
+        // Resetting to the inherited size writes no token (clears the override), keeping the
+        // source minimal and the "back to style default" affordance implicit (font-size.md).
+        let value = cqw
+        if (value !== null && Math.abs(value - inheritedFontSize(node)) < 1e-3) value = null
+        const picture = setNodeOptions(at.picture, at.sel.name, withFontSize(node.options, value))
         commit(withSurface(currentDoc, at.sel.frame, at.sel.surface, picture))
       },
     },
@@ -1442,6 +1478,48 @@ export function createApp(root: HTMLElement, opts: CreateAppOptions = {}): void 
 
   if (ports && autosave) {
     qs('#side-panel').hidden = false
+
+    // Working-copy .zip transfer: a no-GitHub way to move the whole working copy
+    // between machines and between the web and desktop shells. Buttons live in the
+    // export group (chrome.ts), hidden until a working copy exists.
+    const exportZipBtn = qs<HTMLButtonElement>('#export-zip')
+    const importZipBtn = qs<HTMLButtonElement>('#import-zip')
+    exportZipBtn.hidden = false
+    importZipBtn.hidden = false
+    exportZipBtn.addEventListener('click', () => {
+      void (async () => {
+        try {
+          const bytes = await exportWorkspaceZip(ports.storage)
+          downloadZip(bytes, `slideblaster-workspace-${new Date().toISOString().slice(0, 10)}.zip`)
+          status.textContent = 'Exported the working copy to a .zip download.'
+        } catch (err) {
+          status.textContent = `Export failed: ${err instanceof Error ? err.message : String(err)}`
+        }
+      })()
+    })
+    importZipBtn.addEventListener('click', () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.zip,application/zip'
+      input.addEventListener('change', () => {
+        const file = input.files?.[0]
+        if (!file) return
+        void (async () => {
+          try {
+            let written = 0
+            await importWorkspaceZip(ports.storage, new Uint8Array(await file.arrayBuffer()), {
+              onWrite: () => (written += 1),
+            })
+            await onWorkspaceMutated() // repaint tree, reopen the current doc, refresh git
+            status.textContent = `Imported ${written} file${written === 1 ? '' : 's'} from the .zip.`
+          } catch (err) {
+            status.textContent = `Import failed: ${err instanceof Error ? err.message : String(err)}`
+          }
+        })()
+      })
+      input.click()
+    })
+
     gitPanel = createGitPanel(qs('#git-panel'), {
       git: ports.git,
       auth: ports.auth,

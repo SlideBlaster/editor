@@ -15,6 +15,9 @@ describe('editableHtml', () => {
     expect(html('*x*')).toBe('<em data-run="md:*">x</em>')
     expect(html('\\underline{x}')).toBe('<u data-run="latex:underline">x</u>')
     expect(html('<s>x</s>')).toBe('<s data-run="html:s">x</s>')
+    expect(html('<mark>x</mark>')).toBe('<mark data-run="html:mark">x</mark>')
+    expect(html('\\hl{x}')).toBe('<mark data-run="latex:hl">x</mark>')
+    expect(html('==x==')).toBe('<mark data-run="md:==">x</mark>')
   })
 
   it('nests transparently and escapes text', () => {
@@ -76,6 +79,17 @@ describe('matchMarkdown', () => {
     expect(matchMarkdown('**')).toBeNull()
     expect(matchMarkdown('* x *')).toBeNull() // opener followed by space is not emphasis
   })
+
+  it('matches a highlight closure and reports its start', () => {
+    expect(matchMarkdown('a ==b==')).toEqual({ start: 2, marker: '==', body: 'b' })
+    expect(matchMarkdown('==x==')).toEqual({ start: 0, marker: '==', body: 'x' })
+  })
+
+  it('does not fire early while typing a highlight', () => {
+    expect(matchMarkdown('==b=')).toBeNull() // first closing equals: wait for the second
+    expect(matchMarkdown('==')).toBeNull()
+    expect(matchMarkdown('====')).toBeNull() // empty body
+  })
 })
 
 describe('matchLatexOpener', () => {
@@ -83,6 +97,7 @@ describe('matchLatexOpener', () => {
     expect(matchLatexOpener('say \\textbf{')).toEqual({ start: 4, command: 'textbf' })
     expect(matchLatexOpener('\\emph{')).toEqual({ start: 0, command: 'emph' })
     expect(matchLatexOpener('\\underline{')).toEqual({ start: 0, command: 'underline' })
+    expect(matchLatexOpener('\\hl{')).toEqual({ start: 0, command: 'hl' })
   })
 
   it('ignores other commands and incomplete openers', () => {

@@ -19,6 +19,10 @@ self-contained document that is both a presenter and a print-to-PDF source.
 - **Trusted input.** Slide HTML is the engine's own output (no external assets); only the
   document `<title>` is escaped. The iframe is same-origin and removed on `afterprint`
   (with a timer fallback, since `afterprint` is not universally reliable).
+- **Working-copy zip download.** `downloadZip(bytes, filename)` saves raw bytes as a `.zip`
+  via the same Blob + object-URL + `<a download>` path as `downloadDeckHtml`. It is the
+  browser glue for a whole-working-copy export (the codec is [workspaceZip.md](./workspaceZip.md));
+  the app chrome hands it the codec's bytes.
 
 The controller ([createApp.ts](./createApp.md)) builds `RenderedSlide[]` by rendering each
 frame against `resolveLayoutAsync(picture, measurer)` — the same cached DOM measurements

@@ -14,11 +14,14 @@ node's _actual_ rendered box, so layout matches what you see.
   divided by `PER_UNIT`.
 - **Natural vs fixed width.** No `text width` ⇒ `width: max-content` (the node's widest
   line). `text width=n` ⇒ width fixed to `n` units and the height is read after wrap —
-  mirroring how the display slide sizes the box.
+  mirroring how the display slide sizes the box. A per-node `font size=n` (cqw) is set
+  inline on the measured node — the offscreen slide is a `cqw` container, so the box
+  measures at the overridden size, matching the render (class < node).
 - **Async + batched.** `measureAll` awaits `document.fonts.ready` once before trusting a
   box (math typesetting will hook in the same way later), inserts a slide's nodes
   together, forces one reflow, and reads them in a single pass.
-- **Cached by content.** Key = `[content, styleClasses, textWidth]`. Re-rendering the
+- **Cached by content.** Key = `[content, styleClasses, textWidth, minHeight, fontSize]`.
+  Re-rendering the
   whole deck on each keystroke only measures nodes that actually changed; repeats within
   a batch are de-duplicated. A `.sb-measure-root` stylesheet supplies only structural
   overrides (offscreen, height:auto, static flow) — never font metrics, so measurement

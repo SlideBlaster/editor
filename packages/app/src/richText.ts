@@ -36,10 +36,18 @@ import { renderOptions } from './tableCompiler'
  *  Inserted by the editor, stripped by the reader — never reaches the model. */
 export const ZWSP = '\u200B'
 
-const LATEX_COMMANDS = new Set(['textbf', 'emph', 'textit', 'underline'])
-const STYLE_ELEMENT = { bold: 'strong', italic: 'em', underline: 'u', strike: 's' } as const
+const LATEX_COMMANDS = new Set(['textbf', 'emph', 'textit', 'underline', 'hl'])
+const STYLE_ELEMENT = {
+  bold: 'strong',
+  italic: 'em',
+  underline: 'u',
+  strike: 's',
+  highlight: 'mark',
+} as const
 /** Bare elements a browser editing command may produce, and the html-run tag they read
- *  back as (`strike` is Chromium's strikeThrough output; the parser subset wants `s`). */
+ *  back as (`strike` is Chromium's strikeThrough output; the parser subset wants `s`).
+ *  `mark` is the highlight element (the toolbar's hiliteColor output canonicalizes to it
+ *  through `styleWrapper`, but a directly-authored <mark> round-trips here). */
 const BARE_STYLE_TAGS: Record<string, string> = {
   b: 'b',
   strong: 'strong',
@@ -48,6 +56,7 @@ const BARE_STYLE_TAGS: Record<string, string> = {
   u: 'u',
   s: 's',
   strike: 's',
+  mark: 'mark',
 }
 
 function escapeHtml(s: string): string {
@@ -83,8 +92,8 @@ function runFromTag(tag: string, children: TextRun[]): TextRun | undefined {
     if (LATEX_COMMANDS.has(command))
       return { kind: 'latex', command: command as LatexCommand, children }
   }
-  if (tag === 'md:*' || tag === 'md:**') {
-    return { kind: 'markdown', marker: tag.slice(3) as '*' | '**', children }
+  if (tag === 'md:*' || tag === 'md:**' || tag === 'md:==') {
+    return { kind: 'markdown', marker: tag.slice(3) as '*' | '**' | '==', children }
   }
   if (tag.startsWith('html:')) return { kind: 'html', tag: tag.slice(5), children }
   return undefined
@@ -268,7 +277,10 @@ function readNodes(nodes: Iterable<Node>, atoms: readonly TextRun[], out: TextRu
   }
 }
 
-/** The html-run tags an element's inline CSS expresses (positive styles only). */
+/** The html-run tags an element's inline CSS expresses (positive styles only). A
+ *  non-transparent `background-color` (the toolbar's hiliteColor output) reads as a
+ *  highlight `mark`; a transparent background is not a highlight, so toggle-off (which
+ *  paints the background transparent) unwraps cleanly. */
 function styleWrapper(el: HTMLElement): string[] | null {
   const tags: string[] = []
   const weight = el.style.fontWeight
@@ -277,7 +289,15 @@ function styleWrapper(el: HTMLElement): string[] | null {
   const deco = el.style.textDecoration + ' ' + el.style.textDecorationLine
   if (deco.includes('underline')) tags.push('u')
   if (deco.includes('line-through')) tags.push('s')
+  if (isOpaqueBackground(el.style.backgroundColor)) tags.push('mark')
   return tags.length > 0 ? tags : null
+}
+
+/** A background color that actually paints (not empty, not a transparent keyword/rgba). */
+function isOpaqueBackground(bg: string): boolean {
+  const v = bg.trim().toLowerCase()
+  if (v === '' || v === 'transparent') return false
+  return !/^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/.test(v)
 }
 
 function nestStyles(tags: string[], children: TextRun[]): TextRun {
@@ -327,13 +347,18 @@ export function matchMath(
   return null
 }
 
-/** `**…**` / `*…*` completed at the end of `upto`. Bold wins over nested emphasis. */
+/** `**…**` / `*…*` / `==…==` completed at the end of `upto`. Bold wins over nested
+ *  emphasis; highlight (`==`) is independent of the `*` family. */
 export function matchMarkdown(
   upto: string,
-): { start: number; marker: '*' | '**'; body: string } | null {
+): { start: number; marker: '*' | '**' | '=='; body: string } | null {
   const bold = /(^|[^*])\*\*([^*]+)\*\*$/.exec(upto)
   if (bold && bold[2]!.trim() !== '') {
     return { start: bold.index + bold[1]!.length, marker: '**', body: bold[2]! }
+  }
+  const highlight = /(^|[^=])==([^=]+)==$/.exec(upto)
+  if (highlight && highlight[2]!.trim() !== '') {
+    return { start: highlight.index + highlight[1]!.length, marker: '==', body: highlight[2]! }
   }
   const em = /(^|[^*])\*([^*\s][^*]*)\*$/.exec(upto)
   if (em && em[2]!.trim() !== '') {
@@ -344,7 +369,7 @@ export function matchMarkdown(
 
 /** A style command opener (`\textbf{`) just completed at the end of `upto`. */
 export function matchLatexOpener(upto: string): { start: number; command: LatexCommand } | null {
-  const m = /\\(textbf|emph|textit|underline)\{$/.exec(upto)
+  const m = /\\(textbf|emph|textit|underline|hl)\{$/.exec(upto)
   return m ? { start: m.index, command: m[1] as LatexCommand } : null
 }
 
@@ -353,6 +378,7 @@ const LATEX_ELEMENT: Record<LatexCommand, string> = {
   emph: 'em',
   textit: 'em',
   underline: 'u',
+  hl: 'mark',
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +568,7 @@ export function wireRichEditing(editor: HTMLElement): void {
     if (composing || e.isComposing) return
     if (e.inputType !== 'insertText' || !e.data) return
     const trigger = e.data[e.data.length - 1]
-    if (trigger !== '$' && trigger !== '*' && trigger !== '{') return
+    if (trigger !== '$' && trigger !== '*' && trigger !== '=' && trigger !== '{') return
     const at = caretText(editor)
     if (!at) return
     const upto = at.node.data.slice(0, at.offset)
@@ -562,10 +588,10 @@ export function wireRichEditing(editor: HTMLElement): void {
       }
       return
     }
-    if (trigger === '*') {
+    if (trigger === '*' || trigger === '=') {
       const m = matchMarkdown(upto)
       if (!m) return
-      const tag = m.marker === '**' ? 'strong' : 'em'
+      const tag = m.marker === '**' ? 'strong' : m.marker === '==' ? 'mark' : 'em'
       const html = `<${tag} data-run="md:${m.marker}" data-rt-new="">${escapeHtml(m.body)}</${tag}>`
       replaceSource(editor, at.node, m.start, at.offset, html, 'after')
       return
@@ -600,4 +626,89 @@ export function wireRichEditing(editor: HTMLElement): void {
     sel.removeAllRanges()
     sel.addRange(range)
   })
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar highlight command (styleToolbar.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * The highlight color the toolbar paints. It is a transport detail only: read-back
+ * canonicalizes any opaque-background span to a dialect-neutral `<mark>` run (the
+ * rendered highlight color is the theme's, not this), so highlight is a boolean style
+ * like bold — not a color picker (color remains an open question, style-in-place.md).
+ */
+export const HIGHLIGHT_COLOR = 'rgb(255, 245, 157)'
+
+/** The nearest highlight element enclosing `node` within `editor` — a `<mark>` or an
+ *  element painted with an opaque background (the toolbar's hiliteColor output) — else null. */
+function highlightAncestor(node: Node, editor: HTMLElement): HTMLElement | null {
+  let el: Node | null = node instanceof Element ? node : node.parentElement
+  while (el instanceof HTMLElement && editor.contains(el)) {
+    if (el.tagName === 'MARK' || isOpaqueBackground(el.style.backgroundColor)) return el
+    el = el.parentElement
+  }
+  return null
+}
+
+/** The text nodes a range overlaps, within `editor` (for the whole-selection state check). */
+function textNodesIn(range: Range, editor: HTMLElement): Text[] {
+  const root = range.commonAncestorContainer
+  const scope = root instanceof Element ? root : root.parentElement
+  if (!scope) return []
+  const out: Text[] = []
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n instanceof Text && editor.contains(n) && range.intersectsNode(n)) out.push(n)
+  }
+  return out
+}
+
+/**
+ * Whether the current selection carries a highlight (the toolbar's pressed-state). Docs
+ * semantics: pressed only when the WHOLE selection is highlighted — a collapsed caret
+ * checks its position; a range requires every non-whitespace text node it touches to sit
+ * inside a highlight. There is no native `queryCommandState` for `<mark>`, so this is the
+ * substitute the toolbar consults instead.
+ */
+export function isSelectionHighlighted(editor: HTMLElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) return false
+  if (range.collapsed) return highlightAncestor(range.startContainer, editor) !== null
+  const texts = textNodesIn(range, editor)
+  if (texts.length === 0) return highlightAncestor(range.commonAncestorContainer, editor) !== null
+  return texts.every((t) => t.data.trim() === '' || highlightAncestor(t, editor) !== null)
+}
+
+/** Unwrap every `<mark>` element intersecting the current selection (toggle-off for
+ *  element-authored highlights, which painting the background transparent cannot clear). */
+function unwrapMarks(editor: HTMLElement): void {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+  const range = sel.getRangeAt(0)
+  for (const mark of [...editor.querySelectorAll('mark')].filter((m) => range.intersectsNode(m))) {
+    const parent = mark.parentNode
+    if (!parent) continue
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark)
+    parent.removeChild(mark)
+  }
+}
+
+/**
+ * Toggle a highlight on the current selection inside `editor` (option A). Apply rides
+ * `execCommand('hiliteColor')` under `styleWithCSS` — undoable, and the background span it
+ * emits reads back as a `<mark>` run (`styleWrapper`). Remove paints the background
+ * transparent (clearing the command's own spans) and unwraps any element `<mark>` in range.
+ * `styleWithCSS` is set only around the call and restored, so B/I/U/S keep emitting bare tags.
+ */
+export function toggleHighlight(editor: HTMLElement): void {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+  const remove = isSelectionHighlighted(editor)
+  document.execCommand('styleWithCSS', false, 'true')
+  document.execCommand('hiliteColor', false, remove ? 'transparent' : HIGHLIGHT_COLOR)
+  document.execCommand('styleWithCSS', false, 'false')
+  if (remove) unwrapMarks(editor)
 }

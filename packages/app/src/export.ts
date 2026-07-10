@@ -175,3 +175,21 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
+
+/**
+ * Download raw bytes as a `.zip` file — the browser-side glue for a working-copy
+ * export (see workspaceZip.ts). Same Blob + object-URL + `<a download>` path as
+ * `downloadDeckHtml`; the app chrome hands it the codec's zip bytes. Both shells are
+ * webviews, so this lives in the app package (not a shell) like the other downloads.
+ */
+export function downloadZip(bytes: Uint8Array, filename: string): void {
+  // Copy into a fresh ArrayBuffer-backed view: a Uint8Array over ArrayBufferLike is
+  // not a DOM BlobPart, and this respects any byteOffset.
+  const blob = new Blob([new Uint8Array(bytes)], { type: 'application/zip' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename.endsWith('.zip') ? filename : `${filename}.zip`
+  a.click()
+  URL.revokeObjectURL(url)
+}

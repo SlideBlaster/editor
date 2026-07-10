@@ -28,6 +28,7 @@ const OPACITY_RE = /^opacity\s*=/
 const FILL_OPACITY_RE = /^fill\s+opacity\s*=/
 const DRAW_OPACITY_RE = /^draw\s+opacity\s*=/
 const ROUNDED_RE = /^rounded\s+corners\b/
+const FONT_SIZE_RE = /^font\s+size\s*=/
 
 const SHAPE_TOKENS = ['rectangle', 'ellipse', 'circle']
 
@@ -95,6 +96,13 @@ export function withDrawOpacity(options: string[], value: number | null): string
 /** Set (`rounded corners=<pt>`) or clear (`null`, square) a rectangle's corner radius. */
 export function withCorners(options: string[], pt: number | null): string[] {
   return setKeyed(options, ROUNDED_RE, pt === null ? null : `rounded corners=${pt}`)
+}
+
+/** Set (`font size=<cqw>`) or clear (`null`, back to the theme role's size) the per-node text
+ *  size. `cqw` is slide-relative, like the theme's per-role `size`; the token overrides the
+ *  class (class < node). Clearing restores inheritance. Role/placement/other knobs untouched. */
+export function withFontSize(options: string[], cqw: number | null): string[] {
+  return setKeyed(options, FONT_SIZE_RE, cqw === null ? null : `font size=${cqw}`)
 }
 
 /**

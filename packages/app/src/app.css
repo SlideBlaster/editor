@@ -187,6 +187,48 @@ body {
   outline-offset: 1px;
 }
 
+/* Per-node font size: A- / value / A+ (styleToolbar.ts). Buttons inherit .text-actions
+   button; the numeric field is narrow and its native spinner is hidden for compactness. */
+.font-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.font-size-control input {
+  width: 2.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.24rem 0.3rem;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.font-size-control input::-webkit-outer-spin-button,
+.font-size-control input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.font-size-control input:hover {
+  border-color: var(--accent);
+}
+
+.font-size-control input:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.font-size-control input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Workspace: side panel | ⇔ | code editor | ⇔ | carousel navigator rail | preview deck.
    The side-panel and editor tracks size to draggable widths (--sb-side-w / --sb-editor-w,
    set by resizer.ts); the preview (slide canvas) is the flexible 1fr track that absorbs
@@ -1821,6 +1863,26 @@ svg.sb-snap-layer {
   color: color-mix(in srgb, var(--accent) 80%, currentColor);
   vertical-align: middle;
   white-space: nowrap;
+}
+
+/* Highlight (the <mark> run: <mark> / \hl{} / ==…==, and the toolbar Highlight button).
+   The editor mark matches the color the toolbar paints (richText HIGHLIGHT_COLOR) so the
+   live edit reads the same as the committed result; dark ink keeps text legible on yellow.
+   (The rendered slide uses the browser-default mark; a theme-driven highlight color is a
+   future refinement — color is an open question in style-in-place.md.) */
+.sb-inline-editor mark {
+  background-color: rgb(255, 245, 157);
+  color: #1b1e28;
+  border-radius: 2px;
+}
+
+/* The Highlight button's <mark>H</mark> label reads as a highlight swatch in the app bar,
+   in both the resting and pressed (.is-active) states. */
+.text-actions button[data-format='highlight'] mark {
+  background-color: rgb(255, 245, 157);
+  color: #1b1e28;
+  padding: 0 0.2em;
+  border-radius: 2px;
 }
 
 /* The rendered slide: engine sets .sb-slide (16/9); we frame it. The slide's type

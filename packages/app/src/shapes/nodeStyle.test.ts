@@ -10,6 +10,7 @@ import {
   withFillOpacity,
   withDrawOpacity,
   withCorners,
+  withFontSize,
 } from './nodeStyle'
 
 describe('withShape', () => {
@@ -120,5 +121,25 @@ describe('withCorners', () => {
   it('sets and clears rounded corners', () => {
     expect(withCorners(['draw'], 6)).toEqual(['draw', 'rounded corners=6'])
     expect(withCorners(['rounded corners=6', 'draw'], null)).toEqual(['draw'])
+  })
+})
+
+describe('withFontSize', () => {
+  it('adds a font size to a node that had none', () => {
+    expect(withFontSize(['body'], 3.4)).toEqual(['body', 'font size=3.4'])
+  })
+  it('replaces a prior font size in place (position-stable)', () => {
+    expect(withFontSize(['font size=2', 'body'], 5)).toEqual(['font size=5', 'body'])
+  })
+  it('null clears the override (back to the theme role size: class < node)', () => {
+    expect(withFontSize(['font size=3', 'draw'], null)).toEqual(['draw'])
+  })
+  it('preserves the role class, placement, and other knobs', () => {
+    expect(withFontSize(['title', 'below=0.5 of hd', 'draw'], 6)).toEqual([
+      'title',
+      'below=0.5 of hd',
+      'draw',
+      'font size=6',
+    ])
   })
 })

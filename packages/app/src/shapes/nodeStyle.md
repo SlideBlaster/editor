@@ -25,6 +25,8 @@ Because a knob maps to the exact TikZ token TikZ itself uses, a panel edit and a
 - `withOpacity` / `withFillOpacity` / `withDrawOpacity(options, n | null)` — the three
   alphas (`opacity=`, `fill opacity=`, `draw opacity=`).
 - `withCorners(options, pt | null)` — `rounded corners=<pt>` (rectangles only).
+- `withFontSize(options, cqw | null)` — `font size=<cqw>`, a per-node text-size override of
+  the theme role's size (class < node); `null` clears the token back to inheritance.
 
 ## Contract
 

@@ -86,6 +86,10 @@ export function createDomMeasurer(): DomMeasurer {
       // measurer. This is the size lever a dropped shape uses to land at a visible default.
       if (input.minWidth !== undefined) el.style.minWidth = `${input.minWidth * perUnit}px`
       if (input.minHeight !== undefined) el.style.minHeight = `${input.minHeight * perUnit}px`
+      // A per-node `font size` (cqw) overrides the role's size (class < node). Set it inline so
+      // the offscreen box measures at the size the renderer paints — the measure slide is a
+      // `cqw` container (SLIDE_TYPE_CSS), so cqw here resolves against REF_PX exactly as on canvas.
+      if (input.fontSize !== undefined) el.style.fontSize = `${input.fontSize}cqw`
       el.innerHTML = renderContent(input.content, renderOptions)
       content.append(el)
       els.push(el)
@@ -123,13 +127,14 @@ export function createDomMeasurer(): DomMeasurer {
   }
 }
 
-/** Cache key: same content + style + fixed width + height floor ⇒ same box. */
+/** Cache key: same content + style + fixed width + height floor + font size ⇒ same box. */
 function keyOf(input: MeasureInput): string {
   return JSON.stringify([
     input.content,
     input.styleClasses,
     input.textWidth ?? null,
     input.minHeight ?? null,
+    input.fontSize ?? null,
   ])
 }
 

@@ -9,9 +9,9 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
 
 - **`editableHtml(content, atoms) -> html`** — a NodeContent rendered for _editing_:
   like the engine render but stamping what the render omits. Style runs become semantic
-  elements (`strong/em/u/s`, or the html run's own span/div) carrying their exact run
-  identity in `data-run` (`latex:textbf`, `md:**`, `html:b`, …) — provenance the DOM
-  can round-trip. Math becomes an **atomic island** (`.rt-atom.rt-math`,
+  elements (`strong/em/u/s/mark`, or the html run's own span/div) carrying their exact run
+  identity in `data-run` (`latex:textbf`, `md:**`, `md:==`, `latex:hl`, `html:mark`, …) —
+  provenance the DOM can round-trip. Math becomes an **atomic island** (`.rt-atom.rt-math`,
   `contenteditable="false"`) typeset by the shared `renderOptions.renderMath` (KaTeX)
   and carrying its source in `data-tex`/`data-display` (KaTeX HTML drops it). Lists are
   real `ul/ol` (`data-run="list:<dialect>"`, `li[data-spec]`) — natively editable.
@@ -22,10 +22,12 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
 - **`readEditable(root, atoms) -> NodeContent`** — the inverse walk. `data-run`
   elements rebuild their exact run kind (provenance preserved; execCommand splits clone
   attributes, so split fragments stay provenance-true); `data-atom` islands return the
-  original run object verbatim; **bare** `b/strong/i/em/u/s/strike` and positively
-  styled spans (browser-authored styling) become html-dialect runs — the documented
-  default dialect for new canvas content (`strike` canonicalizes to `s`;
-  whitespace-only wrappers unwrap; negation styles have no model form and unwrap).
+  original run object verbatim; **bare** `b/strong/i/em/u/s/strike/mark` and positively
+  styled spans (browser-authored styling — including an opaque `background-color`, the
+  toolbar's hiliteColor output, which reads as a `mark` highlight) become html-dialect
+  runs — the documented default dialect for new canvas content (`strike` canonicalizes
+  to `s`; whitespace-only wrappers unwrap; negation styles and a transparent background
+  have no model form and unwrap).
   Tolerances: `<br>`/`<div>` line shapes read as `\n` (`<div><br></div>` = one empty
   line; a trailing `<br>` is Chromium's placeholder, stripped — a genuine trailing
   newline survives, so a no-op close stays byte-identical), ZWSP anchors strip, NBSP
@@ -35,9 +37,9 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
   with every programmatic mutation routed through `execCommand` so the **native undo
   stack stays coherent** (Ctrl+Z after a conversion restores the literal typed source):
   - `$…$` / `$$…$$` converts to a math island when the closing `$` is typed;
-    `\textbf{`/`\emph{`/`\textit{`/`\underline{` converts the moment `{` completes —
+    `\textbf{`/`\emph{`/`\textit{`/`\underline{`/`\hl{` converts the moment `{` completes —
     an empty styled element with the caret _inside_ (live "you are in bold" tracking),
-    and `}` exits past it (brace consumed); `**…**`/`*…*` convert on the closing
+    and `}` exits past it (brace consumed); `**…**`/`*…*`/`==…==` convert on the closing
     marker with `md` provenance. Scans never cross a text-node boundary.
   - Backspace after a math island re-opens it as its `$…$` source (caret at end);
     after any other island it selects it first, deleting whole on the second press.
@@ -49,6 +51,14 @@ typing behaviors. Normative dialect rules: `design/format/node-content.md`; UX s
 - **`padIslands(root)`** — ZWSP caret anchors where Chromium cannot otherwise place a
   caret (parent start/end, between adjacent islands). Re-run after island surgery.
 - **`ZWSP`** — the anchor character; editor-only, stripped on read.
+- **`toggleHighlight(editor)` / `isSelectionHighlighted(editor)` / `HIGHLIGHT_COLOR`** —
+  the toolbar Highlight command ([styleToolbar.ts](./styleToolbar.md)). `<mark>` has no
+  native `execCommand`/`queryCommandState`, so apply rides `execCommand('hiliteColor')`
+  under `styleWithCSS` (undoable; the background span reads back as a `mark` run), remove
+  paints the background transparent and unwraps element `<mark>`s in range, and pressed-
+  state is a DOM check (whole selection highlighted — Docs semantics). The painted color
+  is transport only; the committed `mark` run carries no color (highlight is a boolean
+  style, not a color picker — color stays open, `design/ux/style-in-place.md`).
 
 ## Invariants
 
