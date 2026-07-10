@@ -14,3 +14,7 @@ pnpm-lock.yaml
 # LaTeXML WASM engine build tree: generated build artifacts and upstream sources.
 packages/adapters-shared/src/compile/engine/build/
 packages/adapters-shared/src/compile/engine/tmp/
+
+# Tauri desktop shell build output + ACL codegen (mirrors src-tauri/.gitignore): generated, not ours to format.
+**/target/
+**/gen/schemas/
