@@ -15,6 +15,8 @@ import {
   drawOpacity,
   cornerRadiusPt,
   cornerRadiusUnits,
+  fontSize,
+  styleClasses,
   isStyleKnobToken,
 } from './options'
 
@@ -94,6 +96,22 @@ describe('rounded corners', () => {
   })
 })
 
+describe('fontSize', () => {
+  it('reads a per-node font size in cqw', () => {
+    expect(fontSize(node('font size=3.4'))).toBe(3.4)
+    expect(fontSize(node('body', 'font size=5'))).toBe(5)
+  })
+  it('is undefined when the node sets no size (inherits its role/base)', () => {
+    expect(fontSize(node('body'))).toBeUndefined()
+    expect(fontSize(node())).toBeUndefined()
+  })
+  it('is a bare key=value token, so it is never mistaken for a style class or knob', () => {
+    // `font size=…` carries `=`, so styleClasses/isStyleKnobToken skip it (role stays clean).
+    expect(styleClasses(node('title', 'font size=6'))).toEqual(['title'])
+    expect(isStyleKnobToken('font size=6')).toBe(false)
+  })
+})
+
 describe('isStyleKnobToken', () => {
   it('marks paint/shape/width/dash bare tokens, not theme roles', () => {
     for (const t of [
@@ -111,10 +129,10 @@ describe('isStyleKnobToken', () => {
 })
 
 describe('round-trip: style tokens survive parse -> serialize', () => {
-  it('keeps hex fills, coloured strokes, widths, dashes, corners, opacities verbatim', () => {
+  it('keeps hex fills, coloured strokes, widths, dashes, corners, opacities, font size verbatim', () => {
     const src =
       '\\node[draw=red, fill=#ff8800, thick, densely dashed, rounded corners=6, ' +
-      'fill opacity=0.5, draw opacity=0.8, ellipse] (s) at (2,2) {};'
+      'fill opacity=0.5, draw opacity=0.8, font size=3.4, ellipse] (s) at (2,2) {};'
     expect(serializePicture(parsePicture(src))).toBe(src)
   })
 })

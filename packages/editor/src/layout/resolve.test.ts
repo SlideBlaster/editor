@@ -63,6 +63,24 @@ describe('resolveLayout: positions', () => {
     expect(findPlaced(resolveLayout(short, naiveMeasurer), 'a')!.size.height).toBeLessThan(4)
   })
 
+  it('the naive measurer sizes the box by a per-node font size (cqw)', () => {
+    const base = parsePicture('\\node[body] (a) {hello};')
+    const big = parsePicture('\\node[body, font size=5.2] (a) {hello};') // 2x the 2.6 base
+    const bs = findPlaced(resolveLayout(base, naiveMeasurer), 'a')!.size
+    const bg = findPlaced(resolveLayout(big, naiveMeasurer), 'a')!.size
+    expect(bg.width).toBeGreaterThan(bs.width)
+    expect(bg.height).toBeGreaterThan(bs.height)
+  })
+
+  it('a font size override wins over the title scale (class < node)', () => {
+    // A title bumps 1.4x; an explicit small size shrinks it below that, proving node beats class.
+    const titled = parsePicture('\\node[title] (a) {hello};')
+    const overridden = parsePicture('\\node[title, font size=1.3] (a) {hello};') // 0.5x base
+    const th = findPlaced(resolveLayout(titled, naiveMeasurer), 'a')!.size.height
+    const oh = findPlaced(resolveLayout(overridden, naiveMeasurer), 'a')!.size.height
+    expect(oh).toBeLessThan(th)
+  })
+
   it('multiplies the measured box by the node content scale', () => {
     const plain = findPlaced(resolveLayout(parsePicture('\\node (a) {x};'), fixed(2, 1)), 'a')!.size
     const scaled = findPlaced(

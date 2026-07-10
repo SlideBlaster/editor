@@ -5,8 +5,9 @@ layout pass depends only on this interface, never on real font metrics — the s
 that makes `resolve` headless and testable.
 
 - `naiveMeasurer` — a deterministic character/line estimate (no DOM). Enough to
-  place boxes; NOT faithful to rendered output. `title` style scales up; empty
-  content is a small min box; `text width` fixes width and wraps for height.
+  place boxes; NOT faithful to rendered output. `title` style scales up (a per-node
+  `font size` override scales instead — class < node); empty content is a small min
+  box; `text width` fixes width and wraps for height.
 - The real **DOM-measurement adapter** (render the node's HTML, read its box) is the
   flagged Track-0 risk. It needs a DOM and must await fonts/math, so it can't satisfy
   the sync `Measurer` — it implements `BatchMeasurer` instead and drops in behind
@@ -19,6 +20,7 @@ that makes `resolve` headless and testable.
   one) to a `BatchMeasurer`, the headless default and the browser fallback.
 
 Contract: `Measurer` is pure and deterministic. `MeasureInput` is `{ content,
-styleClasses, textWidth?, minWidth?, minHeight? }`, where `minWidth`/`minHeight` are
-grow-only size floors (content larger than a floor still wins). A `BatchMeasurer`
+styleClasses, textWidth?, minWidth?, minHeight?, fontSize? }`, where `minWidth`/`minHeight`
+are grow-only size floors (content larger than a floor still wins) and `fontSize` (cqw) is a
+per-node text-size override (class < node) the box is measured at. A `BatchMeasurer`
 returns one `Size` per input, in order.

@@ -95,6 +95,20 @@ describe('renderSlide', () => {
     expect(out).toContain('style="fill:red"')
   })
 
+  it('emits a per-node font size as an inline cqw style (beats the class rule: class < node)', () => {
+    const picture = parsePicture('\\node[body, font size=4] (n) at (8,4.5) {hi};')
+    const out = renderSlide(picture, resolveLayout(picture, fixed(4, 2)))
+    // The content div stays classed sb-style-body but carries an inline font-size that,
+    // by specificity, overrides the .sb-style-body class rule.
+    expect(out).toMatch(/class="sb-node sb-style-body"[^>]*style="[^"]*;font-size:4cqw"/)
+  })
+
+  it('omits an inline font-size when the node sets none (inherits its role/base)', () => {
+    const picture = parsePicture('\\node[body] (n) at (8,4.5) {hi};')
+    const out = renderSlide(picture, resolveLayout(picture, fixed(4, 2)))
+    expect(out).not.toContain('font-size:')
+  })
+
   it('exposes the drawn-stroke rule in the stylesheet', () => {
     expect(slideStylesheet()).toContain('.sb-drawn{')
   })

@@ -96,6 +96,18 @@ export function minWidth(node: NodeStatement): number | undefined {
   return numericOption(node, /^minimum\s+width\s*=/)
 }
 
+/**
+ * The per-node text size from a `font size=<n>` option, in `cqw` (slide-relative, like the
+ * theme's per-role `size`), else undefined (the box inherits its role/base size). A per-node
+ * override of the theme class' font size — precedence is *class < node*, so the renderer
+ * emits it as an inline `font-size` that beats the `.sb-style-<role>` class rule, and the
+ * measurers size the box at it. `font size` (a space) matches the multi-word option style of
+ * `text width`/`minimum height`; it sets text size only (orthogonal to the geometric `scale`).
+ */
+export function fontSize(node: NodeStatement): number | undefined {
+  return numericOption(node, /^font\s+size\s*=/)
+}
+
 /** The geometric outline a node draws — the shape switch the renderer maps to an SVG
  *  element and the catalogue selects with an option preset (tikz-subset.md). `rectangle` is
  *  the default box; `ellipse` covers circles; the straight-edged outlines all render as one

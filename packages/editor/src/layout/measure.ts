@@ -18,6 +18,9 @@ export interface MeasureInput {
   minWidth?: number
   /** `minimum height=<n>` when the node sets a height floor (grow-only: content may exceed it). */
   minHeight?: number
+  /** `font size=<n>` (cqw) when the node overrides its role's text size — the box is measured
+   *  at this size (class < node). Absent means it inherits the role/base size. */
+  fontSize?: number
   styleClasses: string[]
 }
 
@@ -47,11 +50,22 @@ const PADDING = 0.2
 const MIN_WIDTH = 1
 const MIN_HEIGHT = 0.6
 const TITLE_SCALE = 1.4
+/** Reference base size (cqw) the naive estimate scales a `font size` override against. Mirrors
+ *  the default theme's `type.baseSize` — an approximation for headless layout, never a render. */
+const NAIVE_BASE = 2.6
 
 /** Deterministic estimate from character/line counts; good enough to lay out, not to render. */
 export const naiveMeasurer: Measurer = {
-  measure({ content, textWidth, minWidth, minHeight, styleClasses }): Size {
-    const scale = styleClasses.includes('title') ? TITLE_SCALE : 1
+  measure({ content, textWidth, minWidth, minHeight, styleClasses, fontSize }): Size {
+    // A per-node `font size` (cqw) overrides the role's size (class < node), so it wins over
+    // the title bump; absent, a title still measures larger. Only an estimate — the DOM
+    // measurer renders the real box; this keeps headless layout in the right ballpark.
+    const scale =
+      fontSize !== undefined
+        ? fontSize / NAIVE_BASE
+        : styleClasses.includes('title')
+          ? TITLE_SCALE
+          : 1
     const charW = CHAR_WIDTH * scale
     const lineH = LINE_HEIGHT * scale
     const lines = plainText(content).split('\n')

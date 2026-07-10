@@ -9,7 +9,9 @@ anything: `styleClasses` (bare tokens), `role` (`title` class -> title node),
 `DEFAULT_PLACEMENT_GAP`),
 `textWidth` (the `text width=<n>` value), `minWidth`/`minHeight` (the `minimum
 width|height=<n>` grow-only size floors — the size levers a dropped shape uses so an
-empty box lands visible), and `nodeOverlay` (the whole-node
+empty box lands visible), `fontSize` (the per-node `font size=<n>` text size in cqw — a
+_class < node_ override of the theme role's size, read by the renderer and both measurers),
+and `nodeOverlay` (the whole-node
 `overlay=<spec>` reveal, ADR 0018 — stored brace-wrapped so a spec's commas survive
 option tokenizing; returns the raw `OverlaySpec` for `content/overlay` to interpret).
 

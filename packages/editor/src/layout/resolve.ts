@@ -13,6 +13,7 @@ import {
   DEFAULT_PLACEMENT_GAP,
   minHeight,
   minWidth,
+  fontSize,
   nodeScale,
   placement,
   styleClasses,
@@ -38,12 +39,14 @@ function measureInputFor(node: NodeStatement): MeasureInput {
   const tw = textWidth(node)
   const mw = minWidth(node)
   const mh = minHeight(node)
+  const fs = fontSize(node)
   return {
     content: node.content,
     styleClasses: styleClasses(node),
     ...(tw !== undefined ? { textWidth: tw } : {}),
     ...(mw !== undefined ? { minWidth: mw } : {}),
     ...(mh !== undefined ? { minHeight: mh } : {}),
+    ...(fs !== undefined ? { fontSize: fs } : {}),
   }
 }
 

@@ -17,6 +17,7 @@ export {
   textWidth,
   minHeight,
   minWidth,
+  fontSize,
   nodeShape,
   isDrawn,
   fillColor,

@@ -34,7 +34,10 @@ plays as (ADR 0018).
 - **Content.** Each node's box holds `renderContent` output (B2); style classes
   become `sb-style-*` classes on both the SVG box and the content div. A named node's
   content div also carries `data-node="<name>"` so an editor can hit-test and address
-  it (selection, drag, inline edit); harmless in the export DOM.
+  it (selection, drag, inline edit); harmless in the export DOM. A per-node `font
+size=<n>` (via `fontSize`) is emitted as an inline `font-size:<n>cqw` on that div,
+  which beats the `.sb-style-<role>` class rule by specificity — the _class < node_
+  precedence for text size (font-size.md).
 - **Overlays (ADR 0018).** `options.step` flows into `renderContent` so inline overlays
   step-gate. A node's own `overlay=<spec>` option (via `nodeOverlay`) reveals the whole
   node: when its spec is inactive at `options.step` the content div gets `sb-ov-hidden`
