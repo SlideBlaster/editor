@@ -244,6 +244,7 @@ const STYLE_TAG: Record<InlineStyle, string> = {
   italic: 'em',
   underline: 'u',
   strike: 's',
+  highlight: 'mark',
 }
 
 function styleElement(style: InlineStyle | undefined, inner: string): string {

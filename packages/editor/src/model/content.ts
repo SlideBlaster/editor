@@ -64,11 +64,11 @@ export interface MatrixCell {
   children: TextRun[]
 }
 
-/** LaTeX inline commands modeled in A3a. `\command{ … }`. */
-export type LatexCommand = 'textbf' | 'emph' | 'textit' | 'underline'
+/** LaTeX inline commands modeled in A3a. `\command{ … }`. `\hl` is soul's highlight. */
+export type LatexCommand = 'textbf' | 'emph' | 'textit' | 'underline' | 'hl'
 
-/** Markdown emphasis delimiters modeled in A3a. */
-export type MarkdownMarker = '*' | '**'
+/** Markdown emphasis delimiters modeled in A3a. `==` is the highlight marker. */
+export type MarkdownMarker = '*' | '**' | '=='
 
 /** Point reveal markers: `\pause`/`\appear` (opt. `<spec>`) and the html `<appear>`.
  *  They raise the reading-order step floor — content after them appears later. */

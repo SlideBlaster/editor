@@ -5,7 +5,8 @@ DOM (ADR 0014). Pure string output, so it is headless and snapshot-testable.
 
 Each run renders to its **semantic** element, so the three dialects collapse to one
 output: `\textbf{x}` / `**x**` / `<b>x</b>` all become `<strong>x</strong>` (bold ->
-`strong`, italic -> `em`, underline -> `u`, strike -> `s`). Structural HTML wraps
+`strong`, italic -> `em`, underline -> `u`, strike -> `s`, highlight -> `mark`, so
+`\hl{x}` / `==x==` / `<mark>x</mark>` all become `<mark>x</mark>`). Structural HTML wraps
 (`div`/`span`) keep their tag. Lists -> `<ul>`/`<ol>`; columns -> a flex row; matrix
 -> `<table>`; image -> `<img>`.
 

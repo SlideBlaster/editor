@@ -17,6 +17,12 @@ describe('renderContent: inline', () => {
     expect(html('\\emph{a} *b* <i>c</i>')).toBe('<em>a</em> <em>b</em> <em>c</em>')
   })
 
+  it('renders highlight (\\hl / == / <mark>) as a mark element', () => {
+    expect(html('\\hl{a} ==b== <mark>c</mark>')).toBe(
+      '<mark>a</mark> <mark>b</mark> <mark>c</mark>',
+    )
+  })
+
   it('keeps structural html wraps as their tag', () => {
     expect(html('<div>x **y**</div>')).toBe('<div>x <strong>y</strong></div>')
   })

@@ -9,7 +9,7 @@
  */
 import type { Dialect, TextRun } from '../model/content'
 
-export type InlineStyle = 'bold' | 'italic' | 'underline' | 'strike'
+export type InlineStyle = 'bold' | 'italic' | 'underline' | 'strike' | 'highlight'
 
 const HTML_STYLE: Record<string, InlineStyle> = {
   b: 'bold',
@@ -18,6 +18,7 @@ const HTML_STYLE: Record<string, InlineStyle> = {
   em: 'italic',
   u: 'underline',
   s: 'strike',
+  mark: 'highlight',
 }
 
 /** The dialect a run was written in, or undefined for dialect-neutral runs (text/math). */
@@ -54,9 +55,12 @@ export function inlineStyleOf(run: TextRun): InlineStyle | undefined {
     case 'latex':
       if (run.command === 'textbf') return 'bold'
       if (run.command === 'underline') return 'underline'
+      if (run.command === 'hl') return 'highlight'
       return 'italic' // emph, textit
     case 'markdown':
-      return run.marker === '**' ? 'bold' : 'italic'
+      if (run.marker === '**') return 'bold'
+      if (run.marker === '==') return 'highlight'
+      return 'italic'
     case 'html':
       return HTML_STYLE[run.tag.toLowerCase()]
     default:

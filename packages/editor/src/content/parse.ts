@@ -30,10 +30,11 @@ const LATEX_INLINE: Record<string, LatexCommand> = {
   emph: 'emph',
   textit: 'textit',
   underline: 'underline',
+  hl: 'hl',
 }
 
 /** HTML tags we model: inline styles plus transparent structural wrappers. */
-const HTML_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 's', 'div', 'span'])
+const HTML_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 's', 'mark', 'div', 'span'])
 
 const OPEN_TAG = /^<([a-zA-Z][a-zA-Z0-9]*)>/
 const ANY_TAG = /^<\/?[a-zA-Z][^>]*>/
@@ -238,6 +239,15 @@ function parseRuns(s: string): TextRun[] {
         emit(
           { kind: 'markdown', marker, children: parseRuns(s.slice(i + marker.length, close)) },
           close + marker.length,
+        )
+        continue
+      }
+    } else if (c === '=' && rest.startsWith('==')) {
+      const close = findMarkdownClose(s, i + 2, '==')
+      if (close !== -1) {
+        emit(
+          { kind: 'markdown', marker: '==', children: parseRuns(s.slice(i + 2, close)) },
+          close + 2,
         )
         continue
       }
@@ -573,6 +583,8 @@ function findMarkdownClose(s: string, from: number, marker: MarkdownMarker): num
   for (let k = from; k < s.length; k++) {
     if (marker === '**') {
       if (s[k] === '*' && s[k + 1] === '*') return k
+    } else if (marker === '==') {
+      if (s[k] === '=' && s[k + 1] === '=') return k
     } else if (s[k] === '*' && s[k + 1] !== '*' && s[k - 1] !== '*') {
       return k
     }

@@ -5,10 +5,10 @@ computable without storing it.
 
 - `dialectOf(run) -> 'md' | 'latex' | 'html' | undefined` — the dialect a run was
   written in (undefined for dialect-neutral `text`/`math`).
-- `inlineStyleOf(run) -> 'bold' | 'italic' | 'underline' | 'strike' | undefined` —
-  the style a run expresses regardless of dialect: `\textbf` = `**x**` = `<b>` =
-  `bold`; `\emph` = `\textit` = `*x*` = `<i>`/`<em>` = `italic`; etc. Undefined when
-  the run is not a style wrapper.
+- `inlineStyleOf(run) -> 'bold' | 'italic' | 'underline' | 'strike' | 'highlight' |
+undefined` — the style a run expresses regardless of dialect: `\textbf` = `**x**` =
+  `<b>` = `bold`; `\emph` = `\textit` = `*x*` = `<i>`/`<em>` = `italic`; `\hl` = `==x==`
+  = `<mark>` = `highlight`; etc. Undefined when the run is not a style wrapper.
 
 ## Contract
 

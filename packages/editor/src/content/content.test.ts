@@ -62,6 +62,9 @@ describe('worked corpus: byte-exact round-trip', () => {
     'display $$\\int_0^1 f$$ here',
     '<div>wrapped **and** nested</div>', // transparent container recurses
     'one *word* italic',
+    'note ==important== here', // markdown highlight
+    'soul \\hl{warn} text', // latex highlight (soul)
+    'lit <mark>up</mark> now', // html highlight
     'plain text with no constructs at all',
   ]) {
     it(`round-trips ${JSON.stringify(inner)}`, () => {
@@ -103,6 +106,43 @@ describe('tri-dialect equivalence is derivable (styles)', () => {
     expect(inlineStyleOf(firstRun('\\emph{x}'))).toBe('italic')
     expect(inlineStyleOf(firstRun('\\textit{x}'))).toBe('italic')
     expect(firstRun('\\emph{x}')).not.toEqual(firstRun('\\textit{x}'))
+  })
+
+  it('highlight in all three dialects reads as one style, keeps distinct provenance', () => {
+    for (const [inner, dialect] of [
+      ['\\hl{x}', 'latex'],
+      ['==x==', 'md'],
+      ['<mark>x</mark>', 'html'],
+    ] as const) {
+      const run = firstRun(inner)
+      expect(inlineStyleOf(run)).toBe('highlight')
+      expect(dialectOf(run)).toBe(dialect)
+    }
+  })
+
+  it('parses each highlight form to its provenance-faithful run', () => {
+    expect(firstRun('\\hl{x}')).toEqual({
+      kind: 'latex',
+      command: 'hl',
+      children: [{ kind: 'text', value: 'x' }],
+    })
+    expect(firstRun('==x==')).toEqual({
+      kind: 'markdown',
+      marker: '==',
+      children: [{ kind: 'text', value: 'x' }],
+    })
+    expect(firstRun('<mark>x</mark>')).toEqual({
+      kind: 'html',
+      tag: 'mark',
+      children: [{ kind: 'text', value: 'x' }],
+    })
+  })
+
+  it('a lone or unclosed == stays literal text', () => {
+    expect(parseContent('2 == 2 is true')).toEqual<NodeContent>({
+      kind: 'text',
+      runs: [{ kind: 'text', value: '2 == 2 is true' }],
+    })
   })
 })
 
