@@ -1,0 +1,11 @@
+packages:
+  .
+  ../slideblaster-canvas
+  ../slideblaster-document
+  ../slideblaster-export
+  ../slideblaster-presentation
+  ../slideblaster-render
+  ../slideblaster-source
+
+write-ghc-environment-files: never
+tests: True

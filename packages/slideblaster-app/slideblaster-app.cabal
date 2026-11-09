@@ -1,0 +1,73 @@
+cabal-version:      3.0
+name:               slideblaster-app
+version:            0.1.0.0
+synopsis:           Pure SlideBlaster application state and command policy
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.App
+      SlideBlaster.App.CanvasEdit
+      SlideBlaster.App.Capability
+      SlideBlaster.App.Command
+      SlideBlaster.App.History
+      SlideBlaster.App.Interaction
+      SlideBlaster.App.Lease
+      SlideBlaster.App.Live
+      SlideBlaster.App.Model
+      SlideBlaster.App.Navigation
+      SlideBlaster.App.Selection
+      SlideBlaster.App.Update
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-catalog
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-export
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-app-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-app
+    , slideblaster-catalog
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-export
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>SlideBlaster presenter</title><link rel="stylesheet" href="./app.css" /><link rel="stylesheet" href="./presenter.css" /></head>
+<body class="con">
+  <header class="con-bar"><span class="con-pos" id="con-pos"></span><span class="con-where" id="con-where">Waiting for the editor&hellip;</span><span class="con-timer" id="con-timer">00:00</span><button type="button" id="con-audience">Open audience display</button></header>
+  <main class="con-main">
+    <section class="con-left"><div class="con-label">Current</div><div class="con-current" id="con-current"></div><div class="con-label">Notes</div><div class="con-notes" id="con-notes" aria-label="Speaker notes"></div></section>
+    <aside class="con-side"><div class="con-label">Next</div><div class="con-preview" id="con-preview"></div></aside>
+  </main>
+  <footer class="con-controls"><button type="button" id="con-prev">&lsaquo; Prev</button><button type="button" id="con-next">Next &rsaquo;</button></footer>
+  <script type="module" src="./dist/src/presenter/console-window.js"></script>
+</body>
+</html>

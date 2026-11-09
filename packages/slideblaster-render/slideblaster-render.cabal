@@ -1,0 +1,62 @@
+cabal-version:      3.0
+name:               slideblaster-render
+version:            0.1.0.0
+synopsis:           Target-neutral measurement, layout, and render plans
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Render
+      SlideBlaster.Render.Content
+      SlideBlaster.Render.Geometry
+      SlideBlaster.Render.Layout
+      SlideBlaster.Render.Measurement
+      SlideBlaster.Render.Outline
+      SlideBlaster.Render.Plan
+      SlideBlaster.Render.Resource
+      SlideBlaster.Render.Style
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-presentation
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-render-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

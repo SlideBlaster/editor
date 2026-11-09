@@ -1,0 +1,63 @@
+cabal-version:      3.0
+name:               slideblaster-canvas
+version:            0.1.0.0
+synopsis:           Target-neutral canvas authoring semantics
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Canvas
+      SlideBlaster.Canvas.Connector
+      SlideBlaster.Canvas.Content
+      SlideBlaster.Canvas.Edit
+      SlideBlaster.Canvas.Flow
+      SlideBlaster.Canvas.Geometry
+      SlideBlaster.Canvas.Identifier
+      SlideBlaster.Canvas.Object
+      SlideBlaster.Canvas.Outline
+      SlideBlaster.Canvas.Overlay
+      SlideBlaster.Canvas.Placement
+      SlideBlaster.Canvas.Property
+      SlideBlaster.Canvas.Snap
+      SlideBlaster.Canvas.Theme
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , containers >=0.6 && <0.9
+    , slideblaster-document
+    , slideblaster-listing
+    , slideblaster-syntax
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-canvas-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

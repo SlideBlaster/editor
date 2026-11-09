@@ -1,0 +1,214 @@
+cabal-version:      3.0
+name:               slideblaster-product-runtime
+version:            0.1.0.0
+synopsis:           Portable source-authoritative SlideBlaster product composition
+license:            NONE
+build-type:         Simple
+
+
+data-files:
+    test/fixtures/demo.slide
+library
+  exposed-modules:
+      SlideBlaster.Product.Runtime
+      SlideBlaster.Product.Runtime.Analysis
+      SlideBlaster.Product.Runtime.Batch
+      SlideBlaster.Product.Runtime.Citations
+      SlideBlaster.Product.Runtime.DeckAnalyzer
+      SlideBlaster.Product.Runtime.Driver
+      SlideBlaster.Product.Runtime.ImageSize
+      SlideBlaster.Product.Runtime.Lower
+      SlideBlaster.Product.Runtime.MarkdownAnalyzer
+      SlideBlaster.Product.Runtime.MathMacros
+      SlideBlaster.Product.Runtime.Picture
+      SlideBlaster.Product.Runtime.ProductV2
+      SlideBlaster.Product.Runtime.Session
+      SlideBlaster.Product.Runtime.Sha256
+      SlideBlaster.Product.Runtime.SlidePlan
+      SlideBlaster.Product.Runtime.Theme
+  hs-source-dirs:      src
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , scientific >=0.3 && <0.4
+    , vector >=0.13 && <0.14
+    , slideblaster-app
+    , slideblaster-canvas
+    , slideblaster-cite
+    , slideblaster-document
+    , slideblaster-deck
+    , slideblaster-listing
+    , slideblaster-engine
+    , slideblaster-presentation
+    , slideblaster-protocol
+    , slideblaster-render
+    , slideblaster-source
+    , slideblaster-tikz
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-product-runtime-tests
+  autogen-modules:
+      Paths_slideblaster_product_runtime
+  other-modules:
+      Paths_slideblaster_product_runtime
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-lower-tests
+  type:                exitcode-stdio-1.0
+  main-is:             LowerMain.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-product-runtime
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-sha-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Sha.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-product-runtime
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+
+test-suite slideblaster-session-tests
+  type:                exitcode-stdio-1.0
+  main-is:             SessionMain.hs
+  other-modules:       TestAnalyzer
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Wmissing-export-lists
+
+test-suite slideblaster-driver-tests
+  type:                exitcode-stdio-1.0
+  main-is:             DriverMain.hs
+  other-modules:       TestAnalyzer
+  hs-source-dirs:      test
+  ghc-options:         -threaded
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+
+test-suite slideblaster-analyzer-tests
+  type:                exitcode-stdio-1.0
+  main-is:             AnalyzerMain.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , directory >=1.3 && <1.4
+    , slideblaster-product-runtime
+  default-language:    GHC2024
+
+test-suite slideblaster-routes-tests
+  type:                exitcode-stdio-1.0
+  main-is:             RoutesMain.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Wmissing-export-lists
+
+
+test-suite slideblaster-include-tests
+  type:                exitcode-stdio-1.0
+  main-is:             IncludeMain.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-deck
+    , slideblaster-presentation
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Wmissing-export-lists

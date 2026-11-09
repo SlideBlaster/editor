@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SlideBlaster (Product/2 trial)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="app-bar" aria-label="SlideBlaster commands">
+        <div class="app-brand" aria-label="Current document">
+          <span class="app-name">SlideBlaster</span>
+          <span class="app-doc" id="doc-title">Small Systems, Clear Thinking</span>
+        </div>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <button type="button" id="view-source" aria-controls="editor-pane" aria-pressed="true">Source</button>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <div class="bar-group" role="group" aria-label="History">
+          <button type="button" id="undo" disabled>Undo</button>
+          <button type="button" id="redo" disabled>Redo</button>
+        </div>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <button type="button" id="new-slide" disabled title="Add a slide after the current slide">+ Slide</button>
+        <span class="bar-spacer"></span>
+      </header>
+
+      <main class="workspace" id="workspace" data-source-visible="true">
+        <section class="source-pane" id="editor-pane" aria-label="Source editor">
+          <div class="pane-heading">Source</div>
+          <textarea id="source" aria-label="Source" spellcheck="false" disabled>Loading…</textarea>
+        </section>
+
+        <nav class="deck-rail" id="deck-rail" aria-label="Slides">
+          <div id="slide-items" class="slide-items"></div>
+          <button type="button" id="deck-add" class="deck-add" disabled title="Add a slide after the current slide" aria-label="Add a new slide after the current slide">+ New slide</button>
+        </nav>
+
+        <section class="preview" aria-label="Presentation deck">
+          <div class="deck" id="deck">
+            <div class="deck-canvas" id="deck-canvas"></div>
+          </div>
+          <div class="zoom-control" id="zoom-control" role="group" aria-label="Zoom">
+            <button type="button" id="zoom-out" disabled aria-label="Zoom out">−</button>
+            <button type="button" id="zoom-readout" disabled title="Reset zoom to 100%" aria-label="Reset zoom to 100%">100%</button>
+            <button type="button" id="zoom-in" disabled aria-label="Zoom in">+</button>
+            <button type="button" id="zoom-fit" disabled title="Fit slide to viewport width">Fit</button>
+          </div>
+          <div class="status-bar" id="status" role="status">Opening slides…</div>
+          <pre id="output" class="visually-hidden" aria-hidden="true"></pre>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./dist/src/main.js"></script>
+  </body>
+</html>

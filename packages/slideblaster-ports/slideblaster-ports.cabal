@@ -1,0 +1,65 @@
+cabal-version:      3.0
+name:               slideblaster-ports
+version:            0.1.0.0
+synopsis:           Target-neutral runtime capability contracts
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Ports
+      SlideBlaster.Ports.Capability
+      SlideBlaster.Ports.Clock
+      SlideBlaster.Ports.Compile
+      SlideBlaster.Ports.Export
+      SlideBlaster.Ports.Git
+      SlideBlaster.Ports.Log
+      SlideBlaster.Ports.Measurement
+      SlideBlaster.Ports.Presenter
+      SlideBlaster.Ports.Workspace
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-export
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-ports-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-ports
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

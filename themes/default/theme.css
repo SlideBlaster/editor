@@ -1,0 +1,14 @@
+/* default theme: typography and chrome only. Authored coordinates and region boxes come from
+   theme.json and the Haskell plan; this file never positions content. */
+.sb-slide[data-theme="default"] {
+  --sb-bg: #ffffff;
+  --sb-ink: #1a1a2e;
+  --sb-muted: #555555;
+  --sb-accent: #4a90d9;
+  --sb-link: #4a90d9;
+  --sb-code-bg: #f1f5f9;
+  --sb-rule: #dddddd;
+  --sb-font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --sb-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+.sb-slide[data-theme="default"] .sb-title { font-weight: 700; }

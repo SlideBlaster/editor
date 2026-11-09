@@ -1,0 +1,6 @@
+packages:
+  .
+  ../slideblaster-source
+  ../slideblaster-document
+
+tests: True

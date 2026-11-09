@@ -1,0 +1,8 @@
+% themes/fns/prelude.tex -- built-in definitions (design 3.4). Copy, change or add to
+% these in a deck's `preamble:` front-matter key; nothing here is a language primitive.
+\providecolor{palBlue}{HTML}{2962FF}
+\providecolor{palGreen}{HTML}{2E7D32}
+\newenvironment{block}[1]{\sbbox[fill=theme.block.bg, title fill=theme.block.title]{#1}\bgroup}{\egroup}
+\newenvironment{alertblock}[1]{\sbbox[fill=theme.alert.bg, title fill=theme.alert.title]{#1}\bgroup}{\egroup}
+\newcommand{\defn}[2]{\sbbox[fill=palBlue!10, title fill=palBlue]{Definition: #1}{#2}}
+\newcommand{\lemma}[1]{\sbbox[fill=palGreen!10, title fill=palGreen]{Lemma}{#1}}

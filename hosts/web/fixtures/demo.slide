@@ -1,0 +1,142 @@
+deck "Small Systems, Clear Thinking" (
+  author: "Ada Example"
+  aspect: 16:9
+  canvas: 1600x900
+  theme: "paper"
+  language: en
+)
+
+slide opening "Small systems, clear thinking" (
+  background: "paper"
+  transition: none
+) """
+\node[
+  anchor=north west,
+  text width=7cm,
+  style=display
+] (headline) at (1,8) {
+Small systems,\\
+clear thinking.
+};
+
+\node[
+  anchor=north west,
+  text width=6cm,
+  style=lead
+] (introduction) at (1,5) {
+Good tools make the **important thing** obvious—and everything else quiet.
+
+<div class="principle">
+  Text, layout, and intent stay together.
+</div>
+};
+
+\node[draw, rounded corners] (source) at (11,7) {Source};
+\node[draw, rounded corners] (model) at (11,5) {Model};
+\node[draw, rounded corners] (canvas) at (11,3) {Canvas};
+
+\draw[->] (source) -- (model);
+\draw[->] (model) -- (canvas);
+\draw[->, dashed, bend left=35]
+  (canvas.east) to node[right] {verified edit} (source.east);
+"""
+
+note """
+Welcome everyone.
+
+The diagram and prose belong to the same slide source. Each `\node` has a stable
+identity and native TikZ properties. A node body may contain **Markdown**, HTML,
+and LaTeX such as \(s \rightarrow s'\).
+"""
+
+slide questions "Start with better questions" (
+  background: "paper"
+  transition: fade
+) """
+\node[
+  anchor=north west,
+  text width=7cm,
+  style=body
+] (questions-list) at (1,8) {
+Before adding a feature, ask:
+
+1. **Who is it for?**
+2. **What should become easier?**
+3. **What must never be lost?**
+};
+
+\node[
+  anchor=north west,
+  text width=5cm,
+  draw,
+  rounded corners,
+  rotate=-2
+] (north-star) at (10,6) {
+<blockquote>Preserve the author’s work first.</blockquote>
+};
+
+\node[anchor=north west, text width=6cm] (source-law) at (9,3) {
+The source-preservation condition is
+\[
+  \operatorname{commit}(s,e)=s'
+  \Longrightarrow
+  \operatorname{parse}(s')=\operatorname{intent}(e).
+\]
+};
+
+\draw[thick, ->] (questions-list.east) -- (north-star.west);
+"""
+
+note """
+Pause on the third question.
+
+For SlideBlaster, authored source is durable truth. The canvas is a view and an
+editing surface, but a canvas operation commits only after reparsing proves the
+intended result.
+
+<span class="presenter-cue">Ask the audience for one failure example.</span>
+"""
+
+slide finish "Make the path complete" (
+  background: "ink"
+  foreground: "paper"
+  transition: none
+) """
+\node[
+  anchor=north west,
+  text width=8cm,
+  style=body-large
+] (checklist) at (1,8) {
+Build the smallest complete path:
+
+- open the real document;
+- make one meaningful change;
+- verify the result;
+- keep undo exact;
+- let the user see what happened.
+};
+
+\node[
+  anchor=north west,
+  text width=4cm,
+  draw,
+  very thick,
+  rounded corners,
+  style=accent-card
+] (takeaway) at (11,5) {
+<strong>Make it real.</strong>
+
+Then make it broader.
+};
+
+\draw[paper, very thick, ->] (checklist.east) -- (takeaway.west);
+"""
+
+note """
+End on the distinction between foundations and vertical slices:
+
+- a foundation proves that pieces exist;
+- a vertical slice proves that a person can complete a real task.
+
+The final arrow is TikZ; this list is Markdown; both remain authored source.
+"""

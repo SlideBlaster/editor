@@ -1,0 +1,25 @@
+[package]
+name = "slideblaster-desktop"
+version = "0.2.0-alpha"
+description = "SlideBlaster desktop shell: window, menus, folder dialog, presenter windows, sb serve sidecar"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "slideblaster_desktop_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The audience window goes fullscreen on a chosen monitor (gtk_window_fullscreen_on_monitor, which
+# also works on Wayland, where a window cannot place itself); same gtk as Tauri's.
+gtk = "0.18"

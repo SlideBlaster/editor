@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SlideBlaster</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="app-bar" aria-label="SlideBlaster commands">
+        <div class="app-brand" aria-label="Current document">
+          <span class="app-name">SlideBlaster</span>
+          <span class="app-doc" id="doc-title">Opening&hellip;</span>
+        </div>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <button type="button" id="view-presentations" aria-controls="pres-sidebar" aria-pressed="true" title="Show the presentations list (Ctrl+B)" hidden>Decks</button>
+        <button type="button" id="view-source" aria-controls="editor-pane" aria-pressed="true">Source</button>
+        <button type="button" id="view-notes" aria-pressed="true" title="Show speaker notes beside each slide">Notes</button>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <div class="bar-group" role="group" aria-label="History">
+          <button type="button" id="undo" disabled>Undo</button>
+          <button type="button" id="redo" disabled>Redo</button>
+          <button type="button" id="save" disabled title="Write the exact source to disk (Ctrl+S)">Save</button>
+        </div>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <button type="button" id="new-slide" disabled title="Add a slide after the current slide">+ Slide</button>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <div class="bar-group format-actions" id="text-actions" role="group" aria-label="Text format">
+          <button type="button" class="format-glyph" id="style-weight" data-style-property="weight" data-style-value="bold" aria-label="Bold" title="Bold the selected text in the preview" disabled><strong>B</strong></button>
+          <button type="button" class="format-glyph" id="style-slant" data-style-property="slant" data-style-value="italic" aria-label="Italic" title="Italic the selected text in the preview" disabled><em>I</em></button>
+          <button type="button" class="format-glyph" id="style-underline" data-style-property="underline" data-style-value="true" aria-label="Underline" title="Underline the selected text in the preview" disabled><u>U</u></button>
+          <button type="button" class="format-glyph" id="style-strike" data-style-property="strike" data-style-value="true" aria-label="Strikethrough" title="Strikethrough the selected text in the preview" disabled><s>S</s></button>
+          <button type="button" class="format-glyph" id="style-highlight" data-style-property="highlight" data-style-value="true" aria-label="Highlight" title="Highlight the selected text in the preview" disabled>H</button>
+          <label for="theme-dialect"><span class="format-colour-label">Notation</span>
+            <select id="theme-dialect" aria-label="Notation to write a new construct in when the content does not settle it" title="Used only where neither an enclosing construct nor the selected content decides.">
+              <option value="html">HTML</option><option value="latex" selected>LaTeX</option><option value="markdown">Markdown</option>
+            </select></label>
+          <label for="style-foreground"><span class="format-colour-label">Colour</span>
+            <input type="text" id="style-foreground" value="blue!40!black" size="12" aria-label="Colour expression to apply to the selected text" title="An xcolor expression, such as red, blue!40!black, or -green" /></label>
+          <button type="button" id="style-apply-colour" title="Colour the selected text in the preview" disabled>Apply</button>
+        </div>
+        <span class="bar-spacer"></span>
+        <span class="conn" id="conn" data-state="connecting" role="status">Starting</span>
+        <button type="button" id="export-pdf" disabled title="Write the deck as a PDF next to its file (Shift-click: one page per overlay step)">Export PDF</button>
+        <button type="button" id="present-btn" disabled title="Open the audience window and presenter console">Present</button>
+      </header>
+
+      <main class="workspace" id="workspace" data-source-visible="true">
+        <aside class="pres-sidebar" id="pres-sidebar" aria-label="Presentations" hidden></aside>
+
+        <section class="source-pane" id="editor-pane" aria-label="Source editor">
+          <div class="pane-heading"><span>Source</span><span id="pane-info"></span></div>
+          <div id="source"></div>
+        </section>
+
+        <nav class="deck-rail" id="deck-rail" aria-label="Slides">
+          <div id="slide-items" class="slide-items"></div>
+          <button type="button" id="deck-add" class="deck-add" disabled title="Add a slide after the current slide" aria-label="Add a new slide after the current slide">+ New slide</button>
+        </nav>
+
+        <section class="preview" aria-label="Presentation deck">
+          <div class="banner" id="banner" role="alert" hidden></div>
+          <div class="deck" id="deck">
+            <div class="deck-canvas" id="deck-canvas"></div>
+          </div>
+          <div class="zoom-control" id="zoom-control" role="group" aria-label="Zoom">
+            <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+            <button type="button" id="zoom-readout" title="Reset zoom to 100%" aria-label="Reset zoom to 100%">100%</button>
+            <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+          </div>
+          <div class="status-bar"><span id="status" role="status">Opening slides&hellip;</span><span class="status-diagnostics" id="diagnostics-summary"></span></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./dist/src/alpha.js"></script>
+  </body>
+</html>

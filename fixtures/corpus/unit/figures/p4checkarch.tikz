@@ -1,0 +1,253 @@
+\providecolor{palCitron}{HTML}{FFCA3A}
+\providecolor{palOlivine}{HTML}{8AC926}
+\providecolor{palCerulean}{HTML}{1982C4}
+\providecolor{palGray}{HTML}{6A6F77}
+\providecolor{palCoral}{HTML}{FF595E}
+\begingroup%
+% Canonical geometry for this figure. Keep these definitions local so callers
+% cannot accidentally change the rendered aspect ratio before inputting it.
+\def\PFourArchBoxXSep{0.08cm}%
+\def\PFourInstrumentBelowFrontend{0.65cm}%
+\def\PFourToolStageWidth{1.58cm}%
+\def\PFourVerifyAfterInstrument{0.5cm}%
+\def\PFourLocalizeBelowCounterexample{0.75cm}%
+\def\PFourVerifyResultXSep{0.40cm}%
+\def\PFourResultArtifactXSep{0.75cm}%
+\def\PFourOutputArtifactXSep{0.25cm}%
+\def\PFourArchBoxYSep{0.08cm}%
+\def\PFourSymbolicBandPad{0.08cm}%
+% Fonts: use the deck's default font (no biolinum), keep zi4 for monospace.
+\def\PFourArchText{\fontsize{6}{7}\selectfont}%
+\def\PFourArchTiny{\fontsize{5}{6}\selectfont}%
+\def\PFourArchMonoTiny{\fontencoding{T1}\fontfamily{zi4}\fontsize{5}{6}\selectfont}%
+\def\PFourArchLarge{\fontsize{10}{12}\selectfont}%
+\begin{tikzpicture}[
+    font=\PFourArchText,
+    >=Latex,
+    box/.style={
+        rectangle,
+        draw=black!70,
+        fill=white,
+        align=center,
+        minimum height=0.72cm,
+        inner xsep=4pt,
+        inner ysep=3pt
+    },
+    inputbox/.style={
+        ellipse,
+        draw=black!70,
+        fill=palOlivine!25,
+        align=center,
+        minimum width=1.45cm,
+        minimum height=0.58cm,
+        inner xsep=4pt,
+        inner ysep=2pt
+    },
+    stage/.style={
+        box,
+        fill=palGray!12,
+        minimum width=1.20cm
+    },
+    toolstage/.style={
+        stage,
+        minimum width=\PFourToolStageWidth,
+        text width=1.28cm,
+        align=center
+    },
+    artifact/.style={
+        ellipse,
+        draw=black!70,
+        fill=palCoral!22,
+        align=center,
+        minimum width=1.35cm,
+        minimum height=0.58cm,
+        inner xsep=4pt,
+        inner ysep=2pt
+    },
+    compactartifact/.style={
+        artifact,
+        font=\PFourArchTiny,
+        minimum width=1.30cm,
+        minimum height=0.50cm,
+        inner xsep=2.5pt,
+        inner ysep=1.5pt
+    },
+    widebox/.style={
+        box,
+        fill=palGray!7,
+        minimum width=2.86cm
+    },
+    semblock/.style={
+        box,
+        fill=white,
+        font=\PFourArchTiny,
+        minimum width=0.93cm,
+        minimum height=0.48cm,
+        inner xsep=3pt,
+        inner ysep=2pt
+    },
+    note/.style={
+        font=\PFourArchText\bfseries,
+        align=center
+    },
+    arrow/.style={
+        -{Latex[length=2mm]},
+        line width=0.45pt,
+        shorten >=1pt,
+        shorten <=1pt
+    },
+    dataarrow/.style={
+        arrow,
+        dashed,
+        draw=black!65
+    },
+    semarrow/.style={
+        -{Latex[length=1.4mm]},
+        line width=0.35pt,
+        shorten >=1pt,
+        shorten <=1pt
+    }
+]
+
+% Inputs.
+\node[inputbox] (source) at (0,2.85) {P4 Source\\Code};
+
+% Frontend.
+\node[box, minimum width=1.55cm, minimum height=2.10cm, fill=palGray!9, anchor=north]
+    (frontend) at (2.0,3.575) {};
+\node[note, anchor=north] at (frontend.north) {Frontend};
+\node[stage] (parser) at (2.0,2.86) {Parser};
+\node[stage] (ast) at (2.0,1.96) {AST};
+\node[toolstage, anchor=north] (instrument)
+    at ([yshift=-\PFourInstrumentBelowFrontend]frontend.south) {Instrument};
+\node[inputbox] (property) at (source.center |- instrument.center) {Property};
+
+% Haskell implementation.
+\node[widebox, minimum height=1.48cm]
+    (interpreter) at (4.65,2.77) {};
+\node[note, anchor=north] (interp-title) at (interpreter.north) {Interpreter};
+\path[fill=palCitron, opacity=0.55]
+    let \p1 = (interpreter.south west) in
+    (\x1,\y1) rectangle (9.48cm,3.52cm);
+\path let \p1 = (interpreter.south west) in
+    node[note, anchor=south, yshift=0.05cm]
+    at ($(\x1,3.52cm)!0.5!(9.48cm,3.52cm)$) {Concrete mode (Debugging)};
+\node[font=\PFourArchTiny, align=center] at ([yshift=0.08cm]interpreter.center)
+    {Unified: Concrete \& Symbolic};
+\node[semblock] (staticsem) at ([xshift=-0.58cm,yshift=-0.42cm]interpreter.center)
+    {Static\\Semantics};
+\node[semblock] (dynamicsem) at ([xshift=0.58cm,yshift=-0.42cm]interpreter.center)
+    {Dynamic\\Semantics};
+\draw[semarrow] (staticsem.east) -- (dynamicsem.west);
+
+% Concrete/debugging outputs.
+\node[box, minimum width=1.22cm, minimum height=0.96cm, inner sep=0pt]
+    (debugger) at (8.65,2.77) {};
+\node[compactartifact, minimum width=0.82cm, minimum height=0.42cm,
+    inner xsep=2pt, inner ysep=1pt]
+    (trace) at ($(interpreter.east)!0.5!(debugger.west)$) {Trace};
+\path[fill=palGray!22, draw=black!65, line width=0.22pt]
+    ([xshift=-0.61cm,yshift=0.34cm]debugger.center)
+    rectangle ++(1.22cm,0.14cm);
+\fill[palCoral!80!black]
+    ([xshift=-0.53cm,yshift=0.41cm]debugger.center) circle (0.018cm);
+\node[font=\PFourArchMonoTiny, anchor=east]
+    at ([xshift=0.54cm,yshift=0.41cm]debugger.center) {\textless\ \textgreater};
+\draw[line width=0.18pt, draw=black!40]
+    ([xshift=-0.34cm,yshift=0.30cm]debugger.center) -- ++(0,-0.55cm);
+\fill[palCitron]
+    ([xshift=-0.30cm,yshift=0.12cm]debugger.center)
+    rectangle ++(0.80cm,0.12cm);
+\node[font=\PFourArchMonoTiny, text=black!50, anchor=west]
+    at ([xshift=-0.47cm,yshift=0.18cm]debugger.center) {1};
+\node[font=\PFourArchMonoTiny, text=black!50, anchor=west]
+    at ([xshift=-0.47cm,yshift=0.05cm]debugger.center) {2};
+\node[font=\PFourArchMonoTiny, text=black!50, anchor=west]
+    at ([xshift=-0.47cm,yshift=-0.08cm]debugger.center) {3};
+\node[font=\PFourArchMonoTiny, text=black!50, anchor=west]
+    at ([xshift=-0.47cm,yshift=-0.21cm]debugger.center) {4};
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=-0.24cm,yshift=0.18cm]debugger.center) {if(hit)};
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=-0.14cm,yshift=0.05cm]debugger.center) {apply};
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=-0.24cm,yshift=-0.08cm]debugger.center) {else};
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=-0.14cm,yshift=-0.21cm]debugger.center) {drop};
+\fill[palCoral!80!black]
+    ([xshift=-0.52cm,yshift=0.18cm]debugger.center) circle (0.026cm);
+\draw[line width=0.22pt, draw=black!65]
+    ([xshift=-0.61cm,yshift=-0.28cm]debugger.center) -- ++(1.22cm,0);
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=-0.48cm,yshift=-0.38cm]debugger.center) {pkt};
+\node[font=\PFourArchMonoTiny, anchor=west]
+    at ([xshift=0.10cm,yshift=-0.38cm]debugger.center) {meta};
+% Concrete mode label moved to yellow band path
+
+% Symbolic/verification outputs.
+\node[toolstage, anchor=west]
+    (verify) at ([xshift=\PFourVerifyAfterInstrument,yshift=0.45cm]instrument.east) {Verify};
+\node[font=\PFourArchLarge\bfseries, text=palOlivine!80!black, inner sep=1pt]
+    (verifyok) at ([xshift=\PFourVerifyResultXSep,yshift=-0.28cm]verify.east) {\ding{51}};
+\node[font=\PFourArchLarge\bfseries, text=palCitron!65!black, inner sep=1pt]
+    (verifyunknown) at ([xshift=\PFourVerifyResultXSep]verify.east) {?};
+\node[font=\PFourArchLarge\bfseries, text=palCoral!85!black, inner sep=1pt]
+    (verifyfail) at ([xshift=\PFourVerifyResultXSep,yshift=0.28cm]verify.east) {\ding{55}};
+\node[compactartifact, anchor=west]
+    (counterexample) at ([xshift=\PFourResultArtifactXSep]verifyfail.east)
+    {Counter-\\example};
+\node[compactartifact, anchor=west]
+    (propbreakpoint)
+    at ([xshift=\PFourOutputArtifactXSep,yshift=-\PFourLocalizeBelowCounterexample]counterexample.east)
+    {Breakpoint};
+% Symbolic mode label moved to red band path
+
+% Main flow.
+\draw[arrow] (source.east) -- (parser.west);
+\draw[arrow] (parser.south) -- (ast.north);
+\draw[arrow] (ast.east) -- ++(0.30,0) |- (interpreter.west);
+\draw[arrow] (interpreter.east) -- (trace.west);
+\draw[arrow] (trace.east) -- (debugger.west);
+
+% Instrumentation and verification flow.
+\draw[dataarrow] (property.east) -- (instrument.west);
+\draw[dataarrow] (frontend.south) -- (instrument.north);
+\draw[dataarrow] (instrument.east) -- ++(0.26,0) -- ++(0,1.12) -| ([xshift=-1.0cm]interpreter.south);
+\draw[dataarrow] ([xshift=0.35cm]interpreter.south) -- ++(0,-0.35) -| (verify.north);
+\draw[dataarrow] (verify.east |- verifyfail.center) -- (verifyfail.west);
+\draw[dataarrow] (verify.east |- verifyunknown.center) -- (verifyunknown.west);
+\draw[dataarrow] (verify.east |- verifyok.center) -- (verifyok.west);
+\draw[dataarrow] (verifyfail.east) -- (counterexample.west);
+\draw[dataarrow] (property.south) -- ++(0,-0.5) -| ([xshift=-0.28cm]propbreakpoint.south);
+\draw[dataarrow] (counterexample.north) -- ++(0,0.30)
+    -| ([xshift=1.05cm]interpreter.south);
+\draw[dataarrow] (propbreakpoint.north) --
+    (propbreakpoint.north |- debugger.south);
+
+\begin{scope}[on background layer]
+    \path[fill=palCerulean!90, opacity=0.22]
+        let
+            \p1 = (interpreter.west),
+            \p2 = ([yshift=-\PFourSymbolicBandPad]propbreakpoint.south),
+            \p3 = ([yshift=\PFourSymbolicBandPad]counterexample.north)
+        in
+            (\x1,\y2) rectangle (9.48cm,\y3);
+\end{scope}
+% Place label below the red band using relative offset from its bottom edge
+\path let
+        \p1 = (interpreter.west),
+        \p2 = ([yshift=-\PFourSymbolicBandPad]propbreakpoint.south)
+    in
+    node[note, anchor=north, yshift=-0.05cm]
+    at ($(\x1,\y2)!0.5!(9.48cm,\y2)$) {Symbolic model (Verification)};
+
+% Overlay hook: if the caller defined \PFourArchOverlay, execute it now.
+% This lets progress-marker slides highlight parts of the diagram without
+% duplicating the figure source.
+\ifdefined\PFourArchOverlay\PFourArchOverlay\fi
+
+\pgfresetboundingbox
+\path[use as bounding box] (-0.90,-0.45) rectangle (9.70,3.95);
+
+\end{tikzpicture}%
+\endgroup%

@@ -1,0 +1,29 @@
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; overflow: hidden; }
+.aud { display: flex; align-items: center; justify-content: center; background: #000; cursor: none; }
+.aud-stage { width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16/9; }
+.aud-hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); padding: .4rem .8rem; border-radius: .4rem; background: rgb(0 0 0 / 60%); color: #9aa; font: 14px system-ui; transition: opacity .6s; cursor: default; }
+.aud-hint.is-hidden { opacity: 0; }
+.con { display: flex; flex-direction: column; background: #0e0f13; color: #e7e7ea; }
+.con-bar { display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem; background: #16171d; border-bottom: 1px solid #26272f; }
+.con-pos { font-weight: 700; font-variant-numeric: tabular-nums; } .con-where { color: #a9abb6; }
+.con-timer { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.1rem; }
+.con button { padding: .4rem .8rem; border: 1px solid #3a3d49; border-radius: .4rem; background: #2a2c36; color: #e7e7ea; cursor: pointer; }
+.con button:hover { background: #343642; }
+.con-main { flex: 1; display: flex; gap: 1rem; padding: 1rem; min-height: 0; }
+.con-left { flex: 2; min-width: 0; display: flex; flex-direction: column; gap: .5rem; overflow: auto; }
+.con-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
+.con-label { text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; color: #a9abb6; }
+.con-current, .con-preview, .con-notes { background: #fff; border-radius: .4rem; overflow: hidden; aspect-ratio: 16/9; }
+.con-preview { background: #000; } .con-notes { width: 100%; }
+.con-current { width: min(100%, 38rem); }
+.con-none { padding: 1rem; color: #8a8c96; font-style: italic; }
+.con-controls { display: flex; gap: .6rem; justify-content: center; padding: .6rem 1rem 1rem; }
+.con-controls button { min-width: 8rem; font-size: 1rem; }
+/* Choosing a route: the slide zooms out toward an overview, then the chosen section's first slide zooms in. */
+.aud-stage, .con-current, .con-preview { counter-reset: sb-route; }
+.aud-stage.sb-route-leave { animation: sb-route-leave 280ms ease-in forwards; }
+.aud-stage.sb-route-enter { animation: sb-route-enter 320ms ease-out both; }
+@keyframes sb-route-leave { to { transform: scale(.88); opacity: 0; filter: blur(4px); } }
+@keyframes sb-route-enter { from { transform: scale(1.1); opacity: 0; filter: blur(4px); } to { transform: scale(1); opacity: 1; filter: none; } }
+@media (prefers-reduced-motion: reduce) { .aud-stage.sb-route-leave, .aud-stage.sb-route-enter { animation: none; } }

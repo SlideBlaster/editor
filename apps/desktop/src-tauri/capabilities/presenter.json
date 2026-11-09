@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "presenter",
+  "description": "Presenter windows only need to exist; they talk to the editor window over BroadcastChannel.",
+  "windows": [
+    "presenter-console",
+    "presenter-audience"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "allow-open-presenter",
+    "allow-toggle-fullscreen",
+    "allow-debug-log"
+  ]
+}

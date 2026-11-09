@@ -1,0 +1,5 @@
+% lead
+\node % command
+ (alpha)	 at ( +001.5000 % x
+ ,	 -000.00 ) {héllo}; % between
+\draw	(alpha) -- (9.0 , 8);

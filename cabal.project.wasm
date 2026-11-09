@@ -1,0 +1,25 @@
+packages:
+  packages/slideblaster-source
+  packages/slideblaster-syntax
+  packages/slideblaster-document
+  packages/slideblaster-canvas
+  packages/slideblaster-catalog
+  packages/slideblaster-presentation
+  packages/slideblaster-render
+  packages/slideblaster-export
+  packages/slideblaster-ports
+  packages/slideblaster-app
+  packages/slideblaster-tikz
+  packages/slideblaster-deck
+  packages/slideblaster-extension
+  packages/slideblaster-listing
+  packages/slideblaster-cite
+  packages/slideblaster-engine
+  packages/slideblaster-protocol
+  packages/slideblaster-product-runtime
+  adapters/slideblaster-adapter-web
+  apps/slideblaster-web-wasm
+
+tests: False
+documentation: False
+write-ghc-environment-files: never

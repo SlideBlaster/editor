@@ -1,0 +1,53 @@
+cabal-version:      3.0
+name:               slideblaster-presentation
+version:            0.1.0.0
+synopsis:           Pure presentation, overlay, animation, and presenter semantics
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Presentation
+      SlideBlaster.Presentation.Address
+      SlideBlaster.Presentation.Animation
+      SlideBlaster.Presentation.Flow
+      SlideBlaster.Presentation.Model
+      SlideBlaster.Presentation.Overlay
+      SlideBlaster.Presentation.Presenter
+      SlideBlaster.Presentation.Route
+      SlideBlaster.Presentation.Scene
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , slideblaster-canvas >=0.1 && <0.2
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-presentation-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , slideblaster-canvas >=0.1 && <0.2
+    , slideblaster-presentation >=0.1 && <0.2
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

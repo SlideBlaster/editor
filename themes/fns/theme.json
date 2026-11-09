@@ -1,0 +1,44 @@
+{
+  "name": "fns",
+  "title": "FNS",
+  "description": "FNS branded theme with logo on every slide",
+  "aspect": [16, 9],
+  "palette": {
+    "background": "#ffffff",
+    "ink": "#1a1a2e",
+    "muted": "#555555",
+    "accent": "#2962ff",
+    "link": "#2962ff",
+    "codeBackground": "#f1f5f9",
+    "rule": "#dddddd",
+    "block": { "bg": "#e9eefc", "title": "#2962ff" },
+    "alert": { "bg": "#fdecea", "title": "#b3261e" }
+  },
+  "fonts": {
+    "body": "'Segoe UI', system-ui, -apple-system, sans-serif",
+    "mono": "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+    "sizes": { "title": 0.81, "subtitle": 0.45, "body": 0.4, "small": 0.3, "code": 0.3 }
+  },
+  "regions": {
+    "title": { "x": 0.9, "y": 7.3, "w": 14.2, "h": 1.2 },
+    "body": { "x": 0.9, "y": 1.4, "w": 14.2, "h": 5.7 },
+    "footer": { "x": 0.9, "y": 0.3, "w": 12.6, "h": 0.55 },
+    "safe": { "x": 0.5, "y": 0.4, "w": 15, "h": 8.2 }
+  },
+  "titleSlide": {
+    "title": { "x": 1.6, "y": 5.0, "w": 12.8, "h": 1.5, "align": "center" },
+    "subtitle": { "x": 1.6, "y": 4.2, "w": 12.8, "h": 0.8, "align": "center" },
+    "authors": { "x": 1.6, "y": 3.4, "w": 12.8, "h": 0.6, "align": "center" },
+    "institute": { "x": 1.6, "y": 2.9, "w": 12.8, "h": 0.5, "align": "center" },
+    "date": { "x": 1.6, "y": 2.4, "w": 12.8, "h": 0.5, "align": "center" }
+  },
+  "furniture": [
+    { "kind": "logo", "slides": "first", "asset": "logo-fns.svg", "x": 4.1, "y": 0.5, "w": 3.35, "h": 2.16 },
+    { "kind": "logo", "slides": "first", "asset": "logo-uva.svg", "x": 8.4, "y": 1.2, "w": 3.6, "h": 0.8 },
+    { "kind": "logo", "slides": "not-first", "asset": "logo-small.svg", "x": 14.11, "y": 0.54, "w": 1.44, "h": 0.72 },
+    { "kind": "page-number", "slides": "not-first", "x": 13.0, "y": 0.3, "w": 1, "h": 0.5, "align": "right" },
+    { "kind": "footer-text", "slides": "not-first", "x": 0.9, "y": 0.3, "w": 10, "h": 0.5, "text": "{{title}}" }
+  ],
+  "prelude": "prelude.tex",
+  "css": "theme.css"
+}

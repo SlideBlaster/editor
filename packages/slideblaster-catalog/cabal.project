@@ -1,0 +1,9 @@
+packages:
+  .
+  ../slideblaster-source
+  ../slideblaster-document
+  ../slideblaster-canvas
+
+tests: True
+documentation: False
+write-ghc-environment-files: never

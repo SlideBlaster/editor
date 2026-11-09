@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-presentations"
+description = "Enables the list_presentations command without any pre-configured scope."
+commands.allow = ["list_presentations"]
+
+[[permission]]
+identifier = "deny-list-presentations"
+description = "Denies the list_presentations command without any pre-configured scope."
+commands.deny = ["list_presentations"]

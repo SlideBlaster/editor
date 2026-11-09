@@ -1,0 +1,115 @@
+cabal-version:      3.0
+name:               slideblaster-protocol
+version:            0.1.0.0
+synopsis:           Versioned shared engine command algebra for SlideBlaster
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Protocol
+      SlideBlaster.Protocol.Codec
+      SlideBlaster.Protocol.Host
+      SlideBlaster.Protocol.Product
+      SlideBlaster.Protocol.ProductV2
+      SlideBlaster.Protocol.Session
+      SlideBlaster.Protocol.Render
+      SlideBlaster.Protocol.Style
+      SlideBlaster.Protocol.Run
+      SlideBlaster.Protocol.Types
+      SlideBlaster.Protocol.Version
+  hs-source-dirs:      src
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , scientific >=0.3 && <0.4
+    , slideblaster-app
+    , slideblaster-canvas
+    , slideblaster-catalog
+    , slideblaster-engine
+    , slideblaster-render
+    , slideblaster-source
+    , slideblaster-syntax
+    , slideblaster-tikz
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-protocol-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-protocol
+    , slideblaster-engine
+    , slideblaster-source
+    , slideblaster-syntax
+    , slideblaster-tikz
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-product-protocol-tests
+  type:                exitcode-stdio-1.0
+  main-is:             ProductMain.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-app
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-product-v2-protocol-tests
+  type:                exitcode-stdio-1.0
+  main-is:             ProductV2Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-protocol
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Werror
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

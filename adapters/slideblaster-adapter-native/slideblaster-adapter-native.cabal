@@ -1,0 +1,90 @@
+cabal-version:      3.0
+name:               slideblaster-adapter-native
+version:            0.1.0.0
+synopsis:           Native filesystem and Git capability interpreters
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Adapter.Native
+      SlideBlaster.Adapter.Native.Broker
+      SlideBlaster.Adapter.Native.Extensions
+      SlideBlaster.Adapter.Native.FileSystem
+      SlideBlaster.Adapter.Native.Git
+      SlideBlaster.Adapter.Native.Port
+      SlideBlaster.Adapter.Native.Process
+      SlideBlaster.Adapter.Native.Provider
+      SlideBlaster.Adapter.Native.Sanitize
+      SlideBlaster.Adapter.Native.Stdio
+      SlideBlaster.Adapter.Native.Tex
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , process >=1.6 && <1.7
+    , slideblaster-extension
+    , slideblaster-ports
+    , slideblaster-source
+    , text >=2.0 && <2.2
+    , unix >=2.8 && <2.9
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-adapter-native-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , process >=1.6 && <1.7
+    , slideblaster-adapter-native
+    , slideblaster-ports
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-adapter-native-broker-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test-broker
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , slideblaster-adapter-native
+    , slideblaster-extension
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

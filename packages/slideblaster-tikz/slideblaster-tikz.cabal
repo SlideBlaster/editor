@@ -1,0 +1,89 @@
+cabal-version:      3.0
+name:               slideblaster-tikz
+version:            0.1.0.0
+synopsis:           Lossless bounded TikZ semantics and verified edits
+license:            NONE
+build-type:         Simple
+data-files:
+    test/fixtures/common-noncanonical.tikz
+
+library
+  exposed-modules:
+      SlideBlaster.TikZ
+      SlideBlaster.TikZ.Adapter
+      SlideBlaster.TikZ.Diagnostic
+      SlideBlaster.TikZ.Document
+      SlideBlaster.TikZ.Edit
+      SlideBlaster.TikZ.Model
+      SlideBlaster.TikZ.NodeContent
+      SlideBlaster.TikZ.RenderPlan
+  other-modules:
+      SlideBlaster.TikZ.Internal.Decimal
+      SlideBlaster.TikZ.Internal.Edit
+      SlideBlaster.TikZ.Internal.Style
+      SlideBlaster.TikZ.Internal.Parser
+      SlideBlaster.TikZ.Internal.Types
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-presentation
+    , slideblaster-source
+    , slideblaster-syntax
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-tikz-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:
+      test
+      src
+  other-modules:
+      SlideBlaster.TikZ
+      SlideBlaster.TikZ.Adapter
+      SlideBlaster.TikZ.Diagnostic
+      SlideBlaster.TikZ.Document
+      SlideBlaster.TikZ.Edit
+      SlideBlaster.TikZ.Model
+      SlideBlaster.TikZ.NodeContent
+      SlideBlaster.TikZ.RenderPlan
+      SlideBlaster.TikZ.Internal.Decimal
+      SlideBlaster.TikZ.Internal.Edit
+      SlideBlaster.TikZ.Internal.Style
+      SlideBlaster.TikZ.Internal.Parser
+      SlideBlaster.TikZ.Internal.Types
+      Paths_slideblaster_tikz
+  autogen-modules:
+      Paths_slideblaster_tikz
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-presentation
+    , slideblaster-source
+    , slideblaster-syntax
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

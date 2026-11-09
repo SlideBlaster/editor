@@ -1,0 +1,22 @@
+html, body { height: 100%; margin: 0; background: #111318; }
+.sbv-root { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif; }
+.sbv-stage { cursor: pointer; box-shadow: 0 8px 40px rgb(0 0 0 / 50%); background: #fff; color: #c33; }
+.sbv-hud { position: fixed; right: 12px; bottom: 8px; color: #8a90a0; font-size: 12px; user-select: none; }
+
+/* Print layout (see buildPrint in offline-viewer.ts): one fixed-size page per slide, nothing else. */
+.sb-badge { display: none; }
+.sbv-print { display: none; }
+.sbv-printing .sbv-print { display: block; }
+.sbv-printing, .sbv-printing body { height: auto; background: #fff; }
+.sbv-page { position: relative; overflow: hidden; break-after: page; break-inside: avoid; background: #fff; }
+.sbv-page:last-child { break-after: auto; }
+.sbv-page .sb-slide { width: 100%; box-shadow: none; counter-reset: sb-route; }
+.sbv-continue { position: absolute; left: 50%; bottom: 1.3%; transform: translateX(-50%); z-index: 3; font: 400 13px/1.3 'Segoe UI', system-ui, sans-serif; color: #555; white-space: nowrap; }
+.sbv-continue a { color: #2962ff; text-decoration: none; }
+.sbv-page a.sb-route { transition: none; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print {
+  html, body { height: auto; background: #fff; }
+  .sbv-root { display: none; }
+  .sbv-print { display: block; }
+}

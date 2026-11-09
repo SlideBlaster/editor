@@ -1,0 +1,153 @@
+cabal-version:      3.0
+name:               slideblaster-cli
+version:            0.1.0.0
+synopsis:           Native command-line composition for SlideBlaster
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Cli
+      SlideBlaster.Cli.Build
+      SlideBlaster.Cli.Cap
+      SlideBlaster.Cli.Check
+      SlideBlaster.Cli.New
+      SlideBlaster.Cli.Pdf
+      SlideBlaster.Cli.Serve
+      SlideBlaster.Cli.Session
+      SlideBlaster.Cli.Watch
+  hs-source-dirs:      src
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , http-types >=0.12 && <0.13
+    , network >=3.1 && <3.3
+    , process >=1.6 && <1.7
+    , slideblaster-adapter-native
+    , slideblaster-deck
+    , slideblaster-engine
+    , slideblaster-export
+    , slideblaster-extension
+    , slideblaster-product-runtime
+    , slideblaster-protocol
+    , slideblaster-source
+    , text >=2.0 && <2.2
+    , time >=1.12 && <1.16
+    , unix >=2.8 && <2.9
+    , wai >=3.2 && <3.3
+    , wai-websockets >=3.0 && <3.1
+    , warp >=3.4 && <3.5
+    , websockets >=0.12 && <0.14
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+executable sb
+  main-is:             Main.hs
+  hs-source-dirs:      app
+  build-depends:
+      base >=4.20 && <5
+    , slideblaster-cli
+    , slideblaster-adapter-native
+    , slideblaster-product-runtime
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -threaded
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+-- Compatibility alias for the pre-alpha executable name.
+executable slideblaster
+  main-is:             Main.hs
+  hs-source-dirs:      app
+  build-depends:
+      base >=4.20 && <5
+    , slideblaster-cli
+    , slideblaster-adapter-native
+    , slideblaster-product-runtime
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -threaded
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-cli-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , aeson >=2.1 && <3
+    , containers >=0.6 && <0.9
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , process >=1.6 && <1.7
+    , slideblaster-adapter-native
+    , slideblaster-cli
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -threaded
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-cli-serve-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test-serve
+  build-depends:
+      aeson >=2.1 && <3
+    , base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , time >=1.12 && <1.16
+    , directory >=1.3 && <1.4
+    , filepath >=1.4 && <1.6
+    , network >=3.1 && <3.3
+    , slideblaster-cli
+    , slideblaster-extension
+    , text >=2.0 && <2.2
+    , websockets >=0.12 && <0.14
+  default-language:    GHC2024
+  ghc-options:
+      -threaded
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields

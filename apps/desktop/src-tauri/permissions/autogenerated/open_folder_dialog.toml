@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-folder-dialog"
+description = "Enables the open_folder_dialog command without any pre-configured scope."
+commands.allow = ["open_folder_dialog"]
+
+[[permission]]
+identifier = "deny-open-folder-dialog"
+description = "Denies the open_folder_dialog command without any pre-configured scope."
+commands.deny = ["open_folder_dialog"]

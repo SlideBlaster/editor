@@ -1,0 +1,182 @@
+\begingroup%
+% Canonical geometry for this figure. Definitions are local so callers cannot
+% change the rendered aspect ratio before inputting it. Companion view to
+% p4checkarch.tikz: that figure shows the verification pipeline, this one shows
+% the architecture-polymorphic core surrounded by one driver per target.
+\def\PFourCoreRingRX{5.65cm}%   horizontal radius of the driver ring
+\def\PFourCoreRingRY{3.15cm}%   vertical radius of the driver ring
+% Fonts: match the deck default (no biolinum), keep zi4 for monospace.
+\def\PFourCoreText{\fontsize{6}{7}\selectfont}%
+\def\PFourCoreTiny{\fontsize{5}{6}\selectfont}%
+\def\PFourCoreMono{\fontencoding{T1}\fontfamily{zi4}\fontsize{5}{6}\selectfont}%
+\def\PFourCoreTitle{\fontsize{8}{9}\selectfont}%
+\begin{tikzpicture}[
+    font=\PFourCoreText,
+    >=Latex,
+    % The architecture-neutral interpreter in the middle.
+    coreouter/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=palCerulean!75!black,
+        line width=0.8pt,
+        fill=white,
+        align=center
+    },
+    semblock/.style={
+        rectangle,
+        draw=black!55,
+        fill=palGray!8,
+        align=center,
+        font=\PFourCoreTiny,
+        minimum width=0.92cm,
+        minimum height=0.46cm,
+        inner xsep=2.5pt,
+        inner ysep=1.5pt
+    },
+    % The EArch extension hole: the single point every driver plugs into.
+    hole/.style={
+        rectangle,
+        draw=palCoral!80!black,
+        line width=0.6pt,
+        densely dashed,
+        fill=palCoral!12,
+        align=center,
+        font=\PFourCoreTiny,
+        minimum width=1.05cm,
+        minimum height=0.42cm,
+        inner sep=1.5pt
+    },
+    % One driver = EvalArchExt (externs) + ArchDriver (pipeline schedule).
+    driver/.style={
+        rectangle,
+        rounded corners=2.5pt,
+        draw=black!65,
+        line width=0.5pt,
+        fill=white,
+        align=center,
+        minimum width=2.55cm,
+        minimum height=1.12cm,
+        inner xsep=3pt,
+        inner ysep=2pt
+    },
+    note/.style={font=\PFourCoreText\bfseries, align=center},
+    plug/.style={
+        {Latex[length=1.6mm]}-{Latex[length=1.6mm]},
+        line width=0.5pt,
+        draw=palCerulean!70!black,
+        shorten >=1.5pt,
+        shorten <=1.5pt
+    }
+]
+
+% =====================================================================
+% Ambient layer: the TargetModel that both core and drivers read.
+% =====================================================================
+\begin{scope}[on background layer]
+    \node[rectangle, rounded corners=6pt, draw=palCitron!70!black,
+          line width=0.6pt, fill=palCitron!10,
+          minimum width=14.0cm, minimum height=8.35cm] (ambient) at (0,0.15) {};
+\end{scope}
+\node[note, anchor=north, text=palCitron!45!black, font=\PFourCoreText\bfseries]
+    at ([yshift=-0.10cm]ambient.north)
+    {TargetModel (ambient context): Language $\blacktriangleright$ Architecture $\blacktriangleright$ Target};
+
+% =====================================================================
+% The core: architecture-polymorphic interpreter / semantics.
+% =====================================================================
+\node[coreouter, minimum width=4.85cm, minimum height=2.65cm] (core) at (0,0.10) {};
+\node[note, anchor=north, font=\PFourCoreTitle\bfseries, text=palCerulean!60!black]
+    (coretitle) at ([yshift=-0.07cm]core.north) {P4 Core Interpreter};
+\node[font=\PFourCoreTiny, anchor=north, text=black!60]
+    (coresub) at ([yshift=-0.02cm]coretitle.south)
+    {architecture-polymorphic in \,\PFourCoreMono x};
+
+% Unified concrete + symbolic band.
+\node[rectangle, fill=palCerulean!16, draw=palCerulean!55!black, line width=0.3pt,
+      minimum width=4.45cm, minimum height=0.40cm, font=\PFourCoreTiny, align=center,
+      anchor=north] (band) at ([yshift=-0.04cm]coresub.south)
+    {big-step evaluator $\cdot$ Concrete \& Symbolic};
+
+% Semantics sub-blocks (the language constructs the core gives meaning to).
+\node[semblock, anchor=north west] (sExpr) at ([xshift=0.10cm,yshift=-0.10cm]band.south west) {Expr};
+\node[semblock, right=0.06cm of sExpr] (sStmt) {Stmt};
+\node[semblock, right=0.06cm of sStmt] (sParse) {Parser};
+\node[semblock, right=0.06cm of sParse] (sTbl) {Tables};
+% The EArch extension hole, below the sem-block row: the single plug point
+% every driver fills.
+\node[hole, anchor=north] (hole) at ([yshift=-0.12cm]sExpr.south -| core.center)
+    {\PFourCoreMono EArch x};
+
+% =====================================================================
+% The drivers: one per architecture / target, arranged around the core.
+% Each fills the EArch hole and implements EvalArchExt + ArchDriver.
+% Angles (pentagon): 90, 18, -54, -126(=234), 162.
+% =====================================================================
+% Top: v1model (the canonical reference target).
+\node[driver, draw=palCerulean!70!black] (dV1)
+    at ({0},{\PFourCoreRingRY}) {};
+\node[note, font=\PFourCoreText\bfseries, text=palCerulean!55!black, anchor=north]
+    (dV1t) at ([yshift=-0.04cm]dV1.north) {v1model};
+\node[font=\PFourCoreMono, text=black!55, anchor=north] at ([yshift=-0.01cm]dV1t.south) {V1Ext};
+\node[font=\PFourCoreTiny, text=black!70, anchor=south] at ([yshift=0.05cm]dV1.south) {bmv2};
+
+% Upper-right: PSA.
+\node[driver, draw=palOlivine!70!black] (dPSA)
+    at ({\PFourCoreRingRX*0.95},{\PFourCoreRingRY*0.31}) {};
+\node[note, font=\PFourCoreText\bfseries, text=palOlivine!45!black, anchor=north]
+    (dPSAt) at ([yshift=-0.04cm]dPSA.north) {PSA};
+\node[font=\PFourCoreMono, text=black!55, anchor=north] at ([yshift=-0.01cm]dPSAt.south) {PsaExt};
+\node[font=\PFourCoreTiny, text=black!70, anchor=south] at ([yshift=0.05cm]dPSA.south) {bmv2};
+
+% Lower-right: PNA.
+\node[driver, draw=palCitron!65!black] (dPNA)
+    at ({\PFourCoreRingRX*0.59},{-\PFourCoreRingRY*0.80}) {};
+\node[note, font=\PFourCoreText\bfseries, text=palCitron!42!black, anchor=north]
+    (dPNAt) at ([yshift=-0.04cm]dPNA.north) {PNA};
+\node[font=\PFourCoreMono, text=black!55, anchor=north] at ([yshift=-0.01cm]dPNAt.south) {PnaBmv2Ext / PnaTcExt};
+\node[font=\PFourCoreTiny, text=black!70, anchor=south] at ([yshift=0.05cm]dPNA.south) {bmv2 $\cdot$ tc};
+
+% Lower-left: Tofino.
+\node[driver, draw=palCoral!75!black] (dTNA)
+    at ({-\PFourCoreRingRX*0.59},{-\PFourCoreRingRY*0.80}) {};
+\node[note, font=\PFourCoreText\bfseries, text=palCoral!60!black, anchor=north]
+    (dTNAt) at ([yshift=-0.04cm]dTNA.north) {Tofino};
+\node[font=\PFourCoreMono, text=black!55, anchor=north] at ([yshift=-0.01cm]dTNAt.south) {TnaExt};
+\node[font=\PFourCoreTiny, text=black!70, anchor=south] at ([yshift=0.05cm]dTNA.south) {TNA $\cdot$ T2NA};
+
+% Upper-left: eBPF family.
+\node[driver, draw=palGray!85!black] (dBPF)
+    at ({-\PFourCoreRingRX*0.95},{\PFourCoreRingRY*0.31}) {};
+\node[note, font=\PFourCoreText\bfseries, text=palGray!50!black, anchor=north]
+    (dBPFt) at ([yshift=-0.04cm]dBPF.north) {eBPF family};
+\node[font=\PFourCoreMono, text=black!55, anchor=north] at ([yshift=-0.01cm]dBPFt.south) {EbpfExt / UbpfExt / XdpExt};
+\node[font=\PFourCoreTiny, text=black!70, anchor=south] at ([yshift=0.05cm]dBPF.south) {ebpf $\cdot$ ubpf $\cdot$ xdp};
+
+% =====================================================================
+% Plugs: every driver connects to the same core through the EArch hole.
+% =====================================================================
+\draw[plug] (core.north) -- (dV1.south);
+\draw[plug] (core.east) -- (dPSA.west);
+\draw[plug] (core.south east) -- (dPNA.north);
+\draw[plug] (core.south west) -- (dTNA.north);
+\draw[plug] (core.west) -- (dBPF.east);
+
+% Legend: what a driver supplies. Anchored to the ambient box, bottom-left.
+\node[anchor=south west, align=left, font=\PFourCoreTiny, text=black!70,
+      inner sep=2pt]
+    at ([xshift=0.16cm,yshift=0.12cm]ambient.south west)
+    {\textbf{Each driver supplies}\\
+     \PFourCoreMono EvalArchExt x\,: extern semantics\\
+     \PFourCoreMono ArchDriver x\,: pipeline schedule\\
+     \hphantom{xx}(drop/mcast/clone/resubmit/recirc),\\
+     \hphantom{xx}metadata seeding, parser disposition};
+
+% Overlay hook: if the caller defined \PFourCoreOverlay, execute it now so a
+% progress-marker slide can highlight parts without duplicating the source.
+\ifdefined\PFourCoreOverlay\PFourCoreOverlay\fi
+
+\pgfresetboundingbox
+\path[use as bounding box] (-7.1,-4.2) rectangle (7.1,4.4);
+
+\end{tikzpicture}%
+\endgroup%

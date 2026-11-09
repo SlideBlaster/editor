@@ -1,0 +1,116 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{default}
+\useoutertheme[subsection=false]{miniframes}
+\usecolortheme{default}
+\setbeamercolor{structure}{fg=black}
+
+\usepackage{amsmath,amssymb}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{fit,calc,positioning,arrows.meta,backgrounds,shadows.blur,shapes.geometric,decorations.pathreplacing}
+\usepackage{svg}
+\usepackage{graphicx}
+\usepackage{pifont} % \ding{51}/\ding{55} check and cross marks
+
+% --- Talk colour palette (vivid) ---
+\definecolor{palCitron}{HTML}{FFCA3A}   % vivid yellow
+\definecolor{palOlivine}{HTML}{8AC926}  % vivid green
+\definecolor{palCerulean}{HTML}{1982C4} % vivid blue
+\definecolor{palGray}{HTML}{6A6F77}     % neutral slate grey
+\definecolor{palCoral}{HTML}{FF595E}    % vivid coral / red
+
+% --- Notation macros (copied from the paper preamble) ---
+\newcommand{\psix}{\ensuremath{\mathrm{P4_{16}}}}
+\newcommand{\pfour}{\ensuremath{\mathrm{P4_{14}}}}
+
+% Temporal-logic and verification notation.
+\newcommand{\CTL}{\ensuremath{\mathrm{CTL}}}
+\newcommand{\LTL}{\ensuremath{\mathrm{LTL}}}
+\newcommand{\CTLstar}{\ensuremath{\mathrm{CTL}^{*}}}
+\newcommand{\AP}{\ensuremath{\mathit{AP}}}
+\newcommand{\True}{\ensuremath{\mathsf{true}}}
+\newcommand{\Next}{\ensuremath{\mathop{\mathbf{X}}}}
+\newcommand{\Until}{\ensuremath{\mathbin{\mathbf{U}}}}
+\newcommand{\WeakUntil}{\ensuremath{\mathbin{\mathbf{W}}}}
+\newcommand{\Globally}{\ensuremath{\mathop{\mathbf{G}}}}
+\newcommand{\Eventually}{\ensuremath{\mathop{\mathbf{F}}}}
+\newcommand{\AllPaths}{\ensuremath{\forall}}
+\newcommand{\SomePath}{\ensuremath{\exists}}
+\newcommand{\AX}[1]{\ensuremath{\AllPaths\,\Next\,#1}}
+\newcommand{\EX}[1]{\ensuremath{\SomePath\,\Next\,#1}}
+\newcommand{\AG}[1]{\ensuremath{\AllPaths\,\Globally\,#1}}
+\newcommand{\EG}[1]{\ensuremath{\SomePath\,\Globally\,#1}}
+\newcommand{\AF}[1]{\ensuremath{\AllPaths\,\Eventually\,#1}}
+\newcommand{\EF}[1]{\ensuremath{\SomePath\,\Eventually\,#1}}
+\newcommand{\AU}[2]{\ensuremath{\AllPaths[#1 \Until #2]}}
+\newcommand{\EU}[2]{\ensuremath{\SomePath[#1 \Until #2]}}
+
+% Specification-language notation (copied from the paper preamble).
+\newcommand{\specExpr}{\ensuremath{e}}
+\newcommand{\specBlock}{\ensuremath{q}}
+\newcommand{\specLoc}{\ensuremath{\mathit{loc}}}
+\newcommand{\specAtom}{\ensuremath{\mathit{atom}}}
+\newcommand{\specHit}{\ensuremath{\mathit{hit}}}
+\newcommand{\specDrop}{\ensuremath{\mathit{drop}}}
+\newcommand{\specBegin}{\ensuremath{\mathsf{begin}}}
+\newcommand{\specEnd}{\ensuremath{\mathsf{end}}}
+\newcommand{\ltlFormula}{\ensuremath{\varphi}}
+
+\usepackage[style=numeric,backend=biber]{biblatex}
+\addbibresource{references.bib}
+
+% Keep the appendix (references) slides out of the total frame count.
+\usepackage{appendixnumberbeamer}
+
+% --- Footnote citation command (copied from the ICTopen2026 deck) ---
+\newbibmacro*{authorurlcite:body}{%
+  \printnames{author}%
+  \setunit{\addperiod\space}%
+  \iffieldundef{url}
+    {\printfield[citetitle]{title}}
+    {\href{\thefield{url}}{\printfield[citetitle]{title}}}%
+  \iffieldundef{year}
+    {}
+    {\setunit{\addperiod\space}\printfield{year}}%
+  \iffieldundef{doi}
+    {\iffieldundef{url}
+       {}
+       {\setunit{\addperiod\space}URL:\space\href{\thefield{url}}{\nolinkurl{\thefield{url}}}}}
+    {\setunit{\addperiod\space}DOI:\space\href{https://doi.org/\thefield{doi}}{\nolinkurl{\thefield{doi}}}}%
+}
+
+\DeclareCiteCommand{\footauthorurlcite}[\mkbibfootnote]
+  {\usebibmacro{prenote}}
+  {\usebibmacro{authorurlcite:body}}
+  {\multicitedelim}
+  {\usebibmacro{postnote}}
+
+\setbeamertemplate{navigation symbols}{}
+
+% lhs2TeX preamble (provides hscode environment, polytable, etc.)
+\let\Bbbk\relax
+\input{hs/pre.tex}
+
+% Overlay-safe token highlight for lhs2TeX/polytable output. Avoid TikZ nodes
+% here: they corrupt polytable's alignment state when the hscode block closes.
+\newcommand{\anchornode}[2]{%
+  \alt<2->{\textcolor{red}{\ensuremath{#2}}}{\ensuremath{#2}}}
+
+\setbeamertemplate{headline}{}
+
+\usepackage[T1]{fontenc}
+\usepackage{zi4} % Inconsolata monospace font
+\usepackage{helvet} % Helvetica for sans-serif
+
+% Footline configuration with logos
+\setbeamertemplate{footline}{%
+  \begin{beamercolorbox}[wd=\paperwidth,ht=3ex,dp=1.5ex,leftskip=2ex,rightskip=2ex]{page number in head/foot}%
+    \raisebox{-0.1cm}{\includegraphics[height=0.45cm]{uvalogo_tag_p.eps}}%
+    \hspace{0.05cm}%
+    \includegraphics[height=0.35cm]{smallLogo.pdf}%
+    \hfill%
+    \insertframenumber{} / \inserttotalframenumber%
+  \end{beamercolorbox}%
+}

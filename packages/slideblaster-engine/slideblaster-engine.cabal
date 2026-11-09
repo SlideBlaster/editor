@@ -1,0 +1,64 @@
+cabal-version:      3.0
+name:               slideblaster-engine
+version:            0.1.0.0
+synopsis:           Shared pure engine boundary for SlideBlaster
+license:            NONE
+build-type:         Simple
+
+library
+  exposed-modules:
+      SlideBlaster.Engine
+      SlideBlaster.Engine.CommonTikz
+      SlideBlaster.Engine.Edit
+      SlideBlaster.Engine.Inspect
+      SlideBlaster.Engine.TikZ
+  hs-source-dirs:      src
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , slideblaster-syntax
+    , slideblaster-tikz
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-engine-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , slideblaster-engine
+    , slideblaster-canvas
+    , slideblaster-document
+    , slideblaster-presentation
+    , slideblaster-render
+    , slideblaster-source
+    , slideblaster-syntax
+    , slideblaster-tikz
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
