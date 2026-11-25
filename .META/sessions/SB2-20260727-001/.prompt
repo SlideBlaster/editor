@@ -1,0 +1,107 @@
+# Goal: source-authoritative editable browser canvas
+
+## Mission
+
+Deliver the first real SlideBlaster 2 editable browser-canvas vertical slice by
+connecting the existing Haskell source, semantic, application, rendering,
+protocol, Wasm, and browser-host layers.
+
+The future agent owns the implementation session and must carry it from research
+and design through implementation, independent verification, product-owner
+demonstration, exact change review, authorized integration, and explicit
+closure.
+
+## Required end-to-end path
+
+```text
+exact authored source bytes + revision
+  -> lossless/recoverable Haskell analysis
+  -> common canvas and application model
+  -> revision-fenced render projection
+  -> versioned protocol and real GHC-Wasm reactor
+  -> validated browser canvas
+  -> node selection and drag
+  -> typed Haskell edit intent
+  -> provenance-guided candidate byte patch
+  -> revision + expected-byte checks
+  -> reparse and intended-semantic verification
+  -> one exact-source history transaction
+  -> repaint from the accepted successor revision
+```
+
+## Product-owner demonstration
+
+From a clean checkout at the demonstrated revision, the product owner can:
+
+1. run `make dev` and open the documented local URL;
+2. load a tracked, exact, deliberately noncanonical source fixture;
+3. see at least one real source-backed node rendered through Haskell;
+4. select and drag that node to a documented target;
+5. see only the coordinate tokens owned by the node change in the source;
+6. see the accepted successor revision repaint at the new position;
+7. undo once and recover the exact original bytes and canvas position; and
+8. trigger a documented stale or unsupported edit and observe atomic rejection,
+   with source, history, and canvas authority unchanged.
+
+Use the existing bounded node-plus-connector fixture if it remains the thinnest
+honest route. In that case, the connector must follow the moved node while its
+own authored statement remains byte-identical.
+
+## Completion threshold
+
+The proof must cross the packaged browser's real GHC-Wasm reactor. Neither
+existing partial path is sufficient alone:
+
+- the bounded `slideblaster.engine/1` TikZ path already proves exact source,
+  rendering, and verified node movement but is not the general app composition;
+- `slideblaster.product/1` and `product-renderer.js` already prove common-model
+  nodes, selection, drag, snapping, projections, and undo/redo, but their live
+  state explicitly lacks source/persistence authority.
+
+The task is to reuse and connect proven seams, not create a third editor model or
+repeat behavior in JavaScript.
+
+## Non-negotiable laws
+
+- Authored bytes and their revision are authoritative.
+- Every unowned byte remains identical after an edit.
+- A stale snapshot, gesture, lease, or response cannot commit or repaint as
+  current.
+- Unsupported, ambiguous, malformed, or semantically unverifiable projection is
+  atomic and creates no history entry.
+- Preview and commit use the same typed semantic operation.
+- One pointer release creates at most one history transaction; a no-op creates
+  none.
+- Invalid direct source remains exact and repairable. A last-good canvas may
+  remain visible but must be inert.
+- JavaScript validates closed projections and translates browser events and
+  capabilities only. Haskell owns parsing, semantics, source projection,
+  history, policy, and edit acceptance.
+- Shared packages remain portable across native GHC and pinned GHC Wasm.
+- The old SlideBlaster is a behavioral and fixture oracle, not architecture to
+  port wholesale.
+
+## Deliberate exclusions
+
+Do not expand the goal into complete editor parity, broad TikZ syntax, resize,
+property or inline-content editing, collaboration, Git, presenter, export,
+deployment, draw.io source selection, or wholesale migration of legacy design
+and knowledge.
+
+Do not modify `../editor/`, `../design/`, `../knowledge/`, or
+`.META/sources/drawio/`. Promote only verified slice-relevant facts into current
+authorities; a bulk legacy migration requires a separate product-owner-approved
+session.
+
+## Required evidence
+
+- Pure locality/property tests, including noncanonical bytes and no-op behavior.
+- Stale revision/lease and expected-byte mismatch rejection.
+- Candidate reparse and intended-semantic equality checks.
+- Accepted drag = one history step; rejection/no-op = none.
+- Closed protocol and malformed-projection tests.
+- Native and Wasm agreement for the exact fixture and intent.
+- Successful affected package tests, Wasm build, packaged browser launch, and
+  real browser end-to-end test.
+- Independent verification and adversarial review of the exact final change.
+- Exact product-owner demonstration instructions and revision.

@@ -8,6 +8,7 @@ build-type:         Simple
 library
   exposed-modules:
       SlideBlaster.Adapter.Web
+      SlideBlaster.Adapter.Web.Bytes
       SlideBlaster.Adapter.Web.HostCall
       SlideBlaster.Adapter.Web.Log
       SlideBlaster.Adapter.Web.Measure

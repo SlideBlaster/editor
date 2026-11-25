@@ -4,14 +4,41 @@
  * run inside `audience.html` / `console.html`; `createWindowOpener` runs in the editor.
  */
 import { paintPlan, type PaintContext } from "../plan/paint.ts";
+import { applyThemeCss } from "../theme.ts";
 import type { Plan } from "../protocol/plan.ts";
-import { commandForKey, createWindowState, formatTimer, presenterChannelName, routeForKey, type ChannelLike, type ChannelMessage, type PresenterCommand } from "./model.ts";
+import { commandForKey, createWindowState, formatTimer, presenterChannelName, routeForKey, type ChannelLike, type ChannelMessage, type PresenterCommand, type ShowTheme } from "./model.ts";
 
 export interface WindowDeps {
   readonly doc: Document;
   readonly channel: ChannelLike;
   readonly paint: Omit<PaintContext, "doc" | "interactive" | "selection">;
   readonly now?: () => number;
+}
+
+/** The deck theme's CSS in this window, as the editor has it (once per change). */
+function applyTheme(doc: Document, theme: ShowTheme | null): void {
+  if (theme === null) return;
+  const current = doc.getElementById(`sb-theme-${theme.name}`);
+  if (current?.textContent !== theme.css) applyThemeCss(doc, theme.name, theme.css);
+}
+
+/** Speaker notes as plain flowing text: painted like a slide, then taken out of the slide frame so
+ * they reflow at the console's own (large) size instead of shrinking with a themed 16:9 box. */
+function notesInto(holder: HTMLElement, doc: Document, plan: Plan, paint: WindowDeps["paint"]): void {
+  const scratch = doc.createElement("div");
+  paintInto(scratch, doc, plan, paint);
+  const text = doc.createElement("div");
+  text.className = "con-notes-text";
+  // Only the notes themselves: not the theme's furniture (logo, page number) or the repeated title.
+  for (const item of scratch.querySelectorAll<HTMLElement>(".sb-layer-content > .sb-item")) {
+    const id = item.dataset.itemId ?? "";
+    if (id === "title" || id.startsWith("furniture")) continue;
+    const block = doc.createElement("div");
+    block.append(...item.childNodes);
+    for (const styled of block.querySelectorAll<HTMLElement>("[style]")) { styled.style.removeProperty("font-size"); styled.style.removeProperty("color"); styled.style.removeProperty("font-family"); }
+    text.append(block);
+  }
+  holder.replaceChildren(text);
 }
 
 function paintInto(holder: HTMLElement, doc: Document, plan: Plan | null, paint: WindowDeps["paint"]): void {
@@ -33,12 +60,16 @@ function statusNote(doc: Document, text: string, isError = false): HTMLElement {
   return note;
 }
 
+type TauriGlobal = { core: { invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> } };
+const tauriOf = (doc: Document): TauriGlobal | undefined => (doc.defaultView as unknown as { __TAURI__?: TauriGlobal } | null)?.__TAURI__;
+
 /** The audience window's F: in the desktop shell the native window goes fullscreen (borderless, no
- * title bar); in a browser, the page does. */
+ * title bar); in a browser, or a shell without the command, the page does. */
 function toggleFullscreen(doc: Document): void {
-  const tauri = (doc.defaultView as unknown as { __TAURI__?: { core: { invoke(cmd: string): Promise<unknown> } } } | null)?.__TAURI__;
-  if (tauri !== undefined) { void tauri.core.invoke("toggle_fullscreen").catch(() => undefined); return; }
-  if (doc.fullscreenElement === null) void doc.documentElement.requestFullscreen(); else void doc.exitFullscreen();
+  const page = (): void => { if (doc.fullscreenElement === null) void doc.documentElement.requestFullscreen?.().catch(() => undefined); else void doc.exitFullscreen(); };
+  const tauri = tauriOf(doc);
+  if (tauri === undefined) { page(); return; }
+  void tauri.core.invoke("toggle_fullscreen").catch(page);
 }
 
 /** Time the outgoing slide takes to zoom out when a route is chosen; the incoming slide zooms in for as long again. */
@@ -56,6 +87,7 @@ export function mountAudience({ doc, channel, paint }: WindowDeps): void {
       stage.replaceChildren(statusNote(doc, state.closed ? "Presentation ended." : "Waiting for the editor window… (press Present there, or reload this window)"));
       return;
     }
+    applyTheme(doc, state.theme);
     paintInto(stage, doc, state.views.audience, paint);
     if (state.title) doc.title = `${state.title} — audience`;
   };
@@ -111,12 +143,15 @@ export function mountConsole({ doc, channel, paint, now = () => Date.now() }: Wi
   const where = el("con-where");
   const timer = el("con-timer");
   const send = (command: PresenterCommand) => channel.postMessage({ t: "command", command });
+  let fitNotesNow = (): void => undefined;
   const render = () => {
     const v = state.views;
     if (v === null) { where.textContent = state.closed ? "Presentation ended" : "Waiting for the editor…"; return; }
+    applyTheme(doc, state.theme);
     paintInto(current, doc, v.audience, paint);
     if (v.notes === null) { notes.replaceChildren(); const none = doc.createElement("p"); none.className = "con-none"; none.textContent = "No notes for this slide."; notes.append(none); }
-    else paintInto(notes, doc, v.notes, paint);
+    else notesInto(notes, doc, v.notes, paint);
+    fitNotesNow();
     if (v.next === null) { preview.replaceChildren(); const end = doc.createElement("p"); end.className = "con-none"; end.textContent = "End of deck."; preview.append(end); }
     else paintInto(preview, doc, v.next, paint);
     el("con-pos").textContent = `${v.cursor !== undefined ? v.cursor + 1 : "?"} / ${v.total ?? "?"}`;
@@ -125,9 +160,49 @@ export function mountConsole({ doc, channel, paint, now = () => Date.now() }: Wi
   };
   channel.onmessage = (event) => { if (state.receive(event.data as ChannelMessage)) render(); };
   const choose = (route: string) => channel.postMessage({ t: "route", route });
+  // Notes size. Fit (the default): the largest size up to fitMax at which this slide's notes fit
+  // without scrolling, never below fitMin. A-/A+ (or - / +) pick a fixed size; Fit goes back.
+  // The choice is remembered on this machine.
+  const sizeKey = "sb-console-notes-px";
+  const fitMin = 16, fitMax = 34;
+  let manual: number | null = null;
+  let notesPx = fitMax;
+  try { const saved = Number(doc.defaultView?.localStorage.getItem(sizeKey)); if (saved >= 12 && saved <= 72) manual = saved; } catch { /* no storage */ }
+  const show = (px: number): void => { notesPx = px; notes.style.setProperty("--con-notes-size", `${px}px`); };
+  const fitNotes = (): void => {
+    el("con-fit").classList.toggle("is-on", manual === null);
+    if (manual !== null) { show(manual); return; }
+    let lo = fitMin, hi = fitMax;
+    show(hi);
+    if (notes.scrollHeight <= notes.clientHeight) return;
+    while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); show(mid); if (notes.scrollHeight <= notes.clientHeight) lo = mid; else hi = mid; }
+    show(lo);
+  };
+  fitNotesNow = fitNotes;
+  const setManual = (px: number | null): void => {
+    manual = px === null ? null : Math.min(72, Math.max(12, px));
+    try { if (manual === null) doc.defaultView?.localStorage.removeItem(sizeKey); else doc.defaultView?.localStorage.setItem(sizeKey, String(manual)); } catch { /* no storage */ }
+    fitNotes();
+  };
+  el("con-smaller").addEventListener("click", () => setManual(notesPx - 2));
+  el("con-larger").addEventListener("click", () => setManual(notesPx + 2));
+  el("con-fit").addEventListener("click", () => setManual(null));
+  doc.defaultView?.addEventListener("resize", fitNotes);
+  doc.addEventListener("keydown", (event) => {
+    if (event.key === "+" || event.key === "=") { event.preventDefault(); setManual(notesPx + 2); }
+    else if (event.key === "-") { event.preventDefault(); setManual(notesPx - 2); }
+  });
+  fitNotes();
   el("con-next").addEventListener("click", () => send("next"));
   el("con-prev").addEventListener("click", () => send("back"));
   el("con-audience").addEventListener("click", openAudience);
+  // The audience window's fullscreen, from here: only the desktop shell can reach another window.
+  const fullscreen = doc.getElementById("con-fullscreen");
+  const tauri = tauriOf(doc);
+  if (fullscreen !== null) {
+    if (tauri === undefined) fullscreen.hidden = true;
+    else fullscreen.addEventListener("click", () => { void tauri.core.invoke("toggle_fullscreen", { label: "presenter-audience" }).catch(() => undefined); });
+  }
   doc.addEventListener("keydown", (event) => {
     const route = routeForKey(event.key, state.views);
     if (route !== null) { event.preventDefault(); choose(route); return; }

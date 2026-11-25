@@ -101,6 +101,10 @@ export interface View {
   readonly session: number;
   readonly saved: number;
   readonly ready: boolean;
+  /** The project's picture files (`.tikz`), which a slide can bring in with `\\cat`. */
+  readonly pictureFiles?: readonly string[];
+  /** Library files (`shapes/<family>.tikz`) the deck names styles from and the project lacks. */
+  readonly needs?: readonly string[];
   readonly frontmatter: {
     readonly title: string;
     readonly theme: string;
@@ -127,11 +131,41 @@ export type Effect =
   | { readonly kind: "measure"; readonly ticket: number; readonly items: readonly { readonly key: string; readonly content: unknown; readonly width: number }[] }
   | { readonly kind: "block.render"; readonly ticket: number; readonly fingerprint: string; readonly request: Record<string, unknown> }
   | { readonly kind: "storage"; readonly op: "write"; readonly path: string; readonly bytesBase16: string; readonly revision: number }
+  | { readonly kind: "file.write"; readonly path: string; readonly expectedBase16: string; readonly bytesBase16: string }
   | { readonly kind: "present"; readonly op: "open" | "close" | "goto"; readonly frame?: string; readonly step?: number; readonly window: "presenter" | "audience" }
   | { readonly kind: "print"; readonly frames: readonly string[] }
   | { readonly kind: "focus_node"; readonly [key: string]: unknown }
   | { readonly kind: "slide_selected"; readonly [key: string]: unknown }
-  | { readonly kind: "slide_created"; readonly [key: string]: unknown };
+  | { readonly kind: "slide_created"; readonly [key: string]: unknown }
+  | { readonly kind: "node_created"; readonly frame: string; readonly node: string };
+
+/** One canvas edit of a slide's picture block; points are plan pixels. */
+export type PictureOp =
+  | { readonly kind: "add_node"; readonly options: string; readonly x: number; readonly y: number; readonly text: string }
+  | { readonly kind: "move_node"; readonly node: string; readonly x: number; readonly y: number }
+  | { readonly kind: "attach"; readonly node: string; readonly side: string; readonly to: string; readonly distance: number | null }
+  | { readonly kind: "style"; readonly item: string; readonly set: readonly { readonly key: string; readonly value: string | null }[]; readonly remove: readonly string[] }
+  | { readonly kind: "resize"; readonly node: string; readonly width: number; readonly height: number }
+  | { readonly kind: "set_text"; readonly node: string; readonly text: string }
+  | { readonly kind: "connect"; readonly from: string; readonly to: string }
+  | { readonly kind: "delete"; readonly item: string }
+  | { readonly kind: "add_include"; readonly path: string; readonly x: number; readonly y: number }
+  | { readonly kind: "move_include"; readonly item: string; readonly x: number; readonly y: number }
+  | { readonly kind: "delete_many"; readonly items: readonly string[] }
+  | { readonly kind: "reorder"; readonly node: string; readonly to: "front" | "back" | "forward" | "backward" }
+  /** Picture statements (as copied) added to the slide, shifted right and down by plan pixels. */
+  | { readonly kind: "paste"; readonly text: string; readonly x: number; readonly y: number }
+  /** Several edits as one step (and one undo); a batch does not hold another batch. */
+  | { readonly kind: "batch"; readonly ops: readonly PictureOp[] }
+  /** How a line goes between its points; `bend` in degrees, or null for what it had. */
+  | { readonly kind: "route"; readonly line: string; readonly to: "straight" | "hv" | "vh" | "bend left" | "bend right"; readonly bend: number | null }
+  /** The text of a line's label (`index` from 1; 0 adds one); an empty text removes it. */
+  | { readonly kind: "label"; readonly line: string; readonly index: number; readonly text: string }
+  | { readonly kind: "label_style"; readonly line: string; readonly index: number; readonly set: readonly { readonly key: string; readonly value: string | null }[]; readonly remove: readonly string[] }
+  /** Put a point into a line's step (from 1), move a written point (from 0), or take one out. */
+  | { readonly kind: "add_point"; readonly line: string; readonly step: number; readonly x: number; readonly y: number }
+  | { readonly kind: "move_point"; readonly line: string; readonly point: number; readonly x: number; readonly y: number }
+  | { readonly kind: "remove_point"; readonly line: string; readonly point: number };
 
 export interface SessionSuccess {
   readonly protocol: typeof sessionProtocol;
@@ -187,6 +221,10 @@ export const requests = {
   command: (name: string, revision?: number): Request =>
     request("command", revision === undefined ? { name } : { name, revision }),
   selectSlide: (frame: string): Request => request("select_slide", { frame }),
+  pictureEdit: (revision: number, frame: string, op: PictureOp): Request => request("picture_edit", { revision, frame, op }),
+  imageRefs: (on: boolean): Request => request("image_refs", { on }),
+  resources: (refs: readonly string[]): Request => request("resources", { refs }),
+  figureEdit: (revision: number, figure: string, op: FigureOp): Request => request("figure_edit", { revision, figure, op }),
   activateNode: (surface: Fence["surface"], nodeId: string): Request => request("activate_node", { surface, nodeId }),
   pointerEvent: (event: Record<string, unknown>): Request => request("pointer_event", { event }),
   paintCompletion: (fence: Fence, outcome: "painted" | { failed: string }): Request =>
@@ -210,7 +248,7 @@ export const requests = {
     request("project_file", { path, bytesBase16: bytes === null ? null : base16FromBytes(bytes) }),
 } as const;
 
-const effectKinds = new Set(["measure", "block.render", "storage", "present", "print", "focus_node", "slide_selected", "slide_created"]);
+const effectKinds = new Set(["measure", "block.render", "storage", "file.write", "present", "print", "focus_node", "slide_selected", "slide_created", "node_created"]);
 
 /** Parse and validate a complete response before any of it reaches the DOM. */
 export function decodeSessionResponse(raw: string | unknown): SessionResponse {
@@ -265,3 +303,15 @@ function record(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new SessionWireError(`${path} must be an object`);
   return value as Record<string, unknown>;
 }
+
+/** A change to a TikZ figure the core draws itself; `at` is where the statement or node starts in the figure's text. */
+export type FigureOp =
+  | { readonly kind: "move"; readonly at: number; /** Centimetres, right and up. */ readonly dx: number; readonly dy: number }
+  | { readonly kind: "text"; readonly at: number; readonly text: string }
+  | { readonly kind: "option"; readonly at: number; readonly key: string; /** Empty writes the bare key; null takes the option away. */ readonly value: string | null }
+  | { readonly kind: "delete"; readonly at: number }
+  | { readonly kind: "add_node"; /** Where it stands in the picture: centimetres, y up. */ readonly x: number; readonly y: number; readonly options: string; readonly text: string }
+  | { readonly kind: "add_line"; /** The nodes it joins. */ readonly from: number; readonly to: number; readonly options: string }
+  | { readonly kind: "resize"; readonly at: number; /** At least so big, in centimetres. */ readonly width: number; readonly height: number }
+  | { readonly kind: "route"; readonly at: number; readonly to: "straight" | "hv" | "vh" | "bend left" | "bend right" }
+  | { readonly kind: "batch"; readonly ops: readonly FigureOp[] };

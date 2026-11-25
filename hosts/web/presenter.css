@@ -10,13 +10,30 @@ html, body { height: 100%; overflow: hidden; }
 .con-timer { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.1rem; }
 .con button { padding: .4rem .8rem; border: 1px solid #3a3d49; border-radius: .4rem; background: #2a2c36; color: #e7e7ea; cursor: pointer; }
 .con button:hover { background: #343642; }
-.con-main { flex: 1; display: flex; gap: 1rem; padding: 1rem; min-height: 0; }
-.con-left { flex: 2; min-width: 0; display: flex; flex-direction: column; gap: .5rem; overflow: auto; }
-.con-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
-.con-label { text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; color: #a9abb6; }
-.con-current, .con-preview, .con-notes { background: #fff; border-radius: .4rem; overflow: hidden; aspect-ratio: 16/9; }
-.con-preview { background: #000; } .con-notes { width: 100%; }
-.con-current { width: min(100%, 38rem); }
+/* PowerPoint-style console: the current slide large on the left; the next slide and the notes,
+   as plain large text (not a themed slide), on the right. Readable from a few metres away. */
+.con-main { flex: 1; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.2rem; padding: 1rem 1.2rem; min-height: 0; }
+.con-left { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: .5rem; }
+.con-side { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: .5rem; }
+.con-label { text-transform: uppercase; letter-spacing: .08em; font-size: .8rem; color: #a9abb6; display: flex; align-items: center; }
+.con-current, .con-preview { background: #fff; border-radius: .4rem; overflow: hidden; aspect-ratio: 16/9; }
+.con-current { width: 100%; max-height: 100%; }
+.con-preview { width: 80%; background: #000; }
+.con-notes-head { margin-top: .6rem; }
+.con-zoom { margin-left: auto; display: inline-flex; gap: .3rem; }
+.con-zoom button { padding: .15rem .55rem; font-size: .85rem; text-transform: none; letter-spacing: 0; }
+.con-zoom button.is-on { border-color: #8fa3ff; color: #c9d2ff; }
+.con-notes { flex: 1; min-height: 0; overflow: auto; padding: .2rem .4rem 1rem 0; color: #f2f2f4; font: 400 var(--con-notes-size, 28px)/1.35 system-ui, "Segoe UI", sans-serif; }
+.con-notes ul, .con-notes ol { padding-left: 1.2em; margin: 0 0 .3em; }
+.con-notes li { margin: .15em 0; }
+.con-notes li::marker { color: #8fa3ff; }
+.con-notes p { margin: 0 0 .4em; }
+.con-notes strong, .con-notes b { color: #ffd166; }
+.con-notes code { font: .9em ui-monospace, "JetBrains Mono", monospace; color: #9fe0c0; }
+.con-notes * { color: inherit; background: none !important; font-size: inherit; }
+.con-notes strong *, .con-notes b * { color: #ffd166; }
+.con-timer { font-size: 1.6rem; font-weight: 700; }
+.con-pos { font-size: 1.15rem; }
 .con-none { padding: 1rem; color: #8a8c96; font-style: italic; }
 .con-controls { display: flex; gap: .6rem; justify-content: center; padding: .6rem 1rem 1rem; }
 .con-controls button { min-width: 8rem; font-size: 1rem; }

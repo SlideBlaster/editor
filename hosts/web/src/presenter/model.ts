@@ -15,8 +15,11 @@ export const presenterChannelName = "sb-presenter";
 
 export type PresenterCommand = "next" | "back" | "home" | "end";
 
+/** The deck theme's CSS, so the presenter windows draw slides exactly as the editor and the PDF do. */
+export interface ShowTheme { readonly name: string; readonly css: string }
+
 export type ShowMessage =
-  | { readonly t: "views"; readonly hub?: string; readonly seq: number; readonly views: PresenterView; readonly timerOriginMs: number; readonly title: string }
+  | { readonly t: "views"; readonly hub?: string; readonly seq: number; readonly views: PresenterView; readonly timerOriginMs: number; readonly title: string; readonly theme?: ShowTheme | null }
   | { readonly t: "closed"; readonly hub?: string; readonly seq: number };
 export type WindowMessage =
   | { readonly t: "command"; readonly command: PresenterCommand }
@@ -35,6 +38,8 @@ export interface PresenterHubOptions {
   /** The current navigator, to resolve `home` and `end` into core `present_goto` targets. */
   readonly navigator: () => readonly Pick<NavigatorItem, "frame" | "steps">[];
   readonly title: () => string;
+  /** The deck theme's CSS as the editor applied it (null: the built-in look). */
+  readonly theme?: () => ShowTheme | null;
   readonly now?: () => number;
   /** Raised when a command fails (stale or rejected); the hub stays usable. */
   readonly onError?: (message: string) => void;
@@ -52,6 +57,8 @@ export interface PresenterHub {
   readonly position: { readonly frame: string; readonly step: number } | null;
   /** After a reconnect (a restarted sb has no presentation): reopen at the last position. */
   resume(): Promise<void>;
+  /** Send the current slide again (the theme changed). */
+  refresh(): void;
   readonly timerOriginMs: number | null;
 }
 
@@ -72,7 +79,7 @@ export function createPresenterHub(options: PresenterHubOptions): PresenterHub {
   function broadcast(): void {
     if (last === null || timerOrigin === null) return;
     seq += 1;
-    channel.postMessage({ t: "views", hub, seq, views: last, timerOriginMs: timerOrigin, title: options.title() });
+    channel.postMessage({ t: "views", hub, seq, views: last, timerOriginMs: timerOrigin, title: options.title(), theme: options.theme?.() ?? null });
   }
 
   function accept(response: SessionResponse): void {
@@ -151,6 +158,7 @@ export function createPresenterHub(options: PresenterHubOptions): PresenterHub {
       await enqueue(requests.presentOpen(frame));
       if (step > 1) await enqueue(requests.presentGoto(frame, step));
     },
+    refresh: broadcast,
     get timerOriginMs() { return timerOrigin; },
   };
 }
@@ -160,18 +168,20 @@ export interface WindowState {
   readonly views: PresenterView | null;
   readonly timerOriginMs: number | null;
   readonly title: string;
+  readonly theme: ShowTheme | null;
   readonly closed: boolean;
   /** Apply one message; returns true when the visible state changed. */
   receive(message: ChannelMessage): boolean;
 }
 
-export function createWindowState(): WindowState & { views: PresenterView | null; timerOriginMs: number | null; title: string; closed: boolean } {
+export function createWindowState(): WindowState & { views: PresenterView | null; timerOriginMs: number | null; title: string; theme: ShowTheme | null; closed: boolean } {
   let seq = -1;
   let hub: string | undefined;
   const state = {
     views: null as PresenterView | null,
     timerOriginMs: null as number | null,
     title: "",
+    theme: null as ShowTheme | null,
     closed: false,
     receive(message: ChannelMessage): boolean {
       if (message.t !== "views" && message.t !== "closed") return false;
@@ -183,6 +193,7 @@ export function createWindowState(): WindowState & { views: PresenterView | null
       state.views = message.views;
       state.timerOriginMs = message.timerOriginMs;
       state.title = message.title;
+      state.theme = message.theme ?? null;
       return true;
     },
   };

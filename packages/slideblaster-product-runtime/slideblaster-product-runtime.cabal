@@ -21,6 +21,7 @@ library
       SlideBlaster.Product.Runtime.MarkdownAnalyzer
       SlideBlaster.Product.Runtime.MathMacros
       SlideBlaster.Product.Runtime.Picture
+      SlideBlaster.Product.Runtime.Drawing
       SlideBlaster.Product.Runtime.ProductV2
       SlideBlaster.Product.Runtime.Session
       SlideBlaster.Product.Runtime.Sha256
@@ -45,6 +46,7 @@ library
     , slideblaster-protocol
     , slideblaster-render
     , slideblaster-source
+    , slideblaster-syntax
     , slideblaster-tikz
     , text >=2.0 && <2.2
   default-language:    GHC2024
@@ -168,6 +170,8 @@ test-suite slideblaster-analyzer-tests
     , bytestring >=0.11 && <0.13
     , containers >=0.6 && <0.9
     , directory >=1.3 && <1.4
+    , slideblaster-canvas
+    , slideblaster-deck
     , slideblaster-product-runtime
   default-language:    GHC2024
 

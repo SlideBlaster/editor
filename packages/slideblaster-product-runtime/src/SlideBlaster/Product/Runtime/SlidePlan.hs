@@ -15,24 +15,34 @@ module SlideBlaster.Product.Runtime.SlidePlan
   , frameBodyContent
   , buildPlan
   , base16Text
+  , contentRef
   , fnvHex
+  , styleValue
+  , nodeRoleStyle
+  , pictureRegions
   ) where
 
 import SlideBlaster.Canvas
   ( Content
   , SourceRef
+  , content
   , contentNodes
   , mkOverlayStep
   , firstOverlayStep
+  , overlayFinalStep
+  , overlayStepNumber
   )
-import SlideBlaster.Canvas.Flow (PictureItem)
-import SlideBlaster.Product.Runtime.Picture (pictureValues)
+import SlideBlaster.Canvas.Flow (PictureItem (..), PictureNode (..))
+import SlideBlaster.Product.Runtime.Picture (NodeSizes, PictureEnv (..), pictureInfo, pictureValues)
 import SlideBlaster.Product.Runtime.Lower (FigureInfo, contentStepCount, lowerContent)
 import SlideBlaster.Product.Runtime.Theme
 
 import Data.Aeson (Value (..), encode, object, (.=))
+import Data.Aeson.Types (Pair)
 import Data.Aeson.Key qualified as Key
+import Data.ByteString.Builder qualified as ByteStringBuilder
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Text.Encoding qualified as TextEncoding
 import Data.Bits (shiftR, xor, (.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
@@ -64,6 +74,8 @@ data FrameInput = FrameInput
   -- ^ nodes and lines of the picture tier
   , frameInputColours :: ![(Text, Text)]
   -- ^ deck colours (preamble @\\definecolor@) for the picture tier
+  , frameInputWritten :: ![(Text, Int, Int, Text, Text, Text)]
+  -- ^ the slide's own title and body as written: part, byte span, text, separators
   , frameInputFooter :: !Content
   -- ^ footer references (@\\citefootnote@), placed at the bottom of the body region
   }
@@ -86,10 +98,22 @@ data PlanContext = PlanContext
   , planFigures :: SourceRef -> FigureInfo
   , planAsset :: Text -> Maybe (Text, ByteString)
   , planArtifacts :: Map.Map Text (Text, ByteString)
+  , planByRef :: !Bool
+  -- ^ whether bytes (logos, compiled figures) are named in the plan rather than carried in it
+  , planNodeSizes :: NodeSizes
+  -- ^ measured content sizes of picture nodes; empty until the page has measured
   }
 
 frameStepCount :: FrameInput -> Int
-frameStepCount input = max (contentStepCount (frameInputTitle input)) (contentStepCount (frameInputBody input))
+frameStepCount input =
+  maximum
+    ( [contentStepCount (frameInputTitle input), contentStepCount (frameInputBody input)]
+        -- a picture node counts with what is staged inside it and with its own overlay
+        <> concat
+          [ [contentStepCount (content (pictureNodeContent n)), maybe 1 (fromIntegral . overlayStepNumber . overlayFinalStep) (pictureNodeHook n)]
+          | PictureNodeItem n <- frameInputPicture input
+          ]
+    )
 
 num :: Double -> Value
 num value = Number (fromRational (toRational (fromIntegral (round (value * 1000) :: Integer) / 1000 :: Double)))
@@ -112,6 +136,23 @@ styleValue theme sizeKey colourToken align bold =
     , "lineHeight" .= num 1.25
     ]
 
+-- | The type of a theme role as a picture node uses it (@role=title@ ...); a
+-- name the theme does not size is set as body text.
+nodeRoleStyle :: Theme -> Text -> Value
+nodeRoleStyle theme role = styleValue theme (if Map.member role (themeSizes theme) then role else "body") "ink" "left" False
+
+-- | The slide's title and body regions as a picture sees them: centre, width
+-- and height in slide units (y up), so nodes can attach and lines can run to them.
+pictureRegions :: Theme -> [(Text, (Double, Double, Double, Double))]
+pictureRegions theme =
+  [ (name, ((x + w / 2) / unitScale, (planHeight - y - h / 2) / unitScale, w / unitScale, h / unitScale))
+  | name <- ["title", "body"]
+  , Just region <- [Map.lookup name (themeRegions theme)]
+  , let (x, y, w, h) = regionBox theme region
+  ]
+  where
+    (_, planHeight) = themePlanSize theme
+
 -- | Lowered body content of a frame at the context's step.
 frameBodyContent :: PlanContext -> FrameInput -> [Value]
 frameBodyContent context input =
@@ -121,7 +162,7 @@ frameBodyContent context input =
 
 buildPlan :: Theme -> PlanContext -> FrameInput -> Value
 buildPlan theme context input =
-  object
+  object $
     [ "protocol" .= ("slideblaster.session/1" :: Text)
     , "frame" .= frameInputId input
     , "surface" .= planSurface context
@@ -133,12 +174,22 @@ buildPlan theme context input =
     , "coordinateSpace" .= ("slide_y_down" :: Text)
     , "size" .= object ["width" .= num width, "height" .= num height]
     , "background" .= object ["fill" .= paletteColour theme "background"]
-    , "artifacts" .= object [Key.fromText fingerprint .= object ["mime" .= mime, "bytesBase16" .= base16Text bytes] | (fingerprint, (mime, bytes)) <- Map.toList (planArtifacts context)]
+    , "artifacts" .= object [Key.fromText fingerprint .= object (("mime" .= mime) : bytesField context bytes) | (fingerprint, (mime, bytes)) <- Map.toList (planArtifacts context)]
     , "items" .= (furniture <> body)
     ]
+      <> ["picture" .= pictureInfo pictureEnv step (height / unitScale) (frameInputPicture input) | editable]
+      <> [ "written"
+            .= [ object ["part" .= part, "span" .= object ["start" .= from, "end" .= to], "source" .= source, "before" .= before, "after" .= after]
+               | (part, from, to, source, before, after) <- frameInputWritten input
+               ]
+         | editable
+         ]
   where
     (width, height) = themePlanSize theme
     isFirst = planPage context == 1
+    pictureEnv = PictureEnv (planNodeSizes context) (pictureRegions theme)
+    -- a slide the deck wrote, on its audience side, takes canvas edits
+    editable = planSurface context == "audience" && frameInputTitleSlide input == Nothing
     step = fromMaybe firstOverlayStep (mkOverlayStep (fromIntegral (max 1 (planStep context))))
     bodyContent = lowered (contentNodes (frameInputBody input))
     lowered nodes = lowerContent step (planFigures context) nodes
@@ -160,7 +211,7 @@ buildPlan theme context input =
           <> pictureItemsOut
     pictureItemsOut
       | null (frameInputPicture input) = []
-      | otherwise = pictureValues (frameInputColours input) (styleValue theme "body" "ink" "left" False) (paletteColour theme "ink") step (planFigures context) (height / unitScale) (frameInputPicture input)
+      | otherwise = pictureValues pictureEnv (frameInputColours input) (nodeRoleStyle theme) (paletteColour theme "ink") step (planFigures context) (height / unitScale) (frameInputPicture input)
     footerNodes = contentNodes (frameInputFooter input)
     footerItems
       | null footerNodes = []
@@ -255,7 +306,7 @@ furnitureItem theme context isFirst index item
             Just (mime, bytes) ->
               [ object
                   [ "kind" .= ("image" :: Text), "id" .= identifier, "box" .= box
-                  , "resource" .= object ["mime" .= mime, "bytesBase16" .= base16Text bytes]
+                  , "resource" .= object (("mime" .= mime) : bytesField context bytes)
                   , "alt" .= ("logo" :: Text), "fit" .= ("contain" :: Text) ]
               ]
             Nothing -> []
@@ -277,13 +328,18 @@ furnitureItem theme context isFirst index item
       textItem theme identifier (furnitureRegion item) (styleValue theme "small" "muted" (regionAlign (furnitureRegion item)) False) (plainText value)
 
 -- | Lower-case base16 text of exact bytes.
+-- Bytes in a plan: themselves, or the name the page asks for them by.
+bytesField :: PlanContext -> ByteString -> [Pair]
+bytesField context bytes
+  | planByRef context = ["bytesRef" .= contentRef bytes]
+  | otherwise = ["bytesBase16" .= base16Text bytes]
+
+-- | A name for bytes made from the bytes alone: their length and a sum over them.
+contentRef :: ByteString -> Text
+contentRef bytes = "b" <> Text.pack (show (ByteString.length bytes)) <> "-" <> fnvHex bytes
+
 base16Text :: ByteString -> Text
-base16Text = Text.pack . concatMap byteHex . ByteString.unpack
-  where
-    byteHex byte = [digit (byte `shiftR` 4), digit (byte .&. 15)]
-    digit nibble
-      | nibble < 10 = toEnum (fromEnum '0' + fromIntegral nibble)
-      | otherwise = toEnum (fromEnum 'a' + fromIntegral nibble - 10)
+base16Text = TextEncoding.decodeLatin1 . LazyByteString.toStrict . ByteStringBuilder.toLazyByteString . ByteStringBuilder.byteStringHex
 
 -- | 64-bit FNV-1a of exact bytes as 16 hex digits (cache key for host
 -- measurement; not a security fence).

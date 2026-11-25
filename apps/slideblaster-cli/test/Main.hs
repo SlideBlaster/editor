@@ -746,6 +746,8 @@ buildArgumentParsing = do
   assertLeft "build takes one target" (parseArguments ["build", "--html", "--pdf", "t.slideBlaster.md"])
   assertLeft "--steps is for pdf" (parseArguments ["build", "--html", "--steps", "t.slideBlaster.md"])
   assertLeft "build needs a deck" (parseArguments ["build", "--pdf"])
+  assertEqual "shots passes its arguments on" (Right (CliShots ["d/t.slideBlaster.md", "--compare"])) (parseArguments ["shots", "d/t.slideBlaster.md", "--compare"])
+  assertLeft "shots needs a deck" (parseArguments ["shots"])
 
 pdfPieces :: IO ()
 pdfPieces = do

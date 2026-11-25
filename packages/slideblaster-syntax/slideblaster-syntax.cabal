@@ -26,6 +26,11 @@ library
       SlideBlaster.Syntax.Html.Reader
       SlideBlaster.Syntax.Markdown.Reader
       SlideBlaster.Syntax.Tex.Reader
+      SlideBlaster.Syntax.Tikz.Ast
+      SlideBlaster.Syntax.Tikz.Parse
+      SlideBlaster.Syntax.Tikz.Math
+      SlideBlaster.Syntax.Tikz.Eval
+      SlideBlaster.Syntax.Tikz.Edit
   hs-source-dirs:      src
   build-depends:
       base >=4.20 && <5
@@ -81,3 +86,19 @@ test-suite slideblaster-syntax-flow-tests
       -Wmissing-export-lists
       -Wmissing-home-modules
       -Wpartial-fields
+
+test-suite slideblaster-syntax-tikz-tests
+  type:                exitcode-stdio-1.0
+  main-is:             Tikz.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
+    , containers >=0.6 && <0.9
+    , directory >=1.3 && <1.4
+    , slideblaster-syntax
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat

@@ -4,8 +4,9 @@
 #   ~/.local/share/applications/slideblaster.desktop
 #   ~/.local/share/icons/hicolor/256x256/apps/slideblaster.png
 #   ~/.config/autostart/slideblaster.desktop       only with --autostart (starts hidden in the tray)
-# The launcher points the app at THIS repo's `sb` binary and hosts/web, so build those first:
-#   (cd hosts/web && npm run build); cabal build exe:sb; (cd apps/desktop/src-tauri && cargo build)
+# The app embeds the editor and the core (see README.md for the build). The launcher points it at
+# THIS repo's `sb` binary and hosts/web, which it uses only to compile figures and export PDF:
+#   cabal build exe:sb
 # `--uninstall` removes everything this script installs.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

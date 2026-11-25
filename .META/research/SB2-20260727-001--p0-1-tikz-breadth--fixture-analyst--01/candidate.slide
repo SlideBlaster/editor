@@ -1,0 +1,242 @@
+deck "Event Ingest, End to End" (
+  author: "Dana Reyes"
+  venue: "Platform guild review"
+  aspect: 16:9
+  canvas: 1600x900
+  theme: "paper"
+  language: en
+)
+
+slide architecture "How an event becomes queryable" (
+  background: "paper"
+  transition: none
+) """
+% Figure styles. Style expansion is authored source: the canvas may honour it
+% but must not claim to own, name, or rewrite it.
+\tikzset{
+  stage/.style={
+    draw=blue!55!black,
+    fill=blue!8,
+    rounded corners=2pt,
+    very thick,
+    text width=26mm,
+    align=center,
+    minimum height=11mm,
+    font=\small
+  },
+  store/.style={
+    draw=teal!60!black,
+    fill=teal!8,
+    rounded corners=6pt,
+    thick,
+    text width=24mm,
+    align=center,
+    minimum height=13mm,
+    font=\small
+  },
+  gate/.style={
+    draw=orange!70!black,
+    fill=orange!14,
+    circle,
+    thick,
+    minimum size=14mm,
+    font=\footnotesize\bfseries
+  },
+  card/.style={
+    draw=black!45,
+    fill=white,
+    rounded corners=3pt,
+    line width=0.8pt,
+    text width=52mm,
+    font=\small
+  },
+  flow/.style={-stealth, very thick, draw=blue!55!black},
+  trace/.style={-{Latex[length=2.4mm]}, thick, dashed, draw=black!55}
+}
+
+\node[anchor=north west, text width=90mm, style=display] (title) at (1,8.4) {
+How an event becomes queryable
+};
+
+% Ingest path. The first stage is placed absolutely; the next two follow it.
+\node[stage, anchor=north west] (edge-collector) at (1,6.4) {
+**Edge collector**\\
+HTTP and gRPC
+};
+
+\node[stage, right=12mm of edge-collector] (decode) {
+**Decode**\\
+schema registry
+};
+
+\node[stage, right=12mm of decode] (enrich) {
+**Enrich**\\
+tenant and geo
+};
+
+\node[gate, below=14mm of enrich] (overflow) {\(p_{99}\)};
+
+\node[store, anchor=north west] (hot-store) at (11.9,6.4) {
+**Hot store**\\
+7 days, columnar
+};
+
+\node[store, anchor=north west] (query-api) at (11.9,3.9) {
+**Query API**\\
+SQL and PromQL
+};
+
+\node[
+  draw=black!55,
+  fill=black!4,
+  rounded corners=2pt,
+  thick,
+  text width=22mm,
+  align=center,
+  font=\footnotesize,
+  anchor=north
+] (audit-log) at (5.2,1.4) {
+Append-only audit log
+};
+
+\node[card, anchor=north west] (contract) at (1,3.9) {
+What the team actually promises:
+
+1. **At-least-once** delivery into the hot store.
+2. Decode failures land in the dead-letter topic — never silently dropped.
+3. Enrichment happens before routing, so a tenant is never guessed.
+
+<div class="sla">
+  Edge-to-queryable budget: \(p_{99} \le 250\,\mathrm{ms}\).
+</div>
+};
+
+\node[anchor=north west, text width=48mm, style=body] (budget) at (6.9,3.4) {
+The stage budget people argue about:
+\[
+  \sum_{s \in \mathrm{stages}} t_s + t_{\mathrm{commit}} \le 250\,\mathrm{ms}.
+\]
+<span class="hint">Measured at the edge, not at the broker.</span>
+};
+
+% Straight flow along the ingest path.
+\draw[flow] (edge-collector) -- (decode);
+\draw[flow] (decode) -- (enrich);
+\draw[flow] (enrich.east) -- (hot-store.west);
+\draw[flow] (enrich.south) -- node[right, font=\footnotesize] {over budget} (overflow.north);
+
+% Orthogonal flow. Storage feeds the query surface; decode and the overflow
+% gate both report to the audit log.
+\draw[flow] (hot-store.south) |- (query-api.west);
+\draw[trace] (decode.south) -| (audit-log.north);
+\draw[trace] (overflow.south) -| (audit-log.east);
+
+% Deliberately expanded region: the shard fan-out is generated, so no authored
+% node identity or coordinate exists to write back to.
+\foreach \region [count=\index] in {eu, us, ap} {
+  \node[store, text width=16mm, minimum height=7mm, font=\footnotesize]
+    (shard-\region) at ($(hot-store.south east) + (0.9, -0.8*\index)$) {Shard \region};
+}
+
+% Deliberately transformed region: a decorative shadow behind the ingest path,
+% expressed with a scope transformation and a computed rectangle.
+\begin{scope}[shift={(0.12,-0.12)}, opacity=0.18]
+  \path[fill=black!45, rounded corners=2pt]
+    (edge-collector.north west) rectangle (enrich.south east);
+\end{scope}
+
+% Deliberately computed placement: this tag hangs off another node's border.
+\node[anchor=west, font=\footnotesize\itshape, text=black!60] (sla-tag)
+  at ([xshift=4mm]query-api.east) {gate at p99};
+"""
+
+note """
+Walk the top row left to right, then drop to the audit log.
+
+Two honest caveats when this slide is on screen:
+
+- the shard row is generated, so it is illustrative rather than exact;
+- the budget only holds while the enrich cache is warm.
+
+Ask whether anyone has measured the edge-to-queryable path end to end.
+"""
+
+slide backpressure "Where backpressure actually bites" (
+  background: "paper"
+  transition: fade
+) """
+\node[anchor=north west, text width=90mm, style=display] (heading) at (1,8.4) {
+Where backpressure actually bites
+};
+
+\node[
+  draw=orange!70!black,
+  fill=orange!12,
+  circle,
+  thick,
+  minimum size=18mm,
+  font=\footnotesize\bfseries,
+  anchor=center
+] (queue) at (4,5.6) {queue};
+
+\node[
+  draw=blue!55!black,
+  fill=blue!8,
+  rounded corners=2pt,
+  very thick,
+  text width=30mm,
+  align=center,
+  anchor=center
+] (consumer) at (8.6,5.6) {
+**Consumer group**\\
+8 workers
+};
+
+\node[
+  draw=red!60!black,
+  fill=red!8,
+  rounded corners=2pt,
+  thick,
+  text width=30mm,
+  align=center,
+  anchor=center
+] (dead-letter) at (13.2,2.8) {
+**Dead letter**\\
+replayable
+};
+
+\node[anchor=north west, text width=62mm, style=body] (reading) at (1,3.4) {
+Read the queue depth, not the CPU graph:
+
+- depth flat, latency rising: the consumer is slow;
+- depth rising, latency flat: the producer is bursting;
+- both rising: you are already late.
+
+<div class="rule">
+  Lag is a queue property, so
+  \(\mathrm{lag} = \mathrm{offset}_{\mathrm{head}} - \mathrm{offset}_{\mathrm{commit}}\).
+</div>
+};
+
+\draw[-stealth, very thick, draw=blue!55!black] (queue) -- (consumer);
+\draw[-{Latex[length=2.4mm]}, thick, dashed, draw=red!60!black]
+  (consumer.south) |- (dead-letter.west);
+
+% Deliberately expanded region: worker lanes are drawn by a loop over computed
+% offsets, so they are decoration rather than authored objects.
+\foreach \lane in {1,2,3,4} {
+  \draw[draw=black!25, line width=0.4pt]
+    ([yshift=\lane*1.4mm]consumer.west) -- ([yshift=\lane*1.4mm]consumer.east);
+}
+
+% Deliberately computed placement.
+\node[anchor=south, font=\footnotesize\itshape, text=black!60] (depth-tag)
+  at ([yshift=7mm]queue.north) {depth = lag};
+"""
+
+note """
+The three-case reading is the whole point of this slide.
+
+Do not promise a fix here; the next slide in the real talk is the capacity
+review, and that is a budget conversation rather than an engineering one.
+"""

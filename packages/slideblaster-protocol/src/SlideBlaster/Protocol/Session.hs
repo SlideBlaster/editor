@@ -15,6 +15,8 @@ module SlideBlaster.Protocol.Session
   , CommandName (..)
   , PaintOutcome (..)
   , Direction (..)
+  , PictureEditOp (..)
+  , FigureEditOp (..)
   , ProviderOutcome (..)
   , ProviderDiagnostic (..)
   , ProviderArtifact (..)
@@ -32,7 +34,9 @@ import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Builder qualified as ByteStringBuilder
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Text.Encoding qualified as TextEncoding
 import Data.Char (ord)
 import Data.Foldable (toList)
 import Data.Scientific (floatingOrInteger, toRealFloat)
@@ -68,6 +72,46 @@ data PaintOutcome = Painted | PaintFailed !Text
 data Direction = StepNext | StepPrevious
   deriving stock (Eq, Show)
 
+-- | One canvas edit of a slide's picture block. Points are plan pixels (the
+-- session coordinate space); nodes are named by id, lines as @line-N@.
+data PictureEditOp
+  = -- | TikZ options for the new node, its centre, and its content.
+    PictureAddNode !Text !Double !Double !Text
+  | PictureMoveNode !Text !Double !Double
+  | -- | Node, side, the node it attaches to, and the gap in plan pixels (none: the default gap).
+    PictureAttach !Text !Text !Text !(Maybe Double)
+  | PictureSetText !Text !Text
+  | -- | Item (node id or @line-N@), options to set (bare when the value is absent) and keys to remove.
+    PictureStyle !Text ![(Text, Maybe Text)] ![Text]
+  | -- | Node and the width and height its box should have, in plan pixels.
+    PictureResize !Text !Double !Double
+  | PictureConnect !Text !Text
+  | PictureDelete !Text
+  | -- | Bring a picture file onto the slide, shifted by plan pixels.
+    PictureAddInclude !Text !Double !Double
+  | -- | Give an included picture (@cat-N@) a shift, in plan pixels.
+    PictureMoveInclude !Text !Double !Double
+  | -- | Remove several items (ids as they are before the edit).
+    PictureDeleteMany ![Text]
+  | -- | Node and where it goes in the painting order: @front@, @back@, @forward@, @backward@.
+    PictureReorder !Text !Text
+  | -- | Picture statements to copy onto the slide, shifted right and down by plan pixels.
+    PicturePaste !Text !Double !Double
+  | -- | Several edits as one step.
+    PictureBatch ![PictureEditOp]
+  | -- | Line, how it goes (@straight@, @hv@, @vh@, @bend left@, @bend right@), bend in degrees.
+    PictureRoute !Text !Text !(Maybe Double)
+  | -- | Line, label number (0 adds one), text (empty removes).
+    PictureLabelText !Text !Int !Text
+  | -- | Line, label number, options to set and to remove.
+    PictureLabelStyle !Text !Int ![(Text, Maybe Text)] ![Text]
+  | -- | Line, step (from 1) and the plan point to put into it.
+    PictureAddPoint !Text !Int !Double !Double
+  | -- | Line, point (from 0) and where it goes, in plan pixels.
+    PictureMovePoint !Text !Int !Double !Double
+  | PictureRemovePoint !Text !Int
+  deriving stock (Eq, Show)
+
 data ProviderArtifact = ProviderArtifact
   { artifactMime :: !Text
   , artifactBytes :: !ByteString
@@ -98,6 +142,9 @@ data SessionRequest
   | ApplySourceReplace !Word64 !Word64 !Word64 !ByteString !ByteString
   | ReplaceSource !Word64 !ByteString
   | SessionCommand !CommandName !(Maybe Word64)
+  | PictureEdit !Word64 !Text !PictureEditOp
+  | FigureEdit !Word64 !Text !FigureEditOp
+  -- ^ revision, the figure's reference, the change
   | SelectSlide !Text
   | AcknowledgePaint !FenceValue
   | PaintCompletion !FenceValue !PaintOutcome
@@ -110,6 +157,9 @@ data SessionRequest
   | PresentRoute !Text
   | PresentClose
   | WorkspaceSnapshot
+  | ImageRefs !Bool
+  -- ^ whether images are named in plans (and fetched with 'Resources') rather than carried in every plan
+  | Resources ![Text]
   deriving stock (Eq, Show)
 
 -- | Stable, source-redacted failures.
@@ -229,6 +279,14 @@ decodeObject request = do
         "redo" -> exact ["name", "revision"] >> SessionCommand Redo . Just <$> word "revision" request
         _ -> Left SessionUnknownCommand
     "select_slide" -> exact ["frame"] >> SelectSlide <$> text "frame" request
+    "picture_edit" -> do
+      exact ["revision", "frame", "op"]
+      op <- field "op" request >>= pictureOp
+      PictureEdit <$> word "revision" request <*> text "frame" request <*> pure op
+    "figure_edit" -> do
+      exact ["revision", "figure", "op"]
+      op <- field "op" request >>= figureOp
+      FigureEdit <$> word "revision" request <*> text "figure" request <*> pure op
     "acknowledge_paint" -> exact ["fence"] >> AcknowledgePaint <$> fence request
     "paint_completion" -> do
       exact ["fence", "outcome"]
@@ -265,11 +323,138 @@ decodeObject request = do
     "present_route" -> exact ["route"] >> PresentRoute <$> text "route" request
     "present_close" -> exact [] >> Right PresentClose
     "workspace_snapshot" -> exact [] >> Right WorkspaceSnapshot
+    "image_refs" -> do
+      exact ["on"]
+      field "on" request >>= \value -> case value of
+        Bool on -> Right (ImageRefs on)
+        _ -> Left (SessionInvalidField "on")
+    "resources" -> do
+      exact ["refs"]
+      refs <- field "refs" request >>= \value -> case value of
+        Array items | length items <= 2000 -> traverse (\item -> case item of String ref -> Right ref; _ -> Left (SessionInvalidField "refs")) (toList items)
+        _ -> Left (SessionInvalidField "refs")
+      Right (Resources refs)
     "pointer_event" -> Left (SessionNotImplemented "pointer_event")
     "activate_node" -> Left (SessionNotImplemented "activate_node")
     _ -> Left SessionUnknownCommand
   where
     providerKey = if KeyMap.member "artifact" request then "artifact" else "diagnostics"
+
+-- | A change to a TikZ figure the core draws itself. @at@ is where the
+-- statement or node starts in the figure's text, as the drawing reports it.
+data FigureEditOp
+  = -- | right and up, in centimetres
+    FigureMove !Int !Double !Double
+  | FigureText !Int !Text
+  | -- | set an option (an empty value writes the bare key), or with no value take it away
+    FigureOption !Int !Text !(Maybe Text)
+  | FigureDelete !Int
+  | -- | a new node at a place of the picture (centimetres, y up): its options and text
+    FigureAddNode !Double !Double !Text !Text
+  | -- | a new line between two nodes, with these options
+    FigureAddLine !Int !Int !Text
+  | -- | at least this wide and high, in centimetres
+    FigureResize !Int !Double !Double
+  | -- | @straight@, @hv@, @vh@, @bend left@ or @bend right@
+    FigureRoute !Int !Text
+  | FigureBatch ![FigureEditOp]
+  deriving stock (Eq, Show)
+
+figureOp :: Value -> Either SessionError FigureEditOp
+figureOp (Object op) = do
+  kind <- text "kind" op
+  let exact keys = requireKeys ("kind" : keys) op
+      at = count "at" op
+  case kind of
+    "move" -> exact ["at", "dx", "dy"] >> FigureMove <$> at <*> double "dx" op <*> double "dy" op
+    "text" -> exact ["at", "text"] >> FigureText <$> at <*> text "text" op
+    "option" -> do
+      exact ["at", "key", "value"]
+      value <- case KeyMap.lookup "value" op of
+        Just Null -> Right Nothing
+        _ -> Just <$> text "value" op
+      FigureOption <$> at <*> text "key" op <*> pure value
+    "delete" -> exact ["at"] >> FigureDelete <$> at
+    "add_node" -> exact ["x", "y", "options", "text"] >> FigureAddNode <$> double "x" op <*> double "y" op <*> text "options" op <*> text "text" op
+    "add_line" -> exact ["from", "to", "options"] >> FigureAddLine <$> count "from" op <*> count "to" op <*> text "options" op
+    "resize" -> exact ["at", "width", "height"] >> FigureResize <$> at <*> double "width" op <*> double "height" op
+    "route" -> do
+      exact ["at", "to"]
+      to <- text "to" op
+      if to `elem` ["straight", "hv", "vh", "bend left", "bend right"] then FigureRoute <$> at <*> pure to else Left (SessionInvalidField "to")
+    "batch" -> do
+      exact ["ops"]
+      ops <- field "ops" op >>= \value -> case value of
+        Array items | length items <= 500 -> traverse figureOp (toList items)
+        _ -> Left (SessionInvalidField "ops")
+      Right (FigureBatch ops)
+    _ -> Left (SessionInvalidField "kind")
+figureOp _ = Left (SessionInvalidField "op")
+
+pictureOp :: Value -> Either SessionError PictureEditOp
+pictureOp (Object op) = do
+  kind <- text "kind" op
+  let exact keys = requireKeys ("kind" : keys) op
+  case kind of
+    "add_node" -> exact ["options", "x", "y", "text"] >> PictureAddNode <$> text "options" op <*> double "x" op <*> double "y" op <*> text "text" op
+    "move_node" -> exact ["node", "x", "y"] >> PictureMoveNode <$> text "node" op <*> double "x" op <*> double "y" op
+    "attach" -> do
+      exact ["node", "side", "to", "distance"]
+      gap <- case KeyMap.lookup "distance" op of
+        Just Null -> Right Nothing
+        _ -> Just <$> double "distance" op
+      PictureAttach <$> text "node" op <*> text "side" op <*> text "to" op <*> pure gap
+    "style" -> do
+      exact ["item", "set", "remove"]
+      set <- array "set" op >>= traverse optionEntry
+      remove <- array "remove" op >>= traverse (\v -> case v of String key -> Right key; _ -> Left (SessionInvalidField "remove entry"))
+      PictureStyle <$> text "item" op <*> pure set <*> pure remove
+    "resize" -> exact ["node", "width", "height"] >> PictureResize <$> text "node" op <*> double "width" op <*> double "height" op
+    "set_text" -> exact ["node", "text"] >> PictureSetText <$> text "node" op <*> text "text" op
+    "connect" -> exact ["from", "to"] >> PictureConnect <$> text "from" op <*> text "to" op
+    "delete" -> exact ["item"] >> PictureDelete <$> text "item" op
+    "add_include" -> exact ["path", "x", "y"] >> PictureAddInclude <$> text "path" op <*> double "x" op <*> double "y" op
+    "move_include" -> exact ["item", "x", "y"] >> PictureMoveInclude <$> text "item" op <*> double "x" op <*> double "y" op
+    "delete_many" -> do
+      exact ["items"]
+      PictureDeleteMany <$> (array "items" op >>= traverse (\v -> case v of String item -> Right item; _ -> Left (SessionInvalidField "items entry")))
+    "reorder" -> do
+      exact ["node", "to"]
+      to <- text "to" op
+      if to `elem` ["front", "back", "forward", "backward"] then PictureReorder <$> text "node" op <*> pure to else Left (SessionInvalidField "to")
+    "paste" -> exact ["text", "x", "y"] >> PicturePaste <$> text "text" op <*> double "x" op <*> double "y" op
+    "route" -> do
+      exact ["line", "to", "bend"]
+      bend <- case KeyMap.lookup "bend" op of
+        Just Null -> Right Nothing
+        _ -> Just <$> double "bend" op
+      to <- text "to" op
+      if to `elem` ["straight", "hv", "vh", "bend left", "bend right"] && maybe True (\d -> d >= 0 && d <= 180) bend then PictureRoute <$> text "line" op <*> pure to <*> pure bend else Left (SessionInvalidField "to")
+    "label" -> exact ["line", "index", "text"] >> PictureLabelText <$> text "line" op <*> (count "index" op) <*> text "text" op
+    "label_style" -> do
+      exact ["line", "index", "set", "remove"]
+      set <- array "set" op >>= traverse optionEntry
+      remove <- array "remove" op >>= traverse (\v -> case v of String key -> Right key; _ -> Left (SessionInvalidField "remove entry"))
+      PictureLabelStyle <$> text "line" op <*> (count "index" op) <*> pure set <*> pure remove
+    "add_point" -> exact ["line", "step", "x", "y"] >> PictureAddPoint <$> text "line" op <*> (count "step" op) <*> double "x" op <*> double "y" op
+    "move_point" -> exact ["line", "point", "x", "y"] >> PictureMovePoint <$> text "line" op <*> (count "point" op) <*> double "x" op <*> double "y" op
+    "remove_point" -> exact ["line", "point"] >> PictureRemovePoint <$> text "line" op <*> (count "point" op)
+    "batch" -> do
+      exact ["ops"]
+      ops <- array "ops" op >>= traverse pictureOp
+      -- one level only, and a bounded number of edits
+      if null ops || length ops > 400 || or [True | PictureBatch _ <- ops] then Left (SessionInvalidField "ops") else Right (PictureBatch ops)
+    _ -> Left (SessionInvalidField "op.kind")
+pictureOp _ = Left (SessionInvalidField "op must be an object")
+
+optionEntry :: Value -> Either SessionError (Text, Maybe Text)
+optionEntry (Object entry) = do
+  requireKeys ["key", "value"] entry
+  key <- text "key" entry
+  case KeyMap.lookup "value" entry of
+    Just Null -> Right (key, Nothing)
+    _ -> (,) key . Just <$> text "value" entry
+optionEntry _ = Left (SessionInvalidField "set entry")
 
 fileEntry :: Value -> Either SessionError (Text, ByteString)
 fileEntry (Object entry) = do
@@ -356,6 +541,10 @@ double key obj = field key obj >>= \value -> case value of
   _ -> Left (SessionInvalidField (key <> " must be a number"))
 
 -- | Non-negative integer below 2^53 (exactly representable in JavaScript).
+-- A small whole number: which label, step or point of a line.
+count :: Text -> Object -> Either SessionError Int
+count key obj = word key obj >>= \value -> if value <= 10000 then Right (fromIntegral value) else Left (SessionInvalidField key)
+
 word :: Text -> Object -> Either SessionError Word64
 word key obj = field key obj >>= \value -> case value of
   Number n | Right integer <- (floatingOrInteger n :: Either Double Integer), integer >= 0, integer <= 9007199254740991 -> Right (fromIntegral integer)
@@ -366,21 +555,22 @@ base16 key obj = text key obj >>= maybe (Left (SessionInvalidField (key <> " mus
 
 -- | Lowercase base16 of exact bytes.
 encodeBase16 :: ByteString -> Text
-encodeBase16 = Text.pack . concatMap hex . ByteString.unpack
-  where
-    hex byte = [digit (byte `div` 16), digit (byte `mod` 16)]
-    digit nibble
-      | nibble < 10 = toEnum (fromEnum '0' + fromIntegral nibble)
-      | otherwise = toEnum (fromEnum 'a' + fromIntegral nibble - 10)
+encodeBase16 = TextEncoding.decodeLatin1 . LazyByteString.toStrict . ByteStringBuilder.toLazyByteString . ByteStringBuilder.byteStringHex
 
 -- | Strict lowercase base16 (even length, no uppercase).
 decodeBase16 :: Text -> Maybe ByteString
-decodeBase16 value = ByteString.pack <$> pairs (Text.unpack value)
-  where
-    pairs [] = Just []
-    pairs (high : low : rest) = (\h l remaining -> fromIntegral (h * 16 + l :: Int) : remaining) <$> nibble high <*> nibble low <*> pairs rest
-    pairs _ = Nothing
-    nibble c
-      | c >= '0' && c <= '9' = Just (ord c - ord '0')
-      | c >= 'a' && c <= 'f' = Just (ord c - ord 'a' + 10)
-      | otherwise = Nothing
+decodeBase16 value =
+  -- over the bytes, not through a list of characters: a project is megabytes of this
+  let digits = TextEncoding.encodeUtf8 value
+      count = ByteString.length digits
+      nibble w
+        | w >= 48 && w <= 57 = Just (w - 48)
+        | w >= 97 && w <= 102 = Just (w - 87)
+        | otherwise = Nothing
+      step index
+        | index + 1 >= count = Nothing
+        | otherwise = case (nibble (ByteString.index digits index), nibble (ByteString.index digits (index + 1))) of
+            (Just high, Just low) -> Just (high * 16 + low, index + 2)
+            _ -> Nothing
+      (bytes, _) = ByteString.unfoldrN (count `div` 2) step 0
+   in if even count && ByteString.length bytes == count `div` 2 then Just bytes else Nothing

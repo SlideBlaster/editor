@@ -11,6 +11,7 @@
  * on plan items.
  */
 
+import { isOutline } from "../ui/shape-library.ts";
 export interface Box {
   readonly x: number;
   readonly y: number;
@@ -60,6 +61,7 @@ export type Content =
   | { readonly t: "box"; readonly title: readonly Content[] | null; readonly fill: string; readonly titleFill: string; readonly children: readonly Content[] }
   | { readonly t: "columns"; readonly columns: readonly { readonly width: string; readonly children: readonly Content[] }[] }
   | { readonly t: "figure"; readonly fingerprint: string; readonly width: number; readonly height: number }
+  | { readonly t: "drawing"; /** The figure's reference, and its file when it has one of its own. */ readonly ref: string; readonly file: string | null; readonly width: number; readonly height: number; /** Plan pixels to the centimetre. */ readonly scale: number; /** Where the drawing's top-left corner is in the picture: centimetres, y up. */ readonly origin: { readonly x: number; readonly y: number }; readonly items: readonly DrawingItem[] }
   | {
       readonly t: "image"; readonly src: string; readonly alt: string;
       /** Embedded project image (bytes in the plan so presenter windows and exports need no fetch); width/height are slide units. */
@@ -98,6 +100,22 @@ export type Item =
       readonly radius: number;
       readonly opacity: number;
       readonly hit: Hit | null;
+      /** Degrees counter-clockwise about the box's centre. */
+      readonly rotate?: number;
+    }
+  | {
+      /** An outline stretched over `box`: `d` is path data in a unit box (x right, y down, 0 to 1). */
+      readonly kind: "path";
+      readonly id: string;
+      readonly box: Box;
+      readonly d: string;
+      readonly fill: string | null;
+      readonly stroke: Stroke | null;
+      readonly opacity: number;
+      readonly hit: Hit | null;
+      readonly rotate?: number;
+      /** The outline mirrored left-right (`x`) or top-bottom (`y`) within its box. */
+      readonly flip?: { readonly x: boolean; readonly y: boolean };
     }
   | {
       readonly kind: "line";
@@ -105,7 +123,20 @@ export type Item =
       readonly from: Pt;
       readonly to: Pt;
       readonly stroke: Stroke;
-      readonly arrow: "none" | "end" | "both";
+      readonly arrow: "none" | "end" | "start" | "both";
+      /** The kind of head when the line names one (`-latex`, `-stealth`); a plain triangle otherwise. */
+      readonly tip?: "latex" | "stealth";
+      readonly hit: Hit | null;
+    }
+  | {
+      /** A line that is not straight: `d` is path data in plan pixels, absolute `M`, `L` and `C` only. */
+      readonly kind: "trail";
+      readonly id: string;
+      readonly d: string;
+      readonly stroke: Stroke;
+      readonly arrow: "none" | "end" | "start" | "both";
+      /** The kind of head when the line names one (`-latex`, `-stealth`); a plain triangle otherwise. */
+      readonly tip?: "latex" | "stealth";
       readonly hit: Hit | null;
     }
   | {
@@ -123,6 +154,7 @@ export type Item =
       readonly style: TextStyle;
       readonly content: readonly Content[];
       readonly contentHash?: string;
+      readonly rotate?: number;
     }
   | {
       readonly kind: "figure";
@@ -151,6 +183,98 @@ export type Item =
       readonly message?: string;
     };
 
+export type AttachSide = "above" | "below" | "left" | "right" | "above left" | "above right" | "below left" | "below right";
+
+/** A picture-tier node as the canvas edits it: geometry in plan pixels, content as written. */
+export interface PictureNode {
+  readonly id: string;
+  readonly named: boolean;
+  readonly box: Box;
+  /** The authored `at (x,y)` point; for an attached node, its laid-out centre. */
+  readonly at: { readonly x: number; readonly y: number };
+  /** Set when the node is attached to a side of another (`below=of a`) and follows it. */
+  readonly attached: { readonly side: AttachSide; readonly to: string; /** The written gap; null is the default one. */ readonly distance: number | null } | null;
+  readonly source: string;
+  /** The options as they apply (named styles stand for their options); a bare key has a null value. */
+  readonly options: readonly PictureOption[];
+  readonly span: { readonly start: number; readonly end: number };
+  /** Set when the node comes from a picture file brought in with `\\cat`; its `span` then counts in that file. */
+  readonly from?: PictureFrom | null;
+}
+
+/** Where an included item comes from: the file, the `\\cat` statement (`cat-N`, with its span in the deck) and its shift in plan pixels. */
+export interface PictureFrom {
+  readonly file: string;
+  readonly cat: string;
+  readonly span: { readonly start: number; readonly end: number };
+  readonly shift: { readonly x: number; readonly y: number };
+}
+
+export interface PictureOption { readonly key: string; readonly value: string | null }
+
+/** How a step of a line reaches its point. */
+export type PictureJoin = "straight" | "hv" | "vh" | "bend left" | "bend right" | "curve";
+
+/** A label on a line (`index` counts them as written, from 1), where it is painted, its text as written and its options. */
+export interface PictureLabel { readonly index: number; readonly box: Box; readonly source: string; readonly options: readonly PictureOption[] }
+
+/**
+ * The points of a trail's path data: `M x y`, then `L x y` or `C x1 y1 x2 y2 x y`, all absolute.
+ * Null when the text is anything else, so nothing but such a path is ever painted.
+ */
+export function trailPoints(d: unknown): { readonly command: "M" | "L" | "C"; readonly points: readonly Pt[] }[] | null {
+  if (typeof d !== "string" || d.length > 4000) return null;
+  const tokens = d.trim().split(/\s+/);
+  const steps: { command: "M" | "L" | "C"; points: Pt[] }[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const command = tokens[i];
+    if (command !== "M" && command !== "L" && command !== "C") return null;
+    if ((command === "M") !== (steps.length === 0)) return null;
+    const count = command === "C" ? 3 : 1;
+    const points: Pt[] = [];
+    for (let k = 0; k < count; k += 1) {
+      const x = tokens[i + 1 + 2 * k], y = tokens[i + 2 + 2 * k];
+      if (x === undefined || y === undefined || !/^-?\d+(\.\d+)?$/.test(x) || !/^-?\d+(\.\d+)?$/.test(y) || Math.abs(Number(x)) > 1e7 || Math.abs(Number(y)) > 1e7) return null;
+      points.push({ x: Number(x), y: Number(y) });
+    }
+    steps.push({ command, points });
+    i += 1 + 2 * count;
+  }
+  return steps.length >= 2 ? steps : null;
+}
+
+/** Path data from such steps. */
+export const trailData = (steps: readonly { readonly command: string; readonly points: readonly Pt[] }[]): string =>
+  steps.map((s) => `${s.command} ${s.points.map((p) => `${p.x} ${p.y}`).join(" ")}`).join(" ");
+
+/** A picture-tier line: `item` prefixes its painted segments (`<item>-<k>`), `ends` are node ids or null for plain points. */
+export interface PictureLine {
+  readonly id: string;
+  readonly item: string;
+  readonly options: readonly PictureOption[];
+  readonly ends: readonly (string | null)[];
+  /** For each end or corner: its written point in plan pixels, or null where it is a node. */
+  readonly points?: readonly (Pt | null)[];
+  /** How each step goes; one fewer than `ends`. */
+  readonly joins?: readonly PictureJoin[];
+  /** The bend of a bent line in degrees, when it has one. */
+  readonly bend?: number | null;
+  readonly labels?: readonly PictureLabel[];
+  readonly span: { readonly start: number; readonly end: number };
+  readonly from?: PictureFrom | null;
+}
+
+/** A piece of a slide's ordinary text: its byte span in the deck and exact source. An empty span
+ * is where text would go; `before` and `after` then separate it from what is around it. */
+export interface WrittenText {
+  readonly part: "title" | "body";
+  readonly span: { readonly start: number; readonly end: number };
+  readonly source: string;
+  readonly before: string;
+  readonly after: string;
+}
+
 export interface Plan {
   readonly protocol: "slideblaster.session/1";
   readonly frame: string;
@@ -166,6 +290,17 @@ export interface Plan {
   readonly items: readonly Item[];
   /** Ready figure artifacts of this frame by fingerprint (resolves inline `figure` content). */
   readonly artifacts?: Readonly<Record<string, Artifact>>;
+  /** The slide's own title and body text as written, for typing on the slide (same slides as `picture`). */
+  readonly written?: readonly WrittenText[];
+  /** Present on slides that take canvas edits (the deck's own slides, audience side). */
+  readonly picture?: {
+    readonly nodes: readonly PictureNode[];
+    readonly lines: readonly PictureLine[];
+    /** Default gap between a node and one attached to it. */
+    readonly distance: number;
+    /** The slide's own title and body, which nodes can attach to but which are not picture nodes. */
+    readonly regions: readonly { readonly id: string; readonly box: Box }[];
+  };
 }
 
 export class PlanError extends Error {
@@ -211,18 +346,37 @@ function validateItem(value: unknown, path: string, budget: { nodes: number }): 
       if (item.stroke !== null) stroke(item.stroke, `${path}.stroke`);
       finite(item.radius, `${path}.radius`);
       finite(item.opacity, `${path}.opacity`);
+      if (item.rotate !== undefined) finite(item.rotate, `${path}.rotate`);
+      return;
+    case "path":
+      box(item.box, `${path}.box`);
+      if (!isOutline(item.d)) fail(`${path}.d`, "expected outline path data (M L Q C A Z and numbers)");
+      if (item.fill !== null) colour(item.fill, `${path}.fill`);
+      if (item.stroke !== null) stroke(item.stroke, `${path}.stroke`);
+      finite(item.opacity, `${path}.opacity`);
+      if (item.rotate !== undefined) finite(item.rotate, `${path}.rotate`);
+      if (item.flip !== undefined) {
+        const flip = obj(item.flip, `${path}.flip`);
+        if (typeof flip.x !== "boolean" || typeof flip.y !== "boolean") fail(`${path}.flip`, "expected x and y booleans");
+      }
       return;
     case "line":
       pt(item.from, `${path}.from`);
       pt(item.to, `${path}.to`);
       stroke(item.stroke, `${path}.stroke`);
-      oneOf(item.arrow, ["none", "end", "both"], `${path}.arrow`);
+      oneOf(item.arrow, ["none", "end", "start", "both"], `${path}.arrow`);
+      return;
+    case "trail":
+      if (trailPoints(item.d) === null) fail(`${path}.d`, "expected path data in plan pixels (M, L and C with numbers)");
+      stroke(item.stroke, `${path}.stroke`);
+      oneOf(item.arrow, ["none", "end", "start", "both"], `${path}.arrow`);
       return;
     case "text":
     case "flow":
       box(item.box, `${path}.box`);
       textStyle(item.style, `${path}.style`);
       if (kind === "text") oneOf(item.visibility, ["visible", "reserved"], `${path}.visibility`);
+      if (item.rotate !== undefined) finite(item.rotate, `${path}.rotate`);
       arr(item.content, `${path}.content`).forEach((c, i) => validateContent(c, `${path}.content[${i}]`, 0, budget));
       return;
     case "figure":
@@ -276,6 +430,17 @@ export function validateContent(value: unknown, path: string, depth: number, bud
       });
       return;
     case "figure": str(node.fingerprint, `${path}.fingerprint`); return;
+    case "drawing":
+      finite(node.width, `${path}.width`);
+      finite(node.height, `${path}.height`);
+      arr(node.items, `${path}.items`).forEach((raw, i) => {
+        const item = obj(raw, `${path}.items[${i}]`);
+        str(item.id, `${path}.items[${i}].id`);
+        oneOf(item.k, ["path", "node"], `${path}.items[${i}].k`);
+        if (item.k === "path") str(item.d, `${path}.items[${i}].d`);
+        else kids(item.content, `${path}.items[${i}].content`);
+      });
+      return;
     case "image": str(node.src, `${path}.src`); return;
     case "colour": colour(node.color, `${path}.color`); return kids(node.children, `${path}.children`);
     case "div": return kids(node.children, `${path}.children`);
@@ -321,3 +486,41 @@ function artifact(v: unknown, path: string): void {
   str(a.mime, `${path}.mime`);
   if (typeof a.bytesBase16 !== "string" || !/^(?:[0-9a-f]{2})*$/.test(a.bytesBase16)) fail(`${path}.bytesBase16`, "expected lowercase base16");
 }
+
+/** A part of a TikZ figure the core carried out itself. Lengths are plan pixels from the drawing's top-left corner; `span` is the statement in the figure's text. */
+export type DrawingItem =
+  | {
+      readonly k: "path"; readonly id: string; readonly span: readonly [number, number];
+      /** What an edit names: where the statement (or, for a node's outline, the node) starts. */
+      readonly at: number;
+      /** Set on the outline of a node: the id of that node. */
+      readonly of?: string;
+      readonly d: string;
+      readonly stroke: { readonly color: string; readonly width: number; readonly dash: readonly number[] } | null;
+      readonly fill: string | null;
+      readonly tips: { readonly start: DrawingTip | null; readonly end: DrawingTip | null };
+      readonly opacity: number;
+      /** Offsets and softness in plan pixels (y down), darkness from 0 to 1. */
+      readonly shadow?: { readonly dx: number; readonly dy: number; readonly blur: number; readonly opacity: number } | null;
+      readonly rotate?: number;
+      readonly about?: { readonly x: number; readonly y: number };
+    }
+  | {
+      readonly k: "node"; readonly id: string; readonly span: readonly [number, number];
+      readonly at: number;
+      /** The node within its statement, and its text between the braces. */
+      readonly node: readonly [number, number]; readonly text: readonly [number, number];
+      readonly name: string | null;
+      readonly box: Box;
+      readonly rotate: number; readonly opacity: number;
+      readonly color: string; readonly size: number; readonly bold: boolean; readonly italic: boolean; readonly mono: boolean; readonly align: string;
+      /** Whether the text is broken at the node's text width. */
+      readonly wrap: boolean;
+      readonly source: string;
+      /** What the size of the text depends on: the page reports the measured size under this key. */
+      readonly key: string;
+      readonly content: readonly Content[];
+    };
+
+/** An arrow head: its kind, its length in plan pixels, whether it is hollow. */
+export interface DrawingTip { readonly kind: "to" | "latex" | "stealth" | "triangle" | "bar" | "circle" | "diamond" | "square"; readonly length: number; readonly open: boolean }

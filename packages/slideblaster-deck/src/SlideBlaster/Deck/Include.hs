@@ -5,7 +5,8 @@
 -- Description : The @\\include[opts]{path}@ line and project-relative path keys.
 --
 -- A sub-presentation is spliced into a parent deck by a block-level line
--- @\\include[titleslide,dividers]{../other-talk}@. This module reads that line
+-- @\\include[titleslide,dividers]{../other-talk}@ (also @skip={ids}@ and
+-- @only={ids}@ to leave slides out or take only some). This module reads that line
 -- and defines the path keys the analyzer and the file loaders share: a key is a
 -- project-relative path with @.@ and @..@ resolved, where a @..@ that leaves the
 -- project root is spelled @_up@ (so @..\/talk@ is @_up\/talk@ and every key is a
@@ -13,6 +14,8 @@
 module SlideBlaster.Deck.Include
   ( IncludeLine (..)
   , parseIncludeLine
+  , optionName
+  , optionList
   , normalizeKey
   , joinKey
   , keyDirectory
@@ -43,9 +46,34 @@ parseIncludeLine raw = do
   let (path, rest) = Text.breakOn "}" afterBrace
   if Text.null rest || not (Text.null (Text.strip (Text.drop 1 rest))) || Text.null (Text.strip path)
     then Nothing
-    else Just (IncludeLine [w | o <- Text.splitOn "," options, let w = Text.strip o, not (Text.null w)] (Text.strip path))
+    else Just (IncludeLine [w | o <- splitOutsideBraces options, let w = Text.strip o, not (Text.null w)] (Text.strip path))
   where
     line = Text.dropWhileEnd (\c -> c == '\n' || c == '\r') raw
+
+-- | Split at the commas that are not inside braces, so @skip={a,b}@ stays whole.
+splitOutsideBraces :: Text -> [Text]
+splitOutsideBraces = map (Text.pack . reverse) . go (0 :: Int) "" . Text.unpack
+  where
+    go _ current [] = [current]
+    go depth current (c : rest)
+      | c == ',' && depth == 0 = current : go depth "" rest
+      | c == '{' = go (depth + 1) (c : current) rest
+      | c == '}' = go (max 0 (depth - 1)) (c : current) rest
+      | otherwise = go depth (c : current) rest
+
+-- | The name of an option: @skip@ for @skip={a,b}@, the option itself when it has no value.
+optionName :: Text -> Text
+optionName = Text.strip . fst . Text.breakOn "="
+
+-- | The list an option gives: @skip={a,b}@ and @skip=a@ are both read. Nothing
+-- when the option is not written.
+optionList :: Text -> [Text] -> Maybe [Text]
+optionList name options = case [value | o <- options, let (n, value) = Text.breakOn "=" o, Text.strip n == name, not (Text.null value)] of
+  [] -> Nothing
+  values -> Just [w | value <- values, part <- Text.splitOn "," (unbrace (Text.strip (Text.drop 1 value))), let w = Text.strip part, not (Text.null w)]
+  where
+    unbrace t = fromMaybeText t (Text.stripPrefix "{" t >>= Text.stripSuffix "}")
+    fromMaybeText fallback = maybe fallback id
 
 -- | Resolve @.@ and @..@; a @..@ beyond the root becomes @_up@.
 normalizeKey :: Text -> Text

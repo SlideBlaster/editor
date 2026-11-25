@@ -28,7 +28,7 @@ prov :: Provenance
 prov = CanvasProvenance Markdown
 
 analyzer :: Analyzer
-analyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter}
+analyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter, editPicture = \_ _ _ _ _ -> Left "not offered by the test analyzer"}
 
 sections :: ByteString -> [(Text, Text, (Int, Int), [Text])]
 sections bytes = go 0 (Text.lines (Encoding.decodeUtf8 bytes)) []
@@ -73,7 +73,7 @@ buildFrame index title ident sp body =
       { frameKey = ident
       , frameTitleText = title
       , frameSpan = sp
-      , frameScene = FrameInput ident (content [TextRun prov title]) (content nodes) Nothing [] [] (content [])
+      , frameScene = FrameInput ident (content [TextRun prov title]) (content nodes) Nothing [] [] [] (content [])
       , frameNotes = content [TextRun prov ("notes of " <> title)]
       , frameOrigin = Nothing
       }

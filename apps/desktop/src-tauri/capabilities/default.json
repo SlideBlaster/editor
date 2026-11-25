@@ -1,26 +1,26 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The splash page and the sb serve page (loopback only) may call the shell's own commands and the dialog plugin.",
+  "description": "The editor page (the app's own bundled page) may call the shell's commands and the dialog plugin.",
   "windows": [
     "main"
   ],
-  "remote": {
-    "urls": [
-      "http://127.0.0.1:*/*",
-      "http://localhost:*/*"
-    ]
-  },
   "permissions": [
     "core:default",
     "dialog:default",
     "allow-open-folder-dialog",
-    "allow-shell-ready",
     "allow-open-presenter",
     "allow-debug-log",
     "allow-list-presentations",
     "allow-open-presentation",
     "allow-add-presentation",
-    "allow-remove-presentation"
+    "allow-remove-presentation",
+    "allow-open-pdf",
+    "allow-project-list",
+    "allow-project-read",
+    "allow-project-write",
+    "allow-project-cache-write",
+    "allow-render-block",
+    "allow-export-pdf"
   ]
 }

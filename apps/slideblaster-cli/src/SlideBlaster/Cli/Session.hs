@@ -24,6 +24,7 @@ import SlideBlaster.Cli.Watch
 import SlideBlaster.Extension qualified as Ext
 import SlideBlaster.Product.Runtime.Analysis (Analyzer)
 import SlideBlaster.Product.Runtime.Driver
+import SlideBlaster.Product.Runtime.Session (nodeSizesPath)
 import SlideBlaster.Protocol.Session qualified as Session
 
 import Control.Concurrent (forkIO, killThread, newMVar, threadDelay, withMVar)
@@ -34,6 +35,7 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.Char (isDigit, isSpace)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
@@ -41,8 +43,8 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
 import Data.Text.Read qualified as TextRead
 import Network.WebSockets qualified as WS
-import System.Directory (doesDirectoryExist, listDirectory)
-import System.FilePath ((</>))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO.Error (tryIOError)
 
 -- | The @/session@ endpoint backed by the given deck analyzer.
@@ -58,20 +60,37 @@ sessionMount maybeAnalyzer bundledThemes pollMicros =
           let push bytes = ignoreClosed (withMVar lock (\_ -> WS.sendTextData connection bytes))
           driver <- newSessionDriver (withBundledThemes bundledThemes (sessionCapabilities env)) analyzer push
           watcher <- forkIO (watchProject env pollMicros driver)
+          kept <- newIORef Nothing
           ( handle (\closed -> const (pure ()) (closed :: WS.ConnectionException)) . forever $ do
               frame <- WS.receiveData connection :: IO ByteString
               response <- handleSessionFrame driver frame
               push response
+              keepNodeSizes env kept driver
             )
             `finally` killThread watcher
     }
+
+-- Write the measured node sizes next to the other caches when they changed, so
+-- a later @sb build@ (which has no page to measure with) lays pictures out alike.
+keepNodeSizes :: CapEnv -> IORef (Maybe ByteString) -> SessionDriver -> IO ()
+keepNodeSizes env kept driver = do
+  current <- driverNodeSizesFile driver
+  previous <- readIORef kept
+  case current of
+    Just bytes | current /= previous -> do
+      let target = capRoot env </> Text.unpack nodeSizesPath
+      written <- tryIOError (createDirectoryIfMissing True (takeDirectory target) >> ByteString.writeFile target bytes)
+      either (const (pure ())) (const (writeIORef kept current)) written
+    _ -> pure ()
 
 -- A tab that went away is not an error: late pushes to it are dropped quietly.
 ignoreClosed :: IO () -> IO ()
 ignoreClosed = handle (\closed -> const (pure ()) (closed :: WS.ConnectionException))
 
--- | Offer the themes shipped with the web host (@<web>/themes/<name>/...@) as
--- @themes/<name>/...@ project files, unless the project provides its own.
+-- | Offer what ships with the editor as project files, unless the project
+-- provides its own: each directory's files appear under the directory's own
+-- name (@.../themes/fns/theme.css@ as @themes/fns/theme.css@,
+-- @.../shapes/flowchart.tikz@ as @shapes/flowchart.tikz@).
 withBundledThemes :: [FilePath] -> Capabilities -> Capabilities
 withBundledThemes [] capabilities = capabilities
 withBundledThemes dirs capabilities =
@@ -98,7 +117,7 @@ bundledFiles root = do
         then go next
         else do
           bytes <- tryIOError (ByteString.readFile (root </> next))
-          pure (either (const []) (\b -> [(Text.pack ("themes" </> next), b)]) bytes)
+          pure (either (const []) (\b -> [(Text.pack (takeFileName root </> next), b)]) bytes)
 
 -- | Storage and rendering for the driver, over the project directory.
 sessionCapabilities :: CapEnv -> Capabilities
@@ -123,7 +142,10 @@ sessionCapabilities env =
 listProject :: CapEnv -> IO [(Text, ByteString)]
 listProject env = do
   tree <- scanProject (capRoot env)
-  fmap (mapMaybe id) . mapM load $ [(path, real) | (path, (real, (_, size))) <- Map.toAscList tree, size <= 16777216]
+  -- caches are not project files, except the measured node sizes the core lays pictures out from
+  sizes <- tryIOError (ByteString.readFile (capRoot env </> Text.unpack nodeSizesPath))
+  files <- fmap (mapMaybe id) . mapM load $ [(path, real) | (path, (real, (_, size))) <- Map.toAscList tree, size <= 16777216]
+  pure (files <> either (const []) (\bytes -> [(nodeSizesPath, bytes)]) sizes)
   where
     load (path, real) = do
       bytes <- tryIOError (ByteString.readFile real)

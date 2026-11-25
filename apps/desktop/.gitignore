@@ -1,2 +1,4 @@
 src-tauri/target/
 src-tauri/gen/
+ui-dist/
+src-tauri/target-selftest/

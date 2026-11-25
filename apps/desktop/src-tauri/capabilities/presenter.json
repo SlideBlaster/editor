@@ -6,12 +6,6 @@
     "presenter-console",
     "presenter-audience"
   ],
-  "remote": {
-    "urls": [
-      "http://127.0.0.1:*/*",
-      "http://localhost:*/*"
-    ]
-  },
   "permissions": [
     "core:default",
     "allow-open-presenter",

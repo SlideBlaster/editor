@@ -13,6 +13,10 @@ export interface MeasureItem {
   readonly key: string;
   readonly content: unknown;
   readonly width: number;
+  /** Shrink to the content's own width (at most `width`) instead of filling `width`: a picture node. */
+  readonly fit?: boolean;
+  /** The type the content is painted in, when it is not the slide's default (a picture node). */
+  readonly style?: { readonly font: string; readonly size: number; readonly weight: number; readonly italic: boolean; readonly lineHeight: number };
 }
 
 export interface MeasureResult {
@@ -63,7 +67,7 @@ export function createDomMeasurer(options: DomMeasurerOptions): DomMeasurer {
   let ready: Promise<unknown> | null = null;
 
   const cacheKey = (item: MeasureItem): string =>
-    `${hash(JSON.stringify(item.content))}|${item.width}|${options.fontFamily ?? ""}`;
+    `${hash(JSON.stringify(item.content))}|${item.width}|${options.fontFamily ?? ""}|${item.fit === true ? "fit" : ""}|${item.style === undefined ? "" : JSON.stringify(item.style)}`;
 
   return {
     async measureAll(items) {
@@ -81,8 +85,19 @@ export function createDomMeasurer(options: DomMeasurerOptions): DomMeasurer {
         const painting: Promise<void>[] = [];
         for (const [key, item] of misses) {
           const el = doc.createElement("div");
-          el.style.width = `${item.width}px`;
+          if (item.fit === true) { el.style.width = "max-content"; el.style.maxWidth = `${item.width}px`; }
+          else el.style.width = `${item.width}px`;
           if (options.fontFamily !== undefined) el.style.fontFamily = options.fontFamily;
+          if (item.style !== undefined) {
+            // the same declarations the painter puts on a flow item (1 slide unit = 1px here)
+            el.className = "sb-item sb-flow sb-measure-node";
+            el.style.position = "static";
+            el.style.fontFamily = item.style.font;
+            el.style.fontSize = `${item.style.size}px`;
+            el.style.fontWeight = String(item.style.weight);
+            el.style.fontStyle = item.style.italic ? "italic" : "normal";
+            el.style.lineHeight = String(item.style.lineHeight);
+          }
           painting.push(paintContentInto(el, item.content as readonly Content[], { ...options.paint, doc }));
           slide.append(el);
           elements.set(key, el);

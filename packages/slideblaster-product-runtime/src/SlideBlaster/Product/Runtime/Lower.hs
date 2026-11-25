@@ -17,7 +17,8 @@ module SlideBlaster.Product.Runtime.Lower
   ) where
 
 import SlideBlaster.Canvas
-  ( Content
+  ( mkOverlayStep
+  , Content
   , ContentNode (..)
   , ContentItem (..)
   , ContentOverlayEvent (..)
@@ -62,18 +63,49 @@ data FigureInfo
   | FigureReady !Text !Double !Double
   | FigureFailed !Text !Text
   | FigureAbsent !Text !Text
+  | FigureDrawn !Value
+  -- ^ a TikZ figure carried out here: a @drawing@ value, ready for the page
   | FigureImage !Text !Text !Double !Double
+  | FigureImageRef !Text !Text !Double !Double
+  -- ^ the same, with the bytes named rather than carried: media type, the name to ask for them by, width and height
   -- ^ embedded project image: media type, base16 bytes, display width and height in plan pixels
   deriving stock (Eq, Show)
 
 -- | Lower content as it appears at one audience step.
 lowerContent :: OverlayStep -> (SourceRef -> FigureInfo) -> [ContentNode] -> [Value]
-lowerContent step figures nodes = snd (lowerSeq step figures 1 nodes)
+lowerContent step figures nodes = snd (lowerSeq step figures 1 (resolvePauses nodes))
+
+-- | Give every plain @\\pause@ its step. A pause shows what follows one step
+-- after everything before it: after the pauses before it, and also after the
+-- last step an overlay specification before it names. So
+-- @\\only\<1\>{a} \\only\<2\>{b} \\pause c@ shows c on step 3. (Beamer
+-- counts pauses on their own and would show c on step 2, together with b.)
+resolvePauses :: [ContentNode] -> [ContentNode]
+resolvePauses = snd . several (1, 1)
+  where
+    several state [] = (state, [])
+    several state (node : rest) =
+      let (state', node') = one state node
+          (state'', rest') = several state' rest
+       in (state'', node' : rest')
+    -- the state: the step a pause has reached, and the last step named so far
+    one state@(local, named) node =
+      case node of
+        OverlayPauseContent p PauseNext ->
+          let next = max local named + 1
+           in ((next, named), maybe node (OverlayPauseContent p . PauseAt) (mkOverlayStep next))
+        OverlayPauseContent _ (PauseAt target) -> ((overlayStepNumber target, named), node)
+        OverlayContent hook children ->
+          let (state', children') = several (local, max named (overlayStepNumber (overlayFinalStep hook))) children
+           in (state', OverlayContent hook children')
+        StyledRun p style children -> let (state', children') = several state children in (state', StyledRun p style children')
+        TransparentContainer p kind children -> let (state', children') = several state children in (state', TransparentContainer p kind children')
+        _ -> (state, node)
 
 -- | Number of audience steps content needs (at least one).
 contentStepCount :: Content -> Int
 contentStepCount value =
-  fromIntegral (foldl max 1 (stepsOf 1 (contentOverlayEvents value)))
+  fromIntegral (foldl max 1 (stepsOf 1 (contentOverlayEvents (content (resolvePauses (contentNodes value))))))
   where
     stepsOf :: Natural -> [ContentOverlayEvent] -> [Natural]
     stepsOf _ [] = []
@@ -134,6 +166,14 @@ lowerNode step figures local contentNode =
     OverlayContent hook [TransparentContainer _ (GenericContainer "only") children] ->
       let (local', inner) = lowerSeq step figures local children
        in (local', if overlayVisibleAt step hook then inner else [])
+    -- \\alert: emphasised on its steps, plain on the others.
+    OverlayContent hook [TransparentContainer _ (GenericContainer "alert") children] ->
+      let (local', inner) = lowerSeq step figures local children
+       in (local', if overlayVisibleAt step hook then [object ["t" .= ("colour" :: Text), "color" .= ("#c62828" :: Text), "children" .= inner]] else inner)
+    -- \\invisible: hidden, keeping its space, on its steps; shown on the others.
+    OverlayContent hook [TransparentContainer _ (GenericContainer "invisible") children] ->
+      let (local', inner) = lowerSeq step figures local children
+       in (local', if overlayVisibleAt step hook then [object ["t" .= ("reserved" :: Text), "children" .= inner]] else inner)
     OverlayContent hook children ->
       let (local', inner) = lowerSeq step figures local children
        in (local', gate hook inner)
@@ -343,7 +383,9 @@ figureValue info =
         , "width" .= width
         , "height" .= height
         ]
+    FigureDrawn value -> value
     FigureImage mime bytes width height -> imageValue "" "" (FigureImage mime bytes width height)
+    FigureImageRef mime ref width height -> imageValue "" "" (FigureImageRef mime ref width height)
     FigureUnknown -> placeholder "pending" "" "Figure"
     FigurePending fingerprint -> placeholder "pending" fingerprint "Compiling figure"
     FigureFailed fingerprint message -> placeholder "error" fingerprint message
@@ -369,6 +411,16 @@ imageValue src alt info =
         , "alt" .= alt
         , "mime" .= mime
         , "bytesBase16" .= bytes
+        , "width" .= width
+        , "height" .= height
+        ]
+    FigureImageRef mime ref width height ->
+      object
+        [ "t" .= ("image" :: Text)
+        , "src" .= src
+        , "alt" .= alt
+        , "mime" .= mime
+        , "bytesRef" .= ref
         , "width" .= width
         , "height" .= height
         ]

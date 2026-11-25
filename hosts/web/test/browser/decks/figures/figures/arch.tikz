@@ -1,0 +1,127 @@
+\begin{tikzpicture}[
+    % Define styles
+    block/.style={
+        rectangle,
+        draw,
+        thick,
+        minimum width=3cm,
+        minimum height=1.8cm,
+        rounded corners=5pt,
+        blur shadow={shadow blur steps=5, shadow blur extra rounding=1.5pt},
+        font=\sffamily\large\bfseries,
+        align=center
+    },
+    % Changed to Blue theme
+    mainblock/.style={
+        block,
+        fill=blue!10,
+        draw=blue!60
+    },
+    % Changed to Orange theme
+    propblock/.style={
+        block,
+        fill=orange!15,
+        draw=orange!60
+    },
+    % Changed to Green theme
+    interpblock/.style={
+        block,
+        fill=green!10,
+        draw=green!60!black
+    },
+    arrow/.style={
+        thick,
+        -{Stealth[length=8pt]},
+        shorten >=3pt,
+        shorten <=-2pt,
+        font=\sffamily\small,
+        draw=gray!70
+    },
+    dot/.style={
+        circle,
+        fill=gray!70,
+        inner sep=0pt,
+        minimum size=4pt
+    }
+]
+
+% --- Nodes ---
+
+% P4 block on the left
+\node[mainblock] (p4) at (0,0) {P4};
+
+% Property block above P4
+\node[propblock] (property) at (0,3) {Property};
+
+% Core Language block on the right
+\node[mainblock] (core) at (11,0) {Core\\Language};
+
+% Interpreter block
+\node[interpblock] (interpreter) at (15,1.5) {Interpreter};
+
+
+% --- Horizontal Pipeline (Before P4 -> Core) ---
+
+% Define parse arrow before P4
+\coordinate (parsestart) at ($(p4.west)+(-2,0)$);
+\coordinate (parseend) at ($(p4.west)+(-0.2,0)$);
+
+% Parse arrow (before P4)
+\node[dot] at (parsestart) {};
+\draw[arrow] (parsestart) -- (parseend);
+\node[above, font=\sffamily\small] at ($(parsestart)!0.5!(parseend)$) {parse};
+
+% Define start and end points for the remaining pipeline
+\coordinate (start) at ($(p4.east)+(0.2,0)$);
+\coordinate (end) at (core.west); % Connect directly to the block edge
+
+% Calculate 2 intermediate points to split the gap into 3 equal segments
+\path (start) -- (end)
+    coordinate[pos=0.33] (step1)
+    coordinate[pos=0.67] (step2);
+
+% 1. Typecheck & Infer
+\node[dot] at (start) {};
+\draw[arrow] (start) -- (step1);
+\node[above, font=\sffamily\small, align=center] at ($(start)!0.5!(step1)$) {typecheck \&\\infer};
+
+% 2. Simplify
+\node[dot] at (step1) {};
+\draw[arrow] (step1) -- (step2);
+\node[above, font=\sffamily\small] at ($(step1)!0.5!(step2)$) {simplify};
+
+% 3. Convert (Fixed connection to Core)
+\node[dot] at (step2) {};
+\draw[arrow] (step2) -- (core.west);
+\node[above, font=\sffamily\small] at ($(step2)!0.5!(core.west)$) {convert};
+
+
+% --- Junction (Property + Core -> Interpreter) ---
+
+% Define the junction point where arrows combine
+\coordinate (junction) at (13,1.5);
+
+% Starting points slightly offset from blocks
+\coordinate (propstart) at ($(property.east)+(0.2,0)$);
+\coordinate (corestart) at ($(core.east)+(0.2,0)$);
+
+% Draw dots at start points
+\node[dot] at (propstart) {};
+\node[dot] at (corestart) {};
+
+% Draw elbow lines to the junction
+% From Property (Top)
+\draw[thick, draw=gray!70] (propstart) -- (junction |- propstart) -- (junction);
+% From Core (Bottom)
+\draw[thick, draw=gray!70] (corestart) -- (junction |- corestart) -- (junction);
+
+% Label at junction
+\node[above left, font=\sffamily\small\itshape, yshift=2pt] at (junction) {combine};
+
+% Single arrow from junction to Interpreter
+\draw[arrow, draw=gray!70, thick] (junction) -- (interpreter.west);
+
+% Title
+
+
+\end{tikzpicture}

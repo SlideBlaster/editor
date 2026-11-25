@@ -7,6 +7,7 @@ module Main (main) where
 
 import SlideBlaster.Product.Runtime.Session
 import SlideBlaster.Protocol.Session
+import SlideBlaster.Product.Runtime.MarkdownAnalyzer (markdownAnalyzer)
 import TestAnalyzer
 
 import Control.Monad (unless)
@@ -21,6 +22,7 @@ import Data.Foldable (toList)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import System.Exit (exitFailure)
 
 main :: IO ()
@@ -35,8 +37,14 @@ main = do
   run "stale measurement ticket rejects; overflow becomes a diagnostic" measureLaw
   run "presenter walks steps then slides" presenterLaw
   run "project_file change re-requests the figure" projectFileLaw
+  run "a library shape is asked for, then drawn as its outline" shapeLaw
+  run "several elements are moved, copied, reordered, removed and turned" arrangeLaw
+  run "lines go at right angles or bent, carry labels and take points" routeLaw
+  run "a TikZ figure is drawn by the core and edited through its text" figureLaw
+  run "images are named in plans and fetched once when the page asks for that" imageRefLaw
   run "codec is exact-key and rejects Product/2" codecLaw
   run "a deck in a subfolder is laid out with the theme next to it" deckThemeLaw
+  run "a deck in a subfolder finds its images next to it, as sb build does" deckImageLaw
 
 run :: String -> IO () -> IO ()
 run name check = check >> putStrLn ("PASS: " <> name)
@@ -91,7 +99,7 @@ effectsOfKind :: Text -> [Value] -> [Value]
 effectsOfKind kind = filter ((== String kind) . field "kind")
 
 files1 :: [(Text, ByteString)]
-files1 = [("talk.slideBlaster.md", deck1), ("figures/a.tikz", "\\draw (0,0) -- (1,1);")]
+files1 = [("talk.slideBlaster.md", deck1), ("figures/a.tikz", "\\draw plot coordinates {(0,0) (1,1)};")]
 
 open1 :: IO (Session, [Value])
 open1 = do
@@ -112,8 +120,8 @@ openLaw = do
     [e] -> do
       expect "fingerprint is 64 hex" 64 (Text.length (str (field "fingerprint" e)))
       expect "relays /cap shape" (String "tikz") (path ["request", "kind"] e)
-      expect "body is the file" (String "\\draw (0,0) -- (1,1);") (path ["request", "input", "body"] e)
-      expect "inputs carry base64" (String "XGRyYXcgKDAsMCkgLS0gKDEsMSk7") (path ["request", "input", "inputs"] e `seq` field "contentBase64" (head' (arr (path ["request", "input", "inputs"] e))))
+      expect "body is the file" (String "\\draw plot coordinates {(0,0) (1,1)};") (path ["request", "input", "body"] e)
+      expect "inputs carry base64" (String "XGRyYXcgcGxvdCBjb29yZGluYXRlcyB7KDAsMCkgKDEsMSl9Ow==") (path ["request", "input", "inputs"] e `seq` field "contentBase64" (head' (arr (path ["request", "input", "inputs"] e))))
     other -> failWith ("expected one block.render, got " <> show (length other))
   expect "one measure batch" 1 (length (effectsOfKind "measure" effects))
   expect "active is first" (String "one") (path ["navigator", "activeFrame"] (view s))
@@ -249,6 +257,15 @@ deckThemeLaw = do
       has colour = Char8.pack colour `ByteString.isInfixOf` ByteString.toStrict shown
   expect "the deck's own theme" (True, False) (has "#123456", has "#654321")
 
+deckImageLaw :: IO ()
+deckImageLaw = do
+  let svg = Char8.pack "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"/>"
+      deck = Char8.pack "---\nslideblaster: 1\ntitle: T\n---\n\n## One {#one}\n\n\\figure{figures/a.svg}\n\n## Two {#two}\n\n\\figure{../shared/b.svg}\n"
+      files :: [(Text, ByteString)]
+      files = [("sub/talk.slideBlaster.md", deck), ("sub/figures/a.svg", svg), ("shared/b.svg", svg)]
+  (s, _, _) <- send (newSession analyzer) (req "open_project" ["entry" .= ("sub/talk.slideBlaster.md" :: Text), "files" .= [object ["path" .= p, "bytesBase16" .= encodeBase16 b] | (p, b) <- files]])
+  expect "no missing image" [] (fmap (field "message") (filter ((== String "missing_asset") . field "code") (arr (field "diagnostics" (view s)))))
+
 presenterLaw :: IO ()
 presenterLaw = do
   (s, _) <- open1
@@ -272,11 +289,148 @@ projectFileLaw :: IO ()
 projectFileLaw = do
   (s, effects) <- open1
   e <- figureEffect effects
-  (s2, _, effects2) <- send s (req "project_file" ["path" .= ("figures/a.tikz" :: Text), "bytesBase16" .= encodeBase16 "\\draw (0,0) -- (2,2);"])
+  (s2, _, effects2) <- send s (req "project_file" ["path" .= ("figures/a.tikz" :: Text), "bytesBase16" .= encodeBase16 "\\draw plot coordinates {(0,0) (2,2)};"])
   e2 <- figureEffect effects2
   expect "new fingerprint" False (field "fingerprint" e == field "fingerprint" e2)
-  (_, _, effects3) <- send s2 (req "project_file" ["path" .= ("figures/a.tikz" :: Text), "bytesBase16" .= encodeBase16 "\\draw (0,0) -- (2,2);"])
+  (_, _, effects3) <- send s2 (req "project_file" ["path" .= ("figures/a.tikz" :: Text), "bytesBase16" .= encodeBase16 "\\draw plot coordinates {(0,0) (2,2)};"])
   expect "same bytes, same fingerprint: no new request" [] (effectsOfKind "block.render" effects3)
+
+-- A node names a library style: the view says which library file is missing;
+-- once the host supplies it the node is drawn as the style's outline.
+shapeLaw :: IO ()
+shapeLaw = do
+  let deck = "---\nslideblaster: 1\n---\n\n## One {#one}\n\n```slide\n\\node[flow.decision, fill=yellow] (a) at (4,4) {A};\n```\n" :: ByteString
+      library = "\\tikzset{flow.decision/.style={outline={M 0.5 0 L 1 0.5 L 0.5 1 L 0 0.5 Z}, minimum width=2.4, minimum height=2}}\n" :: ByteString
+      kinds session = [(field "kind" item, field "d" item) | item <- planItems session, field "id" item == String "pic-bg-a"]
+      planItems session = case path ["navigator", "items"] (viewValue session) of
+        Array frames -> concat [case path ["audience", "items"] f of Array items -> toList items; _ -> [] | f <- toList frames, field "frame" f == String "one"]
+        _ -> []
+  (s, _, _) <- send (newSession markdownAnalyzer) (req "open_project" ["entry" .= ("deck.slideBlaster.md" :: Text), "files" .= [object ["path" .= ("deck.slideBlaster.md" :: Text), "bytesBase16" .= encodeBase16 deck]]])
+  expect "the missing library file is named" (Aeson.toJSON ["shapes/flow.tikz" :: Text]) (field "needs" (viewValue s))
+  expect "without its definition the node is a plain filled box" [(String "rect", Null)] (kinds s)
+  (s2, _, _) <- send s (req "project_file" ["path" .= ("shapes/flow.tikz" :: Text), "bytesBase16" .= encodeBase16 library])
+  expect "nothing is missing any more" (Aeson.toJSON ([] :: [Text])) (field "needs" (viewValue s2))
+  expect "the node is drawn as the outline" [(String "path", String "M 0.5 0 L 1 0.5 L 0.5 1 L 0 0.5 Z")] (kinds s2)
+  expect "library files are not offered as picture files" (Aeson.toJSON ([] :: [Text])) (field "pictureFiles" (viewValue s2))
+
+arrangeLaw :: IO ()
+arrangeLaw = do
+  let deck = "---\nslideblaster: 1\n---\n\n## One {#one}\n\n```slide\n\\node[draw] (a) at (2,3) {A};\n\\node[draw, rotate=30] (b) at (5,3) {B};\n\\node[outline={M 0 0 L 1 0.5 L 0 1 Z}, xscale=-1, rotate=90] (c) at (8,3) {};\n\\draw[->] (a) -- (b);\n```\n" :: ByteString
+      edit session op = send session (req "picture_edit" ["revision" .= field "revision" (viewValue session), "frame" .= ("one" :: Text), "op" .= object op])
+      refuse session op = sendErr session (req "picture_edit" ["revision" .= field "revision" (viewValue session), "frame" .= ("one" :: Text), "op" .= object op])
+      body session = Text.strip (Text.takeWhile (/= '`') (snd (Text.breakOnEnd "```slide\n" (Text.decodeUtf8 (fromMaybe "" (decodeBase16 (str (path ["source", "sourceBase16"] (viewValue session)))))))))
+      made effects = [str (field "node" e) | e <- effectsOfKind "node_created" effects]
+      items session = case path ["navigator", "items"] (viewValue session) of
+        Array frames -> concat [arr (path ["audience", "items"] f) | f <- toList frames, field "frame" f == String "one"]
+        _ -> []
+      item session name = case [i | i <- items session, field "id" i == String name] of i : _ -> i; [] -> Null
+      move node x y = object ["kind" .= ("move_node" :: Text), "node" .= (node :: Text), "x" .= (x :: Double), "y" .= (y :: Double)]
+  (s, _, _) <- send (newSession markdownAnalyzer) (req "open_project" ["entry" .= ("deck.slideBlaster.md" :: Text), "files" .= [object ["path" .= ("deck.slideBlaster.md" :: Text), "bytesBase16" .= encodeBase16 deck]]])
+  expect "a turned box and its text carry the turn" (Aeson.toJSON (30 :: Int), Aeson.toJSON (30 :: Int)) (field "rotate" (item s "pic-bg-b"), field "rotate" (item s "pic-b"))
+  expect "an outline carries its turn and its flip" (Aeson.toJSON (90 :: Int), object ["x" .= True, "y" .= False]) (field "rotate" (item s "pic-bg-c"), field "flip" (item s "pic-bg-c"))
+  expect "an unturned box carries neither" (Null, Null) (field "rotate" (item s "pic-bg-a"), field "flip" (item s "pic-bg-a"))
+  -- several moves are one edit and one revision
+  (s1, _, _) <- edit s ["kind" .= ("batch" :: Text), "ops" .= [move "a" 160 240, move "b" 400 240]]
+  expect "one revision for the batch" (num (field "revision" (viewValue s)) + 1) (num (field "revision" (viewValue s1)))
+  expect "both nodes moved" True (all (`Text.isInfixOf` body s1) ["(a) at (2,", "(b) at (5,"] && body s1 /= body s)
+  problem <- refuse s1 ["kind" .= ("batch" :: Text), "ops" .= [move "a" 160 240, move "nosuch" 0 0]]
+  expect "a batch with a step that cannot be done changes nothing" True (case problem of SessionEditRejected _ -> True; _ -> False)
+  expect "nested batches are refused by the codec" True (either (const True) (const False) (decodeSessionRequest (req "picture_edit" ["revision" .= (1 :: Int), "frame" .= ("one" :: Text), "op" .= object ["kind" .= ("batch" :: Text), "ops" .= [object ["kind" .= ("batch" :: Text), "ops" .= [move "a" 0 0]]]]])))
+  -- a copy of two joined nodes brings the line between them along, under new names
+  (s2, _, effects2) <- edit s1 ["kind" .= ("paste" :: Text), "text" .= ("\\node[draw] (a) at (2,3) {A};\n\\node[draw, rotate=30] (b) at (5,3) {B};\n\\draw[->] (a) -- (b);" :: Text), "x" .= (80 :: Double), "y" .= (80 :: Double)]
+  expect "the paste names the two nodes it made" 2 (length (made effects2))
+  expect "the copies are written after what was there" True (all (\n -> ("(" <> n <> ")") `Text.isInfixOf` body s2) (made effects2) && ("\\draw[->] (" <> Text.intercalate ") -- (" (made effects2) <> ");") `Text.isInfixOf` body s2)
+  -- order: a node sent to the back is written first
+  (s3, _, _) <- edit s2 ["kind" .= ("reorder" :: Text), "node" .= ("c" :: Text), "to" .= ("back" :: Text)]
+  expect "the node sent back is the first statement" True ("\\node[outline=" `Text.isPrefixOf` body s3)
+  expect "an unknown place is refused by the codec" True (either (const True) (const False) (decodeSessionRequest (req "picture_edit" ["revision" .= (1 :: Int), "frame" .= ("one" :: Text), "op" .= object ["kind" .= ("reorder" :: Text), "node" .= ("c" :: Text), "to" .= ("sideways" :: Text)]])))
+  -- several removed at once; the line between two removed nodes goes with them
+  (s4, _, _) <- edit s3 ["kind" .= ("delete_many" :: Text), "items" .= (["a", "b"] :: [Text])]
+  expect "both nodes and their line are gone, the copies stay" (False, False, True) ("(a) at" `Text.isInfixOf` body s4, "(a) -- (b)" `Text.isInfixOf` body s4, all (\n -> ("(" <> n <> ")") `Text.isInfixOf` body s4) (made effects2))
+
+routeLaw :: IO ()
+routeLaw = do
+  let deck = "---\nslideblaster: 1\n---\n\n## One {#one}\n\n```slide\n\\node[draw] (a) at (2,6) {A};\n\\node[draw] (b) at (8,3) {B};\n\\draw[->] (a) -| node[auto] {down} (b);\n```\n" :: ByteString
+      edit session op = send session (req "picture_edit" ["revision" .= field "revision" (viewValue session), "frame" .= ("one" :: Text), "op" .= object op])
+      written session = Text.decodeUtf8 (fromMaybe "" (decodeBase16 (str (path ["source", "sourceBase16"] (viewValue session)))))
+      block session = Text.takeWhile (/= '`') (snd (Text.breakOnEnd "```slide\n" (written session)))
+      lastLine session = Text.strip (last (Text.lines (block session)))
+      frame session = case path ["navigator", "items"] (viewValue session) of
+        Array frames -> case [f | f <- toList frames, field "frame" f == String "one"] of f : _ -> path ["audience"] f; [] -> Null
+        _ -> Null
+      item session name = case [i | i <- arr (field "items" (frame session)), field "id" i == String name] of i : _ -> i; [] -> Null
+      line session = case arr (path ["picture", "lines"] (frame session)) of l : _ -> l; [] -> Null
+  (s, _, _) <- send (newSession markdownAnalyzer) (req "open_project" ["entry" .= ("deck.slideBlaster.md" :: Text), "files" .= [object ["path" .= ("deck.slideBlaster.md" :: Text), "bytesBase16" .= encodeBase16 deck]]])
+  expect "a right-angled step is one trail through its corner" (String "trail", True, String "end") (field "kind" (item s "pic-line-1-1"), "M " `Text.isPrefixOf` str (field "d" (item s "pic-line-1-1")) && length (Text.splitOn " L " (str (field "d" (item s "pic-line-1-1")))) == 3, field "arrow" (item s "pic-line-1-1"))
+  expect "its label is painted as text of its own" (String "flow") (field "kind" (item s "pic-label-3-1"))
+  expect "the canvas is told how the line goes and what it carries" (Aeson.toJSON ["hv" :: Text], [String "down"]) (field "joins" (line s), fmap (field "source") (arr (field "labels" (line s))))
+  (s1, _, _) <- edit s ["kind" .= ("route" :: Text), "line" .= ("line-3" :: Text), "to" .= ("bend left" :: Text), "bend" .= (40 :: Int)]
+  expect "bent: the source says so" "\\draw[->] (a) to[bend left=40] node[auto] {down} (b);" (lastLine s1)
+  expect "bent: a trail with a curve" True (" C " `Text.isInfixOf` str (field "d" (item s1 "pic-line-1-1")))
+  (s2, _, _) <- edit s1 ["kind" .= ("route" :: Text), "line" .= ("line-3" :: Text), "to" .= ("straight" :: Text), "bend" .= Null]
+  expect "straight again: a plain line item" (String "line") (field "kind" (item s2 "pic-line-1-1"))
+  (s3, _, _) <- edit s2 ["kind" .= ("label" :: Text), "line" .= ("line-3" :: Text), "index" .= (1 :: Int), "text" .= ("" :: Text)]
+  expect "an emptied label is gone" ("\\draw[->] (a) -- (b);", Null) (lastLine s3, item s3 "pic-label-3-1")
+  (s4, _, _) <- edit s3 ["kind" .= ("add_point" :: Text), "line" .= ("line-3" :: Text), "step" .= (1 :: Int), "x" .= (640 :: Int), "y" .= (160 :: Int)]
+  expect "a point is written in slide units" "\\draw[->] (a) -- (8,7) -- (b);" (lastLine s4)
+  expect "the canvas gets the point back in plan pixels" (Aeson.toJSON [Null, object ["x" .= (640 :: Int), "y" .= (160 :: Int)], Null]) (field "points" (line s4))
+  expect "a route nobody knows is refused by the codec" True (either (const True) (const False) (decodeSessionRequest (req "picture_edit" ["revision" .= (1 :: Int), "frame" .= ("one" :: Text), "op" .= object ["kind" .= ("route" :: Text), "line" .= ("line-3" :: Text), "to" .= ("zigzag" :: Text), "bend" .= Null]])))
+
+figureLaw :: IO ()
+figureLaw = do
+  let deck = "---\nslideblaster: 1\n---\n\n## One {#one}\n\n```tikz\n\\node[draw, fill=blue!10] (a) at (0,0) {one};\n\\node[draw, circle] (b) at (3,1) {two};\n\\draw[->] (a) to[bend left] (b);\n```\n\n## Two {#two}\n\n\\figure{figures/f.tikz}\n\n## Three {#three}\n\n```tikz\n\\node[shape=nobody knows] (a) at (0,0) {one};\n```\n" :: ByteString
+      file = "\\begin{tikzpicture}[scale=2]\n  \\node[draw] (x) at (1,1) {X};\n\\end{tikzpicture}\n" :: ByteString
+      written session = Text.decodeUtf8 (fromMaybe "" (decodeBase16 (str (path ["source", "sourceBase16"] (viewValue session)))))
+      drawings value = case value of
+        Object o | KeyMap.lookup "t" o == Just (String "drawing") -> [value]
+        Object o -> concatMap drawings (KeyMap.elems o)
+        Array items -> concatMap drawings (toList items)
+        _ -> []
+      frame name session = case path ["navigator", "items"] (viewValue session) of
+        Array frames -> case [f | f <- toList frames, field "frame" f == String name] of f : _ -> path ["audience"] f; [] -> Null
+        _ -> Null
+      drawingOf name session = case drawings (frame name session) of d : _ -> d; [] -> Null
+      nodesOf d = [i | i <- arr (field "items" d), field "k" i == String "node"]
+      edit session figure op = send session (req "figure_edit" ["revision" .= field "revision" (viewValue session), "figure" .= figure, "op" .= object op])
+  (s, _, effects) <- send (newSession markdownAnalyzer) (req "open_project" ["entry" .= ("deck.slideBlaster.md" :: Text), "files" .= [object ["path" .= ("deck.slideBlaster.md" :: Text), "bytesBase16" .= encodeBase16 deck], object ["path" .= ("figures/f.tikz" :: Text), "bytesBase16" .= encodeBase16 file]]])
+  let one = drawingOf "one" s
+      two = drawingOf "two" s
+  expect "a figure the evaluator carries out is a drawing: two nodes, their outlines and the line" (2, 5) (length (nodesOf one), length (arr (field "items" one)))
+  expect "a figure with something it does not carry out is left to TeX" (Null, 1) (drawingOf "three" s, length (effectsOfKind "block.render" effects))
+  expect "the texts of its nodes are sent to be measured" True (any (\e -> any (\i -> "node:tz:" `Text.isPrefixOf` str (field "key" i)) (arr (field "items" e))) (effectsOfKind "measure" effects))
+  let at d source = case [field "at" n | n <- nodesOf d, field "source" n == String source] of v : _ -> v; [] -> Null
+  (s1, _, _) <- edit s (field "ref" one) ["kind" .= ("move" :: Text), "at" .= at one "one", "dx" .= (1 :: Int), "dy" .= (0.5 :: Double)]
+  expect "a move rewrites the node's coordinate in the deck" True ("\\node[draw, fill=blue!10] (a) at (1,0.5) {one};" `Text.isInfixOf` written s1)
+  (s2, _, _) <- edit s1 (field "ref" (drawingOf "one" s1)) ["kind" .= ("option" :: Text), "at" .= at (drawingOf "one" s1) "two", "key" .= ("fill" :: Text), "value" .= ("red!15" :: Text)]
+  expect "an option is written into the node" True ("\\node[draw, circle, fill=red!15] (b) at (3,1) {two};" `Text.isInfixOf` written s2)
+  (s3, _, fileEffects) <- edit s2 (field "ref" two) ["kind" .= ("move" :: Text), "at" .= at two "X", "dx" .= (1 :: Int), "dy" .= (0 :: Int)]
+  expect "a figure in its own file: the file is written, with the scaled coordinate" [String (encodeBase16 "\\begin{tikzpicture}[scale=2]\n  \\node[draw] (x) at (1.5,1) {X};\n\\end{tikzpicture}\n")] (fmap (field "bytesBase16") (effectsOfKind "file.write" fileEffects))
+  expect "and the deck's own text stays as it was" (written s2) (written s3)
+  (s3u, _, undoEffects) <- send s3 (req "command" ["name" .= ("undo" :: Text), "revision" .= field "revision" (viewValue s3)])
+  expect "undo puts the figure file back, and it is written" ([String (encodeBase16 file)], 1) (fmap (field "bytesBase16") (effectsOfKind "file.write" undoEffects), length (nodesOf (drawingOf "two" s3u)))
+  (_, _, redoEffects) <- send s3u (req "command" ["name" .= ("redo" :: Text), "revision" .= field "revision" (viewValue s3u)])
+  expect "redo writes the edit again" 1 (length (effectsOfKind "file.write" redoEffects))
+  expect "an edit of something that is not there is refused" True (either (const True) (const False) (decodeSessionRequest (req "figure_edit" ["revision" .= field "revision" (viewValue s3), "figure" .= field "ref" two, "op" .= object ["kind" .= ("delete" :: Text), "at" .= (9999 :: Int)]]) >>= runSession s3))
+
+imageRefLaw :: IO ()
+imageRefLaw = do
+  let deck = "---\nslideblaster: 1\n---\n\n## One {#one}\n\n![a picture](pic.svg)\n" :: ByteString
+      svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\"/></svg>" :: ByteString
+      opening = req "open_project" ["entry" .= ("deck.slideBlaster.md" :: Text), "files" .= [object ["path" .= ("deck.slideBlaster.md" :: Text), "bytesBase16" .= encodeBase16 deck], object ["path" .= ("pic.svg" :: Text), "bytesBase16" .= encodeBase16 svg]]]
+      holders key value = case value of
+        Object o -> [v | Just v <- [KeyMap.lookup key o]] <> concatMap (holders key) (KeyMap.elems o)
+        Array items -> concatMap (holders key) (toList items)
+        _ -> []
+  (plain, _, _) <- send (newSession markdownAnalyzer) opening
+  expect "unasked, a plan carries the image itself" (True, []) (String (encodeBase16 svg) `elem` holders "bytesBase16" (viewValue plain), holders "bytesRef" (viewValue plain))
+  (asked, _, _) <- send (newSession markdownAnalyzer) (req "image_refs" ["on" .= True])
+  (named, _, _) <- send asked opening
+  let refs = holders "bytesRef" (viewValue named)
+  expect "asked, it names the image and carries no bytes of it" (True, False) (not (null refs), String (encodeBase16 svg) `elem` holders "bytesBase16" (viewValue named))
+  (_, _, got) <- send named (req "resources" ["refs" .= take 1 refs])
+  expect "the bytes come when asked for by that name" [String (encodeBase16 svg)] (fmap (field "bytesBase16") (effectsOfKind "resource" got))
+  (changed, _, _) <- send named (req "project_file" ["path" .= ("pic.svg" :: Text), "bytesBase16" .= encodeBase16 (svg <> " ")])
+  expect "a changed file gets a new name" True (take 1 (holders "bytesRef" (viewValue changed)) /= take 1 refs)
 
 codecLaw :: IO ()
 codecLaw = do

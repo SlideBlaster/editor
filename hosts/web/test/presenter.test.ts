@@ -12,7 +12,7 @@ const source = new Uint8Array(readFileSync(new URL("../fixtures/plans/sample-dec
 const beats = sampleDefs.flatMap((def) => Array.from({ length: def.steps }, (_, step) => ({ frame: def.frame, step: step + 1, steps: def.steps })));
 const clamp = (n: number) => Math.max(0, Math.min(beats.length - 1, n));
 
-async function setup() {
+async function setup(theme: () => { name: string; css: string } | null = () => null) {
   const core = createFakeCore({ source, figureDelayMs: null });
   const bus = createChannelBus();
   const hubEndpoint = bus.endpoint();
@@ -26,7 +26,7 @@ async function setup() {
   const items = await navigatorOf();
   const errors: string[] = [];
   const hub = createPresenterHub({
-    channel: hubEndpoint, request: (r) => core.request(r), navigator: () => items, title: () => "P4Check",
+    channel: hubEndpoint, request: (r) => core.request(r), navigator: () => items, title: () => "P4Check", theme,
     now: () => 1_000_000, onError: (m) => errors.push(m),
   });
   const audience = createWindowState();
@@ -47,6 +47,16 @@ test("opening the show tells both windows the first beat, the timer origin and t
   }
   assert.equal(s.audience.views?.audience.frame, "title");
   assert.equal(s.console_.views?.next?.frame, "why");
+});
+
+test("both windows get the deck theme's CSS with the slides, and again when it changes", async () => {
+  let theme = { name: "fns", css: ".sb-slide .sb-code { font-size: .72em; }" };
+  const s = await setup(() => theme);
+  await s.hub.open();
+  for (const w of [s.audience, s.console_]) assert.deepEqual(w.theme, theme);
+  theme = { name: "fns", css: ".sb-slide .sb-code { font-size: .6em; }" };
+  s.hub.refresh();
+  for (const w of [s.audience, s.console_]) assert.deepEqual(w.theme, theme);
 });
 
 test("100 scripted commands from either window keep both windows on the core's cursor", async () => {

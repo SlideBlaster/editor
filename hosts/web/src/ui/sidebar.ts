@@ -26,6 +26,10 @@ export interface ShellBridge {
   openPresentation(path: string): Promise<void>;
   addPresentation(): Promise<void>;
   removePresentation(path: string): Promise<ShellPresentation[]>;
+  /** Show a written PDF in the desktop's default viewer (older shells lack it). */
+  openPdf?(path: string): Promise<void>;
+  /** Set by a shell that serves the editor from the app itself: the core runs in the page. */
+  readonly inPage?: boolean;
 }
 
 /** Name for a row: the title the shell supplied, else the last path segment. */

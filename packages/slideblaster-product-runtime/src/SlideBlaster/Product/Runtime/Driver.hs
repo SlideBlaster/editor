@@ -16,6 +16,7 @@ module SlideBlaster.Product.Runtime.Driver
   , SessionDriver
   , newSessionDriver
   , handleSessionFrame
+  , driverNodeSizesFile
   , driverFileChanged
   ) where
 
@@ -60,6 +61,10 @@ newSessionDriver capabilities analyzer push = do
   state <- newMVar (DriverState (newSession analyzer) Nothing "")
   pure (SessionDriver capabilities state push)
 
+-- | The measured node sizes the host should keep at 'nodeSizesPath', if any.
+driverNodeSizesFile :: SessionDriver -> IO (Maybe ByteString)
+driverNodeSizesFile driver = sessionNodeSizesFile . driverSession <$> readMVar (driverState driver)
+
 -- | Handle one text frame from the UI and return the response frame.
 handleSessionFrame :: SessionDriver -> ByteString -> IO ByteString
 handleSessionFrame driver frame =
@@ -74,6 +79,9 @@ handleSessionFrame driver frame =
             Left failure -> pure (encodeValue (sessionErrorValue failure))
             Right (kind, effects, session, requests) -> do
               forM_ requests (spawnRender driver)
+              -- a figure file the core changed is written as it is; the watcher then reports nothing new
+              forM_ [(path, expected, bytes) | Object o <- effects, KeyMap.lookup "kind" o == Just (String "file.write"), Just (String path) <- [KeyMap.lookup "path" o], Just (String was) <- [KeyMap.lookup "expectedBase16" o], Just expected <- [decodeBase16 was], Just (String hex) <- [KeyMap.lookup "bytesBase16" o], Just bytes <- [decodeBase16 hex]] $ \(path, expected, bytes) ->
+                capWriteFile (driverCapabilities driver) path (Just expected) bytes
               (kind', session') <- performStorage driver kind effects session
               let uiEffects = filter uiVisible effects
               -- A fast provider (cache hit) may already have advanced the state and
@@ -104,7 +112,7 @@ internalOnly request =
     _ -> False
 
 uiVisible :: Value -> Bool
-uiVisible effect = effectKind effect `notElem` [Just "block.render", Just "storage"]
+uiVisible effect = effectKind effect `notElem` [Just "block.render", Just "storage", Just "file.write"]
 
 effectKind :: Value -> Maybe Text
 effectKind (Object o) = case KeyMap.lookup "kind" o of
@@ -144,17 +152,26 @@ shortException _ = "the provider failed unexpectedly"
 
 -- Run an internal request and push the resulting view to the UI.
 pushWith :: SessionDriver -> SessionRequest -> Text -> IO ()
-pushWith driver request kind = do
+pushWith driver request = pushWithThen driver request (const Nothing)
+
+-- The same, with a follow-up request chosen from the result and applied in the
+-- same step, so the UI sees one view. The effects are those of the first.
+pushWithThen :: SessionDriver -> SessionRequest -> (Session -> Maybe SessionRequest) -> Text -> IO ()
+pushWithThen driver request followUp kind = do
   outcome <- modifyMVar (driverState driver) $ \state ->
     case runSession (driverSession state) request of
       Left _ -> pure (state, Nothing)
       Right (session', _, effects) ->
-        pure (state {driverSession = session'}, Just (session', effects))
+        let final = case followUp session' >>= either (const Nothing) Just . runSession session' of
+              Just (session'', _, _) -> session''
+              Nothing -> session'
+         in pure (state {driverSession = final}, Just (final, effects))
   case outcome of
     Nothing -> pure ()
     Just (session', effects) -> do
-      forM_ (blockRequests effects) (spawnRender driver)
+      -- the view first: a render it asks for must not announce itself before it
       driverPush driver (encodeValue (sessionSuccess kind (filter uiVisible effects) (viewValue session')))
+      forM_ (blockRequests effects) (spawnRender driver)
 
 -- Perform storage effects synchronously; on success feed storage_result back.
 performStorage :: SessionDriver -> Text -> [Value] -> Session -> IO (Text, Session)
@@ -184,6 +201,7 @@ driverFileChanged driver path bytes = do
         | Just new == driverOnDisk state -> pure ()
         | new /= current && sessionSaved (driverSession state) == Just revision -> do
             modifyMVar_ (driverState driver) (\s -> pure s {driverOnDisk = Just new})
-            pushWith driver (ReplaceSource revision new) "view_updated"
+            -- what the editor then holds is what the disk holds: not an unsaved edit
+            pushWithThen driver (ReplaceSource revision new) (\reloaded -> StorageResult path <$> sessionRevision reloaded <*> pure True) "view_updated"
       _ -> pure ()
     else pushWith driver (ProjectFile path bytes) "view_updated"

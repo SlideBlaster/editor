@@ -55,7 +55,7 @@ files :: Map Text ByteString
 files =
   Map.fromList
     [ ("kid/talk.slideBlaster.md", kid)
-    , ("kid/figures/a.tikz", "\\draw (0,0) -- (1,1);")
+    , ("kid/figures/a.tikz", "\\draw plot coordinates {(0,0) (1,1)};")
     , ("kid/grand/talk.slideBlaster.md", grand)
     , ("_up/other/talk.slideBlaster.md", other)
     ]
@@ -92,6 +92,15 @@ main = do
   expect "child key of file" "talk" (childKeyOf "a/talk.slideBlaster.md")
   expect "include line" (Just (IncludeLine ["a", "b"] "../x")) (parseIncludeLine "\\include[a, b]{../x}  \n")
   expect "not an include" Nothing (parseIncludeLine "\\includegraphics{x}")
+  expect "include line with lists" (Just (IncludeLine ["titleslide", "skip={a,b}", "only=c"] "../x")) (parseIncludeLine "\\include[titleslide, skip={a,b}, only=c]{../x}\n")
+  let kidDeck = bytes "---\nslideblaster: 1\ntitle: K\n---\n\n## A {#a}\n\nx\n\n## B {#b}\n\nx\n\n## C {#c}\n\nx\n"
+      hostDeck body = analyzeDeck markdownAnalyzer (Map.fromList [("kid/talk.slideBlaster.md", kidDeck)]) "talk.slideBlaster.md" (bytes ("---\nslideblaster: 1\ntitle: P\n---\n\n## P {#p}\n\nx\n\n" <> body))
+      keysOf a = [k | k <- fmap frameKey (analysisFrames a), k /= "title-slide"]
+  expect "skip leaves slides out" ["p", "kid/a", "kid/c"] (keysOf (hostDeck "\\include[skip={b}]{kid}\n"))
+  expect "only takes some" ["p", "kid/b", "kid/c"] (keysOf (hostDeck "\\include[only={b,c}]{kid}\n"))
+  expect "a deck twice, no slide twice" ["p", "kid/a", "kid/b", "q", "kid/c"] (keysOf (hostDeck "\\include[skip={c}]{kid}\n\n## Q {#q}\n\nx\n\n\\include[only=c]{kid}\n"))
+  expect "a slide twice" ["include.duplicate"] (codes (hostDeck "\\include{kid}\n\n## Q {#q}\n\nx\n\n\\include[only=c]{kid}\n"))
+  expect "unknown id" ["include.option"] (codes (hostDeck "\\include[skip={zz}]{kid}\n"))
 
   let analysis = analyzeDeck markdownAnalyzer files "talk.slideBlaster.md" parent
       keys = fmap frameKey (analysisFrames analysis)

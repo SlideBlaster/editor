@@ -300,10 +300,22 @@ convertRow
 decodeStencilPath :: Text -> Either StencilPathError PathOutline
 decodeStencilPath source = do
   parsed <- parseCommands (Text.words source)
-  let commands = removeRepeatedClose parsed
+  let commands = removeEmptyMoves (removeRepeatedClose parsed)
   nonEmpty <-
     maybe (Left EmptyStencilPath) Right (NonEmpty.nonEmpty commands)
   mapLeft InvalidStencilPathStructure (mkPathOutline nonEmpty)
+
+-- SVG lets a move follow a move, and lets a path end on one: the earlier
+-- move then draws nothing. The canvas path contract wants every subpath to
+-- draw, so such a move is dropped.
+removeEmptyMoves :: [PathCommand] -> [PathCommand]
+removeEmptyMoves commands =
+  case commands of
+    MovePath _ : rest@(MovePath _ : _) -> removeEmptyMoves rest
+    [first, MovePath _] -> [first]
+    MovePath _ : [] -> []
+    command : rest -> command : removeEmptyMoves rest
+    [] -> []
 
 -- SVG permits redundant close-path commands. The canvas path contract stores
 -- one semantic close per subpath, so normalize only this no-op spelling.

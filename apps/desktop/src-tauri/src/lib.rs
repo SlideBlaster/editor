@@ -1,21 +1,20 @@
-//! Thin Tauri host for SlideBlaster 0.2.0-alpha (design D9). It owns only native things:
-//! the window, menus, the open-folder dialog, the presenter windows and the `sb serve`
-//! sidecar. The webview is pointed at the sidecar's own origin, so the TypeScript UI
-//! speaks `session/1` and `/cap` to it directly; nothing here parses decks or edits files.
+//! Thin Tauri host for SlideBlaster. The editor is the app's own bundled page and the Haskell
+//! core runs inside that page as WebAssembly (milestone W-web): there is no server, no socket and
+//! no helper process. This shell owns only native things: the window, menus, the open-folder
+//! dialog, the presenter windows, and the project folder itself (list, read, conditional write,
+//! watch). Nothing here parses decks or decides edits.
 //!
-//! Defaults (revisitable): the sidecar binary is `$SB_BIN`, else `sb` beside this
-//! executable, else `sb` on `PATH`; the web UI is `$SB_WEB`, else the repository's
-//! `hosts/web` (a bundled copy is a packaging step). The port is chosen once per run and
-//! reused when the sidecar is restarted, so the page's WebSocket reconnect heals it.
+//! Two jobs cannot run in a page, compiling a figure and printing a PDF: each is one run of the
+//! `sb` command-line tool (`tools.rs`).
 
-use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 mod presentations;
+mod project;
+mod tools;
 
 use presentations::{display_name, parse_args, Store};
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -24,132 +23,181 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuil
 use tauri_plugin_dialog::DialogExt;
 
 const TRAY_ID: &str = "main";
+/// How often the open project is checked for changes made outside the editor.
+const WATCH_EVERY: Duration = Duration::from_millis(1000);
 
 #[derive(Default)]
-struct Sidecar {
-    child: Option<Child>,
+struct Shell {
+    /// The open project folder.
     folder: Option<PathBuf>,
-    port: u16,
-    /// Bumped on every (re)start so stale watcher threads stand down.
+    /// Bumped whenever another project opens, so the previous project's watcher stands down.
     generation: u64,
     /// Known presentations, persisted in the app config dir.
     presentations: Store,
 }
 
-type Shared = Arc<Mutex<Sidecar>>;
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).unwrap_or(0)
-}
-
-fn sb_binary() -> PathBuf {
-    if let Some(p) = std::env::var_os("SB_BIN") {
-        return PathBuf::from(p);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        let beside = exe.with_file_name(if cfg!(windows) { "sb.exe" } else { "sb" });
-        if beside.exists() {
-            return beside;
-        }
-    }
-    PathBuf::from("sb")
-}
-
-fn web_dir() -> PathBuf {
-    std::env::var_os("SB_WEB")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../hosts/web"))
-}
+type Shared = Arc<Mutex<Shell>>;
 
 fn status(app: &AppHandle, text: impl Into<String>) {
     let _ = app.emit("sb-status", text.into());
 }
 
-/// Start `sb serve` on `port`; wait for `SB_READY`; navigate the main window to it.
-fn start(app: &AppHandle, shared: &Shared, folder: PathBuf, restart: bool) {
-    let (port, generation) = {
+/// Open a project folder: remember it, watch it, and (unless the page is asking for its first
+/// project itself) load the editor afresh so it opens the new project.
+fn start(app: &AppHandle, shared: &Shared, folder: PathBuf, reload: bool) {
+    let generation = {
         let mut s = shared.lock().unwrap();
-        if let Some(mut old) = s.child.take() {
-            let _ = old.kill();
-            let _ = old.wait();
-        }
-        if s.port == 0 {
-            s.port = free_port();
-        }
         s.folder = Some(folder.clone());
         s.generation += 1;
         // A sub-presentation opened from its parent stays nested under it; only decks the user
         // added (or opened directly) become top-level entries.
-        if !restart && (s.presentations.contains(&folder) || !s.presentations.is_nested(&folder)) {
+        if s.presentations.contains(&folder) || !s.presentations.is_nested(&folder) {
             s.presentations.touch(&folder, presentations::now_ms());
         }
-        (s.port, s.generation)
+        s.generation
     };
-    if !restart {
-        refresh_tray(app, shared);
+    refresh_tray(app, shared);
+    watch(app, shared, folder, generation);
+    if reload {
+        if let Some(w) = app.get_webview_window("main") {
+            // A real navigation: the editor must drop the old project's state entirely.
+            let _ = w.eval(&format!("location.replace('index.html?r={generation}')"));
+        }
     }
-    if !restart {
-        status(app, format!("Starting sb serve for {}", folder.display()));
-    }
-    let spawned = Command::new(sb_binary())
-        .arg("serve")
-        .arg(&folder)
-        .args(["--port", &port.to_string(), "--web"])
-        .arg(web_dir())
-        .arg("--exit-on-stdin-eof")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn();
-    let mut child = match spawned {
-        Ok(c) => c,
-        Err(e) => return status(app, format!("Could not start sb ({e}); set SB_BIN. failed")),
-    };
-    let stdout = child.stdout.take().expect("piped stdout");
-    // Keep stdin open: closing it is how the sidecar learns the app is gone.
-    shared.lock().unwrap().child = Some(child);
+}
 
+/// Tell the page which project files changed outside the editor, until another project opens.
+fn watch(app: &AppHandle, shared: &Shared, folder: PathBuf, generation: u64) {
     let (app, shared) = (app.clone(), shared.clone());
     std::thread::spawn(move || {
-        let mut ready = false;
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if !ready && line.starts_with("SB_READY") {
-                ready = true;
-                if let Some(w) = app.get_webview_window("main") {
-                    // The `r` parameter makes this a real navigation even when the URL (same fixed
-                    // port) is the one already loaded: the editor must open the NEW project, which a
-                    // mere reconnect would not do.
-                    let url = format!("http://127.0.0.1:{port}/index.html?r={generation}");
-                    // On a restart the page is still loaded and reconnects by itself.
-                    if !restart {
-                        let _ = w.navigate(url.parse().expect("url"));
-                    }
-                }
+        let mut before = project::scan(&folder);
+        loop {
+            std::thread::sleep(WATCH_EVERY);
+            if shared.lock().unwrap().generation != generation {
+                return;
             }
-        }
-        // stdout closed: the sidecar exited. Restart on the same port unless superseded.
-        std::thread::sleep(Duration::from_millis(600));
-        let (current, folder) = {
-            let s = shared.lock().unwrap();
-            (s.generation, s.folder.clone())
-        };
-        if current == generation {
-            if let Some(folder) = folder {
-                if ready {
-                    start(&app, &shared, folder, true);
-                } else {
-                    status(&app, "sb serve exited before it was ready. Choose another folder. failed");
-                }
+            let now = project::scan(&folder);
+            let paths = project::changed(&before, &now);
+            if !paths.is_empty() {
+                let _ = app.emit("sb-project-changed", serde_json::json!({ "paths": paths }));
             }
+            before = now;
         }
     });
+}
+
+/// The open project folder. The first call decides it: the folder argument, else the most recently
+/// opened presentation, else the user is asked.
+fn project_folder(app: &AppHandle, shared: &Shared) -> Result<PathBuf, String> {
+    if let Some(folder) = shared.lock().unwrap().folder.clone() {
+        return Ok(folder);
+    }
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let args = parse_args(std::env::args().skip(1), &cwd);
+    let recent = shared.lock().unwrap().presentations.most_recent();
+    match args.folder.or(recent) {
+        Some(folder) => {
+            start(app, shared, folder.clone(), false);
+            Ok(folder)
+        }
+        None => {
+            if !args.background {
+                choose_folder(app, shared);
+            }
+            Err("Choose a project folder to begin (File, Open Folder)".into())
+        }
+    }
+}
+
+fn raw_body<'a>(request: &'a tauri::ipc::Request<'_>) -> Result<&'a [u8], String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok(bytes),
+        _ => Err("this command takes raw bytes".into()),
+    }
+}
+
+/// Every project file the core may read, packed as `[key, bytes, ...]` (`project.rs`).
+#[tauri::command(async)]
+fn project_list(app: AppHandle, state: tauri::State<Shared>) -> Result<tauri::ipc::Response, String> {
+    let folder = project_folder(&app, state.inner())?;
+    Ok(tauri::ipc::Response::new(project::list_packed(&folder)))
+}
+
+/// One project file: packed as one part, or no part when it does not exist.
+#[tauri::command(async)]
+fn project_read(app: AppHandle, state: tauri::State<Shared>, path: String) -> Result<tauri::ipc::Response, String> {
+    let folder = project_folder(&app, state.inner())?;
+    let packed = match project::read(&folder, &path) {
+        Some(bytes) => project::pack_parts(&[&bytes]),
+        None => project::pack_parts(&[]),
+    };
+    Ok(tauri::ipc::Response::new(packed))
+}
+
+/// Body: packed `[path, flag, expected, bytes]`; flag 0 means the file must not exist yet.
+#[tauri::command(async)]
+fn project_write(app: AppHandle, state: tauri::State<Shared>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let folder = project_folder(&app, state.inner())?;
+    let parts = project::unpack_parts(raw_body(&request)?).ok_or("malformed write")?;
+    let [path, flag, expected, bytes] = parts[..] else { return Err("malformed write".into()) };
+    let path = std::str::from_utf8(path).map_err(|_| "path is not allowed")?;
+    project::write(&folder, path, (flag == [1]).then_some(expected), bytes)
+}
+
+/// Body: packed `[path, bytes]`, a file inside `.slideblaster/cache/`.
+#[tauri::command(async)]
+fn project_cache_write(app: AppHandle, state: tauri::State<Shared>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let folder = project_folder(&app, state.inner())?;
+    let parts = project::unpack_parts(raw_body(&request)?).ok_or("malformed write")?;
+    let [path, bytes] = parts[..] else { return Err("malformed write".into()) };
+    project::write_cache(&folder, std::str::from_utf8(path).map_err(|_| "path is not allowed")?, bytes)
+}
+
+/// Compile one figure with the `sb` tool: a `block.render` request in, a `provider_result` body out.
+#[tauri::command(async)]
+fn render_block(app: AppHandle, state: tauri::State<Shared>, request: String) -> Result<String, String> {
+    let folder = project_folder(&app, state.inner())?;
+    tools::render_block(&folder, &request)
+}
+
+#[derive(serde::Serialize)]
+struct PdfExport {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    warnings: Vec<String>,
+}
+
+/// Print the deck `entry` (a path inside the project) to a PDF beside it, with the `sb` tool.
+#[tauri::command(async)]
+fn export_pdf(app: AppHandle, state: tauri::State<Shared>, entry: String, steps: bool) -> PdfExport {
+    let failed = |error: String| PdfExport { ok: false, path: None, name: None, error: Some(error), warnings: Vec::new() };
+    let folder = match project_folder(&app, state.inner()) {
+        Ok(folder) => folder,
+        Err(e) => return failed(e),
+    };
+    if entry.split('/').any(|s| s.is_empty() || s == "." || s == ".." || s == "_up") || entry.contains('\\') {
+        return failed("entry must name a deck inside the project".into());
+    }
+    let deck = entry.split('/').fold(folder.clone(), |p, s| p.join(s));
+    match tools::export_pdf(&folder, &deck, steps) {
+        Ok(warnings) => {
+            let out = tools::pdf_path(&deck);
+            PdfExport { ok: true, name: out.file_name().map(|n| n.to_string_lossy().into_owned()), path: Some(tools::plain_path(&out)), error: None, warnings }
+        }
+        Err(e) => failed(e),
+    }
 }
 
 fn choose_folder(app: &AppHandle, shared: &Shared) {
     let (app, shared) = (app.clone(), shared.clone());
     app.clone().dialog().file().set_title("Open a SlideBlaster project folder").pick_folder(move |picked| {
         match picked.and_then(|p| p.into_path().ok()) {
-            Some(folder) => start(&app, &shared, folder, false),
+            Some(folder) => start(&app, &shared, folder, true),
             None => {
                 if shared.lock().unwrap().folder.is_none() {
                     status(&app, "Choose a project folder to begin");
@@ -162,27 +210,6 @@ fn choose_folder(app: &AppHandle, shared: &Shared) {
 #[tauri::command]
 fn open_folder_dialog(app: AppHandle, state: tauri::State<Shared>) {
     choose_folder(&app, state.inner());
-}
-
-#[tauri::command]
-fn shell_ready(app: AppHandle, state: tauri::State<Shared>) {
-    let first = state.lock().unwrap().folder.is_none();
-    if !first {
-        return;
-    }
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let args = parse_args(std::env::args().skip(1), &cwd);
-    // Folder argument, else the most recently opened presentation, else ask.
-    let recent = state.lock().unwrap().presentations.most_recent();
-    match args.folder.or(recent) {
-        Some(folder) => start(&app, state.inner(), folder, false),
-        None => {
-            status(&app, "Choose a project folder to begin");
-            if !args.background {
-                choose_folder(&app, state.inner());
-            }
-        }
-    }
 }
 
 #[derive(serde::Serialize)]
@@ -253,7 +280,7 @@ fn open_folder_or_error(app: &AppHandle, shared: &Shared, path: &str) -> Result<
     if !folder.is_dir() {
         return Err(format!("{path} is not a folder"));
     }
-    start(app, shared, folder, false);
+    start(app, shared, folder, true);
     Ok(())
 }
 
@@ -280,22 +307,23 @@ fn remove_presentation(app: AppHandle, state: tauri::State<Shared>, path: String
     presentation_infos(state.inner())
 }
 
-/// Create (or focus) a presenter window on the sidecar's origin so BroadcastChannel reaches it.
-#[tauri::command]
-fn open_presenter(app: AppHandle, state: tauri::State<Shared>, kind: String) -> Result<(), String> {
+/// Create (or focus) a presenter window. It is one of the app's own pages, so it shares the
+/// editor's origin and BroadcastChannel reaches it.
+// Not on the main thread: on Windows a window built inside a command that runs there never
+// finishes (WebView2 waits for the event loop the command is blocking) and the app freezes.
+#[tauri::command(async)]
+fn open_presenter(app: AppHandle, kind: String) -> Result<(), String> {
     let (label, page, title, size) = match kind.as_str() {
         "console" => ("presenter-console", "console.html", "SlideBlaster presenter", (1120.0, 760.0)),
         "audience" => ("presenter-audience", "audience.html", "SlideBlaster audience", (1280.0, 720.0)),
         other => return Err(format!("unknown presenter window {other}")),
     };
     if let Some(existing) = app.get_webview_window(label) {
-        // Reload, not just focus: an open window may hold an old page (sidecar restart, new bundle).
+        // Reload, not just focus: an open window may show another project's show.
         let _ = existing.eval("location.reload()");
         return existing.set_focus().map_err(|e| e.to_string());
     }
-    let port = state.lock().unwrap().port;
-    let url = format!("http://127.0.0.1:{port}/{page}");
-    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url.parse().map_err(|e| format!("{e}"))?))
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(page.into()))
         .title(title)
         .inner_size(size.0, size.1)
         .initialization_script(&debug_script())
@@ -327,9 +355,14 @@ fn fill_other_screen(app: &AppHandle, window: &tauri::WebviewWindow) {
 #[cfg(not(target_os = "linux"))]
 fn fill_other_screen(_app: &AppHandle, _window: &tauri::WebviewWindow) {}
 
-/// F in the audience window: native fullscreen on and off, on the screen the window is on.
+/// F in the audience window, or the console's button (`label` names the audience window): native
+/// fullscreen on and off, on the screen the window is on.
 #[tauri::command]
-fn toggle_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
+fn toggle_fullscreen(app: AppHandle, window: tauri::WebviewWindow, label: Option<String>) -> Result<(), String> {
+    let window = match label {
+        Some(label) => app.get_webview_window(&label).ok_or_else(|| format!("no window {label}"))?,
+        None => window,
+    };
     #[cfg(target_os = "linux")]
     {
         use gtk::prelude::*;
@@ -346,12 +379,30 @@ fn toggle_fullscreen(window: tauri::WebviewWindow) -> Result<(), String> {
     }
 }
 
+/// Export PDF: show the written PDF in the desktop's default viewer. Only an existing `.pdf` file.
+#[tauri::command]
+fn open_pdf(path: String) -> Result<(), String> {
+    let file = PathBuf::from(&path);
+    if file.extension().and_then(|e| e.to_str()) != Some("pdf") || !file.is_file() {
+        return Err(format!("not a PDF file: {path}"));
+    }
+    #[cfg(target_os = "linux")]
+    let opener = "xdg-open";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(target_os = "windows")]
+    let opener = "explorer";
+    Command::new(opener).arg(&file).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 const OPENER_SCRIPT: &str = r#"
 window.__SB_SHELL__ = {
+  inPage: true,
   listPresentations: () => window.__TAURI__.core.invoke('list_presentations'),
   openPresentation: (path) => window.__TAURI__.core.invoke('open_presentation', { path }),
   addPresentation: () => window.__TAURI__.core.invoke('add_presentation'),
   removePresentation: (path) => window.__TAURI__.core.invoke('remove_presentation', { path }),
+  openPdf: (path) => window.__TAURI__.core.invoke('open_pdf', { path }),
 };
 window.__SB_WINDOW_OPENER__ = {
   openConsole: () => { window.__TAURI__.core.invoke('open_presenter', { kind: 'console' }); return true; },
@@ -359,10 +410,14 @@ window.__SB_WINDOW_OPENER__ = {
 };
 "#;
 
-/// `SB_DEBUG_PRESENT=1`: every window reports its state and errors to stdout via
-/// `debug_log`, and the main window presses Present by itself. A self-test tool.
+/// Self-test tools. `SB_DEBUG_STATUS=1`: every window reports its state and errors to stdout via
+/// `debug_log`. `SB_DEBUG_PRESENT=1`: the same, and the main window presses Present by itself.
+/// `SB_DEBUG_EVAL=<expression>`: the same, and the editor evaluates the expression once the deck
+/// is open and reports its (awaited) value.
 fn debug_script() -> String {
-    if std::env::var_os("SB_DEBUG_PRESENT").is_none() {
+    let present = std::env::var_os("SB_DEBUG_PRESENT").is_some();
+    let eval = std::env::var("SB_DEBUG_EVAL").ok();
+    if !present && eval.is_none() && std::env::var_os("SB_DEBUG_STATUS").is_none() {
         return String::new();
     }
     r#"
@@ -370,18 +425,27 @@ fn debug_script() -> String {
   const log = (m) => { try { window.__TAURI__.core.invoke('debug_log', { msg: location.pathname + ': ' + m }); } catch (e) {} };
   window.addEventListener('error', (e) => log('error ' + e.message + ' @' + e.filename + ':' + e.lineno));
   window.addEventListener('unhandledrejection', (e) => log('rejection ' + (e.reason && (e.reason.stack || e.reason))));
-  log('loaded; BroadcastChannel=' + typeof BroadcastChannel + ' tauri=' + typeof window.__TAURI__);
+  log('loaded ' + location.href + ' tauri=' + typeof window.__TAURI__);
   try { const ch = new BroadcastChannel('sb-presenter'); ch.onmessage = (ev) => log('bc ' + JSON.stringify(ev.data).slice(0, 120)); } catch (e) { log('bc fail ' + e); }
+  const text = (id) => document.getElementById(id)?.textContent ?? '-';
   const report = () => {
     const stage = document.getElementById('stage') || document.getElementById('con-current');
-    log('state title=' + document.title + ' stage=' + (stage ? stage.innerHTML.length : 'none') + ' where=' + (document.getElementById('con-where')?.textContent ?? '-'));
+    log('state status=[' + text('status') + '] conn=' + text('conn') + ' banner=[' + (document.getElementById('banner')?.hidden === false ? text('banner') : '') + ']'
+      + ' slides=' + document.querySelectorAll('.deck-slide').length + ' figures=' + document.querySelectorAll('.deck-slide svg, .deck-slide img').length
+      + ' decks=' + document.querySelectorAll('.pres-list li').length + ' stage=' + (stage ? stage.innerHTML.length : 'none') + ' where=' + text('con-where'));
   };
-  setTimeout(report, 4000); setTimeout(report, 9000);
-  if (location.pathname.endsWith('index.html') && location.port) {
-    setTimeout(() => { const b = document.getElementById('present-btn'); log('present-btn disabled=' + (b && b.disabled)); b && b.click(); }, 5000);
+  for (const ms of [2000, 5000, 9000, 15000, 25000]) setTimeout(report, ms);
+  const expression = EVAL;
+  if (expression !== null && !document.title.includes('presenter') && !document.title.includes('audience')) {
+    setTimeout(async () => { try { log('eval ' + JSON.stringify(await (0, eval)(expression))); } catch (e) { log('eval threw ' + (e && (e.stack || e))); } }, 6000);
+  }
+  if (PRESENT) {
+    setTimeout(() => { const b = document.getElementById('present-btn'); if (!b) return; log('present-btn disabled=' + b.disabled); b.click(); }, 5000);
   }
 })();
-"#.to_string()
+"#
+    .replace("PRESENT", if present { "true" } else { "false" })
+    .replace("EVAL", &eval.map(|e| serde_json::to_string(&e).unwrap_or_else(|_| "null".into())).unwrap_or_else(|| "null".into()))
 }
 
 #[tauri::command]
@@ -390,7 +454,7 @@ fn debug_log(msg: String) {
 }
 
 pub fn run() {
-    let shared: Shared = Arc::new(Mutex::new(Sidecar::default()));
+    let shared: Shared = Arc::new(Mutex::new(Shell::default()));
     let exit_shared = shared.clone();
     let single_shared = shared.clone();
     let app = tauri::Builder::default()
@@ -398,24 +462,30 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(move |app, argv, cwd| {
             show_main(app);
             if let Some(folder) = parse_args(argv.into_iter().skip(1), Path::new(&cwd)).folder {
-                start(app, &single_shared, folder, false);
+                start(app, &single_shared, folder, true);
             }
         }))
         .plugin(tauri_plugin_dialog::init())
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![
             open_folder_dialog,
-            shell_ready,
+            project_list,
+            project_read,
+            project_write,
+            project_cache_write,
+            render_block,
+            export_pdf,
             open_presenter,
             debug_log,
             list_presentations,
             open_presentation,
             add_presentation,
             remove_presentation,
-            toggle_fullscreen
+            toggle_fullscreen,
+            open_pdf
         ])
         .on_window_event(|window, event| {
-            // Closing the main window hides it to the tray; the sidecar keeps running.
+            // Closing the main window hides it to the tray.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -493,7 +563,7 @@ pub fn run() {
                     });
                 }
             }
-            // The initialization script runs in every page the window loads (the sb serve page included).
+            // The editor page; the initialization script runs each time it loads.
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("SlideBlaster")
                 .visible(!background)
@@ -527,12 +597,8 @@ pub fn run() {
             api.prevent_exit();
         }
         if let RunEvent::Exit = event {
-            let mut s = exit_shared.lock().unwrap();
-            s.generation += 1; // no restarts while shutting down
-            if let Some(mut child) = s.child.take() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
+            exit_shared.lock().unwrap().generation += 1; // the watcher stands down
         }
     });
 }
+

@@ -33,6 +33,7 @@ module SlideBlaster.Deck.Markdown
   , MarkdownKey (..)
   , MarkdownDeck (..)
   , DeckSlide (..)
+  , WrittenText (..)
   , DeckSection (..)
   , DeckInclude (..)
   , DeckConfig (..)
@@ -43,10 +44,12 @@ module SlideBlaster.Deck.Markdown
   , deckSlideList
   , deckSlideById
   , titleSlideId
+  , slidePictureFences
   ) where
 
 import SlideBlaster.Canvas qualified as Canvas
 import SlideBlaster.Canvas.Flow qualified as Flow
+import SlideBlaster.Syntax.Picture qualified as Picture
 import SlideBlaster.Deck.Container
   ( Container (..)
   , ContainerError (..)
@@ -98,6 +101,20 @@ data MarkdownKey
   deriving stock (Eq, Ord, Show)
 
 -- | One slide's meaning.
+-- | A piece of a slide's ordinary text as written: its part (@title@ or
+-- @body@), byte span in the deck and exact text. An empty span is where text
+-- would go; 'writtenBefore' and 'writtenAfter' then separate it from what is
+-- around it.
+data WrittenText = WrittenText
+  { writtenPart :: !Text
+  , writtenStart :: !Int
+  , writtenEnd :: !Int
+  , writtenSource :: !Text
+  , writtenBefore :: !Text
+  , writtenAfter :: !Text
+  }
+  deriving stock (Eq, Show)
+
 data DeckSlide = DeckSlide
   { deckSlideId :: !Text
   , deckSlideExplicitId :: !Bool
@@ -119,6 +136,8 @@ data DeckSlide = DeckSlide
   -- ^ A generated section divider (chapter page).
   , deckSlideDiagnostics :: ![Document.Diagnostic]
   , deckSlidePicture :: ![Flow.PictureItem]
+  , deckSlideWritten :: ![WrittenText]
+  -- ^ Where the slide's own title and body text are written, for typing on the slide.
   -- ^ Nodes and straight lines of the @```slide@ picture tier.
   }
   deriving stock (Eq, Show)
@@ -176,11 +195,14 @@ data DeckConfig = DeckConfig
   , configHandlePrefix :: Text
   -- ^ prepended to slide ids in content handles, so an included deck's figure
   -- and image handles cannot collide with the parent's; empty for a top-level deck
+  , configReadFile :: Text -> Maybe Text
+  -- ^ the text of a project file named in the deck (a picture file brought in
+  -- with @\\cat@), if there is one
   }
 
 -- | Resolves nothing; every deck uses the default theme.
 defaultDeckConfig :: DeckConfig
-defaultDeckConfig = DeckConfig (const Nothing) ""
+defaultDeckConfig = DeckConfig (const Nothing) "" (const Nothing)
 
 -- | All slides in order, title slide first when present.
 deckSlideList :: MarkdownDeck -> [DeckSlide]
@@ -346,7 +368,7 @@ build config _source container = do
       hasTitleSlide = maybe False (const True) frontmatter && maybe False (not . Text.null) titleText
       reserved = if hasTitleSlide then Set.insert titleSlideId explicit else explicit
       assigned = assignIds reserved entries
-      env = Env themeValue size preludeNodes (configHandlePrefix config)
+      env = Env themeValue size preludeNodes (configHandlePrefix config) (configReadFile config)
   titleParts <-
     if hasTitleSlide
       then (: []) <$> buildTitle env frontSpan frontmatter (fromMaybe "" titleText)
@@ -488,6 +510,7 @@ buildDivider env sec entry identity = do
             , deckSlideIsDivider = True
             , deckSlideDiagnostics = []
             , deckSlidePicture = []
+            , deckSlideWritten = []
             }
       , builtFrame = frame
       , builtProvenance = [(SlideIdKey identity, generated headingSpan)]
@@ -498,6 +521,7 @@ data Env = Env
   , envSize :: !Canvas.Size
   , envPrelude :: ![Ast.Node]
   , envHandlePrefix :: !Text
+  , envReadFile :: Text -> Maybe Text
   }
 
 flowFailure :: Show a => Maybe Source.SourceSpan -> a -> Document.Diagnostic
@@ -592,6 +616,7 @@ buildTitle env frontSpan frontmatter titleText = do
             , deckSlideIsDivider = False
             , deckSlideDiagnostics = []
             , deckSlidePicture = []
+            , deckSlideWritten = []
             }
       , builtFrame = frame
       , builtProvenance =
@@ -620,6 +645,38 @@ fencesOf language blocks =
   , Block.fenceLanguage (Block.fenceInfo f) == language
   ]
 
+-- | The content of a node written without a place (@\\node[opts] (name) {..};@),
+-- as notes are: the outermost brace group, options skipped.
+unplacedNodeBody :: Text -> Maybe Text
+unplacedNodeBody raw = do
+  rest <- Text.stripPrefix "\\node" (Text.stripStart raw)
+  inner <- Text.stripSuffix "}" . Text.stripEnd =<< Text.stripSuffix ";" (Text.stripEnd rest)
+  let opening = scan (0 :: Int) (0 :: Int) (Text.unpack inner)
+      scan _ _ [] = Nothing
+      scan n depth (c : cs)
+        | c == '[' = scan (n + 1) (depth + 1) cs
+        | c == ']' = scan (n + 1) (max 0 (depth - 1)) cs
+        | c == '{' && depth == 0 = Just n
+        | otherwise = scan (n + 1) depth cs
+  at <- opening
+  Just (Text.drop (at + 1) inner)
+
+-- | Keep the first of the items that share a key.
+nubOn :: Eq k => (a -> k) -> [a] -> [a]
+nubOn key = go []
+  where
+    go _ [] = []
+    go seen (x : xs)
+      | key x `elem` seen = go seen xs
+      | otherwise = x : go (key x : seen) xs
+
+-- | The @```slide@ picture blocks of a slide: the byte offset of each block's
+-- body in the deck and its exact text.
+slidePictureFences :: SlideEntry -> [(Int, Text)]
+slidePictureFences entry =
+  let Span bodyStart _ = slideBodySpan entry
+   in [(bodyStart + offset, body) | (_, offset, body) <- fencesOf "slide" (locate (Block.flowBlocks (Block.readFlow (slideBodyText entry))))]
+
 buildSlideEntry :: Env -> (Text, Bool, SlideEntry) -> Either Document.Diagnostic Built
 buildSlideEntry env (identity, explicitId, entry) = do
   let Span bodyStart bodyEnd = slideBodySpan entry
@@ -636,17 +693,65 @@ buildSlideEntry env (identity, explicitId, entry) = do
       bodyLowered = Flow.lowerFlow ctx flow
       pictureFences = fencesOf "slide" located
       noteFences = fencesOf "notes" located
-      pictureText = Text.concat [t | (_, _, t) <- pictureFences]
-      noteText = Text.concat [t | (_, _, t) <- noteFences]
-      (pictureEntries, pictureNotes, pictureResources) =
-        case pictureFences of
-          (line, _, _) : _ -> Flow.pictureEntries ctx line pictureText
-          [] -> ([], [], [])
-      pictureItemsOf = case pictureFences of
-        (line, _, _) : _ -> Flow.pictureItems ctx line pictureText
-        [] -> []
+      writtenNotes = Text.concat [t | (_, _, t) <- noteFences]
+      -- Notes may be written as picture nodes (a notes slide laid out like a
+      -- slide); what the presenter reads is their content, in order.
+      noteText =
+        let statements = [st | st <- Picture.readPicture writtenNotes, not (Text.null (Text.strip (Picture.statementText st)))]
+            bodyOf st = case st of
+              Picture.NodeStatement _ _ _ _ body _ -> Just body
+              Picture.AttachedStatement _ _ _ _ _ body _ -> Just body
+              Picture.OpaqueStatement raw -> unplacedNodeBody raw
+         in case traverse bodyOf statements of
+              Just bodies@(_ : _) -> Text.intercalate "\n\n" (fmap Text.strip bodies) <> "\n"
+              _ -> writtenNotes
+      -- each block is read on its own, with statements numbered across the blocks
+      firstStatements = scanl (\n (_, _, t) -> n + length (Picture.readPicture t)) 1 pictureFences
+      perFence = [(first, fence) | (first, fence) <- zip firstStatements pictureFences]
+      loweredFences = [Flow.pictureEntries ctx line first t | (first, (line, _, t)) <- perFence]
+      -- Picture files brought in with @\\cat{file}@: their statements are read
+      -- after the slide's own (so the slide's numbering stands), marked with
+      -- where they come from and moved by the include's shift.
+      includes =
+        nubOn (\(_, _, path, _, _) -> path)
+          [ (n, (bodyStart + o + at + lengthWord8 lead, bodyStart + o + at + lengthWord8 raw), path, Picture.catShift options, text)
+          | (first, (_, o, t)) <- perFence
+          , let statements = fmap Picture.statementText (Picture.readPicture t)
+          , (n, at, raw) <- zip3 [first ..] (scanl (\total piece -> total + lengthWord8 piece) 0 statements) statements
+          , Just (lead, options, path, _) <- [Picture.catParts raw]
+          , Just text <- [envReadFile env path]
+          ]
+      includeFirsts = scanl (\n (_, _, _, _, text) -> n + length (Picture.readPicture text)) (last firstStatements) includes
+      includedFences = [Flow.pictureEntries ctx 1 first text | (first, (_, _, _, _, text)) <- zip includeFirsts includes]
+      includedItems =
+        concat
+          [ fmap (Flow.includedItem (Flow.PictureFrom path n range (fromRational dx, fromRational dy))) (Flow.pictureItems ctx 1 first text)
+          | (first, (n, range, path, (dx, dy), text)) <- zip includeFirsts includes
+          ]
+      pictureEntries = concat [entries | (entries, _, _) <- loweredFences <> includedFences]
+      pictureResources = concat [resources | (_, _, resources) <- loweredFences <> includedFences]
+      pictureDiagnostics = concat [fmap (flowDiagnostic (bodyStart + o) t) notes | ((_, notes, _), (_, (_, o, t))) <- zip loweredFences perFence]
+      pictureItemsOf = concat [fmap (Flow.shiftPictureItem (bodyStart + o)) (Flow.pictureItems ctx line first t) | (first, (line, o, t)) <- perFence]
       notesLowered = Flow.lowerFlow ctx (Block.readFlow noteText)
-      pictureBase = case pictureFences of (_, o, _) : _ -> bodyStart + o; [] -> bodyStart
+      headingLine = Text.takeWhile (\c -> c /= '\n' && c /= '\r') (slideText entry)
+      writtenTitle =
+        let title = slideTitleText entry
+            lead = Text.takeWhile (\c -> c == '#' || c == ' ') headingLine
+            (before, found) = Text.breakOn title (Text.drop (Text.length lead) headingLine)
+            start = headStart + lengthWord8 lead + lengthWord8 before
+         in [WrittenText "title" start (start + lengthWord8 title) title "" "" | not (Text.null title), not (Text.null found)]
+      isWritten block = case block of
+        Block.GapBlock _ -> False
+        Block.FenceBlock f -> Block.fenceLanguage (Block.fenceInfo f) `notElem` ["slide", "notes"]
+        _ -> True
+      writtenBody =
+        case [(o, o + lengthWord8 (Block.printBlock b)) | Located _ o b <- located, isWritten b] of
+          [] -> WrittenText "body" bodyStart bodyStart "" "\n" (if Text.null bodyText || "\n" `Text.isPrefixOf` bodyText || "\r" `Text.isPrefixOf` bodyText then "\n" else "\n\n")
+          spans@((from, _) : _) ->
+            let to = maximum (fmap snd spans)
+                raw = Text.concat [Block.printBlock b | Located _ o b <- located, o >= from, o < to]
+                kept = Text.dropWhileEnd (\c -> c == '\n' || c == '\r') raw
+             in WrittenText "body" (bodyStart + from) (bodyStart + from + lengthWord8 kept) kept "" ""
       notesBase = case noteFences of (_, o, _) : _ -> bodyStart + o; [] -> bodyStart
       audience =
         Flow.regionNodes
@@ -659,7 +764,7 @@ buildSlideEntry env (identity, explicitId, entry) = do
         Flow.regionNodes (envTheme env) (envSize env) False [(Flow.NotesRegion, Flow.loweredContent notesLowered)]
       diagnostics =
         fmap (flowDiagnostic bodyStart bodyText) (Flow.loweredDiagnostics bodyLowered)
-          <> fmap (flowDiagnostic pictureBase pictureText) pictureNotes
+          <> pictureDiagnostics
           <> fmap (flowDiagnostic notesBase noteText) (Flow.loweredDiagnostics notesLowered)
           <> fmap (relocate headingSpan) (Flow.loweredDiagnostics titleLowered)
   frame <- frameFor wholeSpan identity (slideTitleText entry) audience noteEntries
@@ -681,7 +786,8 @@ buildSlideEntry env (identity, explicitId, entry) = do
             , deckSlideResources = Flow.loweredResources bodyLowered <> pictureResources <> Flow.loweredResources notesLowered
             , deckSlideIsDivider = False
             , deckSlideDiagnostics = diagnostics
-            , deckSlidePicture = pictureItemsOf
+            , deckSlidePicture = pictureItemsOf <> includedItems
+            , deckSlideWritten = writtenTitle <> [writtenBody]
             }
       , builtFrame = frame
       , builtProvenance =

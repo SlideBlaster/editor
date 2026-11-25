@@ -17,10 +17,10 @@ The product owner will judge this design by **using the alpha**, so the plan is
 ordered to put a runnable, thin-but-whole product in their hands first
 (milestone W, the walking skeleton), then deepen it.
 
-Short names: **SB2** = this repository (the
-base repo; branch `dev`), **ED** = the earlier SlideBlaster editor,
-**SE** = the earlier slide-editor prototype, **DS** =
-the SlideBlaster design notes. ED and SE are read-only oracles and
+Short names: **SB2** = `/home/t/Documents/slide/slideBlaster/slideBlaster2` (the
+base repo; branch `dev`), **ED** = `/home/t/Documents/slide/slideBlaster/editor`,
+**SE** = `/home/t/Documents/slide/slide-editor`, **DS** =
+`/home/t/Documents/slide/slideBlaster/design`. ED and SE are read-only oracles and
 sources to port from; they are never modified.
 
 ---
@@ -41,7 +41,7 @@ sources to port from; they are never modified.
 | D10 | **Host in TypeScript**, bundled with esbuild, checked with `tsc --noEmit`. Code pane: **CodeMirror 6**. Highlighter: **Shiki** with lazily loaded grammars and a hand-written P4 TextMate grammar. Math: **KaTeX**. | Default, revisitable. |
 | D11 | **Citations in Haskell** (new `slideblaster-cite`): BibTeX reader, numeric + author-year, `\cite`, `\citeyear`, `\citefootnote`, `[@key]`, generated bibliography slide. | |
 | D12 | **PDF** = headless Chromium (`chromium`/`google-chrome` on PATH, or Playwright's) printing the exported HTML one page per beat; absence is a typed capability error (browser print dialog remains). | |
-| D13 | **Importers**: `sb import legacy-div` (SE's absolute-`div` format, so an existing legacy-div deck opens) is in the alpha. Beamer `.tex` import is deferred; Beamer *export* (existing writer) is kept best-effort. | |
+| D13 | **Importers**: `sb import legacy-div` (SE's absolute-`div` format, so `/home/t/uni/year_7/slidesPLp4check/presentation.slideBlaster.md` opens) is in the alpha. Beamer `.tex` import is deferred; Beamer *export* (existing writer) is kept best-effort. | |
 | D14 | **Version** `0.2.0-alpha.N`. Cabal stays `0.2.0.0`; a `PRERELEASE` file (`alpha.1`) is added and `scripts/release/check-versions.sh` learns it. Releases are local tags only; nothing is pushed. | |
 | D15 | ED `services/*`, the 2,257-shape draw.io catalogue UI, animation playback, rotation: untouched/deferred. | |
 
@@ -414,9 +414,9 @@ collaboration, inline on-canvas text editing, browser-only TeX.
 | SE `src/rendering/fragments.ts` | host CSS | step transitions |
 | SE `src/components/editor/HtmlFolding.ts` | CM6 folding of raw HTML/SVG | idea only |
 | worktree `hosts/web/src/ui/{viewport,pointer-event-transport,product-v2-renderer}.js`, `theme-editor.js`, `shape-palette.js` | `hosts/web/src/ui/*.ts` | convert to TS |
-| a legacy-div presentation deck | `fixtures/corpus/se-p4check/` | import fixture |
-| the P4 Developer Days Beamer talk (`presentation.tex`, `figures/`, `references.bib`, `config.tex`) | `fixtures/corpus/p4devdays/` | acceptance deck, re-authored in the new format; `.tex` as beat-count oracle |
-| a Beamer lecture deck (`main.tex`) | `fixtures/corpus/ldwg/` | ~12-frame excerpt: tikz, `\only`, listings, tabular |
+| `/home/t/uni/year_7/slidesPLp4check/presentation.slideBlaster.md` | `fixtures/corpus/se-p4check/` | import fixture |
+| `/home/t/Documents/papers/p4ver/p4devdays-slides/src/` (`presentation.tex`, `figures/`, `references.bib`, `config.tex`) | `fixtures/corpus/p4devdays/` | acceptance deck, re-authored in the new format; `.tex` as beat-count oracle |
+| `/home/t/uni/year_7/slidesLDWG/presentation/main.tex` | `fixtures/corpus/ldwg/` | ~12-frame excerpt: tikz, `\only`, listings, tabular |
 
 Dropped: ED/SE TS engines, SE Express/SQLite/React app, `.slide` format (a temporary
 reader may stay one release for old fixtures), Tauri for now.
@@ -461,7 +461,16 @@ lowering against stub inputs and integrates as lanes land.
 | C | stepped code highlight paint; navigator ops (new/dup/delete/reorder), resize/delete/z-order handles; diagnostics gutter; click-to-source both ways; export UI; landing page | F13, F14; Chrome smoke |
 | I | wire all of the above; Beamer export; release mechanics (D14: `VERSION` 0.2.0, `PRERELEASE` alpha.1, script change, `CHANGELOG.md`, all Cabal files 0.2.0.0) | full corpus `make alpha-check`; p4devdays presents end to end via `scripts/alpha/demo-m.sh`; tag `v0.2.0-alpha.1` locally |
 
-### Milestone W-web (after the alpha)
+### Milestone W-web (built 2026-11-25)
+
+Done for the Desktop app: the core runs in the app's own page as Wasm, the app embeds the web
+bundle and starts no `sb serve` (D9's sidecar is gone). Project files go through the shell's
+commands; figures and PDF are one run of `sb` each (`sb render DIR`, `sb build --pdf`). `sb serve`
+remains for a plain browser tab, development and CI, and can also host the in-page core
+(`?core=page`). See `docs/specs/session-v1-protocol.md`, 7.2. Still open from the original plan
+below: browser storage (IndexedDB/FSA) for a tab with no `sb` at all.
+
+Original plan:
 
 Install the GHC Wasm toolchain; build the core reactor (`apps/slideblaster-web-wasm`)
 serving `session/1` in-page; host chooses transport (WebSocket to `sb serve` vs in-page

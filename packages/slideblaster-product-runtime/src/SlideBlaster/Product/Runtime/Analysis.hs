@@ -7,7 +7,7 @@
 -- The session state machine never parses deck bytes itself. An 'Analyzer' turns
 -- exact deck bytes plus the other project files into frames, diagnostics and
 -- block-render requests, and performs the one deterministic structural edit the
--- session offers (new slide). The production analyzer composes the deck,
+-- session offers (new slide) and the verified canvas edits of a slide's picture. The production analyzer composes the deck,
 -- syntax, canvas and presentation packages; tests supply small stand-ins.
 module SlideBlaster.Product.Runtime.Analysis
   ( Analyzer (..)
@@ -22,6 +22,7 @@ module SlideBlaster.Product.Runtime.Analysis
   ) where
 
 import SlideBlaster.Canvas (Content, SourceRef)
+import SlideBlaster.Deck.PictureEdit (PictureOp)
 import SlideBlaster.Presentation.Route qualified as Route
 import SlideBlaster.Product.Runtime.SlidePlan (FrameInput)
 
@@ -121,6 +122,9 @@ data Analyzer = Analyzer
   -- ^ project files (excluding the deck), entry path, exact deck bytes
   , insertSlideAfter :: ByteString -> Maybe Text -> Maybe (ByteString, Text)
   -- ^ deck bytes, frame to insert after; new bytes and the minted frame id
+  , editPicture :: Map Text ByteString -> Text -> ByteString -> Text -> PictureOp -> Either Text (ByteString, [Text])
+  -- ^ project files, entry path, deck bytes, frame, one canvas edit of its picture block; new bytes and
+  -- the id of a node the edit created, or why the edit was refused
   }
 
 -- | Diagnostics for sections, routes and @\\route@ choices. The span function

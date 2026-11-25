@@ -4,23 +4,31 @@
  * The shell forwards facts and adopts what the core returns; it never parses the deck,
  * mints ids or computes revisions.
  */
+import { attachDrawingEdit } from "./ui/drawing-edit.ts";
 import { createDomMeasurer, type DomMeasurer } from "./measure.ts";
 import { ensureKatexCss } from "./content/katex-css.ts";
 import { createShikiHighlighter } from "./content/highlight.ts";
 import { katexProvider } from "./content/math.ts";
 import { capUrlFor, createCapClient } from "./cap/client.ts";
 import { createFakeCore } from "./fixture/fake-core.ts";
+import { createCapProjectHost } from "./host/cap-host.ts";
+import type { ProjectFile, ProjectHost } from "./host/project-host.ts";
+import { createShellProjectHost, type ShellApi } from "./host/shell-host.ts";
 import { createPresenterHub, type PresenterHub } from "./presenter/model.ts";
 import { createBrowserWindowOpener, openChannel, type WindowOpener } from "./presenter/windows.ts";
 import { bytesFromBase16, requests, type Effect, type Request, type SessionResponse, type SessionSuccess, type View } from "./protocol/session.ts";
 import { createSourcePane } from "./source/pane.ts";
 import { applyThemeCss, loadTheme } from "./theme.ts";
+import { createInPageTransport } from "./transport/in-page.ts";
 import { createWebSocketTransport, sessionUrlFor, type SessionTransport } from "./transport/transport.ts";
+import { createCanvasEdit } from "./ui/canvas-edit.ts";
 import { createDeckView } from "./ui/deck-view.ts";
 import { exportPdf, pdfStatus } from "./ui/export-pdf.ts";
 import { installFreeZoom, zoomStep } from "./ui/free-zoom.ts";
 import { currentFolder, installSidebar, resolveDeckFolder, type ShellBridge } from "./ui/sidebar.ts";
+import { createShapeLoader } from "./ui/shape-library.ts";
 import { installStyleToolbar } from "./ui/style-toolbar.ts";
+import { loadSessionCore } from "./wasm/session-core.ts";
 
 const doc = document;
 const $ = <T extends HTMLElement>(id: string): T => doc.getElementById(id) as T;
@@ -48,22 +56,69 @@ function banner(message: string | null): void {
   el.textContent = message ?? "";
 }
 
-async function makeTransport(): Promise<SessionTransport> {
-  if (params.get("fixture") === "1") {
-    const response = await fetch(new URL("./fixtures/plans/sample-deck.slideBlaster.md", doc.baseURI));
-    return createFakeCore({ source: new Uint8Array(await response.arrayBuffer()), figureDelayMs: 900 });
-  }
-  return createWebSocketTransport({ url: sessionUrlFor(location) });
+/**
+ * Where the core runs. In the desktop app (and with `?core=page`) it runs in this page and `host`
+ * is where the project's files are; otherwise it runs inside `sb serve`, reached over a socket.
+ */
+interface Wiring {
+  readonly transport: SessionTransport;
+  readonly host: ProjectHost | null;
+  /** The project's files as first listed (in-page core only). */
+  readonly files: Promise<readonly ProjectFile[]> | null;
 }
 
-/** Ask `/cap` which deck the served project holds (default, revisitable: first `*.slideBlaster.md`). */
-async function discoverEntry(): Promise<string> {
+/** The themes shipped with the editor, as `themes/<name>/...` project files. */
+async function bundledThemes(): Promise<ProjectFile[]> {
+  const root = new URL("./dist/themes/", doc.baseURI);
+  const manifest = await fetch(new URL("manifest.json", root));
+  if (!manifest.ok) return [];
+  const names = (await manifest.json()) as unknown;
+  if (!Array.isArray(names)) return [];
+  const files = await Promise.all(names.filter((n): n is string => typeof n === "string").map(async (name) => {
+    const response = await fetch(new URL(name, root));
+    return response.ok ? [{ path: `themes/${name}`, bytes: new Uint8Array(await response.arrayBuffer()) }] : [];
+  }));
+  return files.flat();
+}
+
+async function wire(): Promise<Wiring> {
+  if (params.get("fixture") === "1") {
+    const response = await fetch(new URL("./fixtures/plans/sample-deck.slideBlaster.md", doc.baseURI));
+    return { transport: createFakeCore({ source: new Uint8Array(await response.arrayBuffer()), figureDelayMs: 900 }), host: null, files: null };
+  }
+  const shellInPage = window.__SB_SHELL__?.inPage === true;
+  if (!shellInPage && params.get("core") !== "page") return { transport: createWebSocketTransport({ url: sessionUrlFor(location) }), host: null, files: null };
+  const tauri = (window as unknown as { __TAURI__?: { core: { invoke: ShellApi["invoke"] }; event: { listen: ShellApi["listen"] } } }).__TAURI__;
+  const real = shellInPage && tauri !== undefined
+    ? createShellProjectHost({ invoke: (command, args) => tauri.core.invoke(command, args), listen: (event, handler) => tauri.event.listen(event, handler) })
+    : createCapProjectHost(createCapClient(capUrlFor(location)), location.origin);
+  // The first listing serves both the choice of deck and the core's first open.
+  let first: Promise<ProjectFile[]> | null = real.list();
+  const files = first;
+  const host: ProjectHost = { ...real, list: () => { const listed = first ?? real.list(); first = null; return listed; } };
+  const core = await loadSessionCore(doc.baseURI);
+  const library = async (path: string): Promise<Uint8Array | null> => {
+    const response = await fetch(new URL(`./dist/${path}`, doc.baseURI));
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // an app that answers every unknown path with its start page has no such file
+    return decoder.decode(bytes.subarray(0, 4096)).includes("\\tikzset{") ? bytes : null;
+  };
+  return { transport: createInPageTransport({ core, host, bundledThemes, library }), host, files };
+}
+
+/** Which deck the project holds (default, revisitable: first `*.slideBlaster.md`). */
+async function discoverEntry(wiring: Wiring): Promise<string> {
+  // The project's own decks only (`_up/...` are the files of decks it includes), nearest the root first.
+  const depth = (path: string): number => path.split("/").length;
+  const first = (paths: readonly string[]): string | undefined =>
+    paths.filter((path) => path.endsWith(".slideBlaster.md") && !path.startsWith("_up/")).sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : a > b ? 1 : 0))[0];
+  if (wiring.files !== null) return first((await wiring.files.catch(() => [])).map((file) => file.path)) ?? "deck.slideBlaster.md";
   const cap = createCapClient(capUrlFor(location));
   try {
     await cap.ready();
     const files = await cap.listProject("", true);
-    const deck = files.filter((f) => f.kind === "file" && f.path.endsWith(".slideBlaster.md")).map((f) => f.path).sort()[0];
-    return deck ?? "deck.slideBlaster.md";
+    return first(files.filter((f) => f.kind === "file").map((f) => f.path)) ?? "deck.slideBlaster.md";
   } catch {
     return "talk.slideBlaster.md";
   } finally {
@@ -72,7 +127,8 @@ async function discoverEntry(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const transport = await makeTransport();
+  const wiring = await wire();
+  const { transport, host } = wiring;
   const fixture = params.get("fixture") === "1";
   const pane = createSourcePane($("source"));
   let view: View | null = null;
@@ -108,6 +164,7 @@ async function main(): Promise<void> {
   }
 
   let themeLoaded = "";
+  let themeShown: { name: string; css: string } | null = null;
   function loadThemeFor(v: View): void {
     const name = v.frontmatter.theme;
     if (!name || name === themeLoaded || !/^[a-z0-9-]+$/.test(name)) return;
@@ -119,10 +176,17 @@ async function main(): Promise<void> {
   // read it) wins over the bundled copy; it is fetched again whenever a theme file changes.
   function reloadTheme(name: string): void {
     const deckDir = entry.includes("/") ? entry.slice(0, entry.lastIndexOf("/") + 1) : "";
-    const fetcher = (url: string) => fetch(url, { cache: "no-store" });
-    loadTheme(`${base}project/${deckDir}`, name, fetcher)
+    const projectPrefix = `${base}project/`;
+    // The deck's folder is the server's `/project/` when there is one, else the host's files.
+    const fetcher = async (url: string): Promise<{ ok: boolean; json(): Promise<unknown>; text(): Promise<string> }> => {
+      if (host === null || !url.startsWith(projectPrefix)) return fetch(url, { cache: "no-store" });
+      const bytes = await host.read(url.slice(projectPrefix.length)).catch(() => null);
+      const text = bytes === null ? "" : decoder.decode(bytes);
+      return { ok: bytes !== null, json: async () => JSON.parse(text) as unknown, text: async () => text };
+    };
+    loadTheme(`${projectPrefix}${deckDir}`, name, fetcher)
       .catch(() => loadTheme(`${base}dist/`, name, fetcher))
-      .then((theme) => { applyThemeCss(doc, name, theme.css); measurer.reset(); }, () => { /* built-in minimal theme */ });
+      .then((theme) => { applyThemeCss(doc, name, theme.css); themeShown = { name, css: theme.css }; measurer.reset(); hub?.refresh(); }, () => { /* built-in minimal theme */ });
   }
 
   async function handleEffect(effect: Effect): Promise<void> {
@@ -180,7 +244,66 @@ async function main(): Promise<void> {
   });
 
   // --- views ----------------------------------------------------------------------------
+  // Canvas edits go to the core as one request each; the answer repaints the slide and the
+  // source pane together, so the two views never disagree.
+  // A picture file opens in this same editor, as its own document, with a way back.
+  const openPicture = (file: string): void => {
+    void (async () => {
+      if (view !== null && view.revision !== view.saved) {
+        const saved = await enqueue(() => send(requests.command("save")));
+        if (!saved.ok) { status(`Could not save before opening ${file}: ${saved.error.message}`); return; }
+      }
+      const next = new URLSearchParams(location.search);
+      next.set("entry", file);
+      next.set("back", entry);
+      location.search = next.toString();
+    })();
+  };
+  // Ctrl+click on a \cat{file} line in the source opens that file.
+  pane.element.addEventListener("mousedown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.button !== 0) return;
+    const at = pane.view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (at === null) return;
+    const line = pane.view.state.doc.lineAt(at);
+    for (const match of line.text.matchAll(/\\cat(?:\[[^\]]*\])?\{([^}]+)\}/g)) {
+      const from = line.from + match.index;
+      if (at < from || at > from + match[0].length) continue;
+      event.preventDefault();
+      openPicture(match[1]!.trim());
+      return;
+    }
+  }, true);
+  const editing = createCanvasEdit({
+    doc, status,
+    reveal: (span) => pane.revealBytes(span),
+    source: (span) => new TextDecoder().decode(encoder.encode(pane.getText()).slice(span.start, span.end)),
+    pictureFiles: () => view?.pictureFiles ?? [],
+    shapes: createShapeLoader(new URL("./dist/catalog/catalog-v1.json", doc.baseURI).href),
+    open: (file) => openPicture(file),
+    write: (span, expected, replacement) => enqueue(async () => {
+      if (view === null) return { ok: false as const, message: "No deck is open" };
+      const response = await send(requests.applySourceReplace(view.revision, span, encoder.encode(expected), encoder.encode(replacement)));
+      return response.ok ? { ok: true as const, created: null } : { ok: false as const, message: response.error.message };
+    }),
+    edit: (frame, op) => enqueue(async () => {
+      if (view === null) return { ok: false as const, message: "No deck is open" };
+      const response = await send(requests.pictureEdit(view.revision, frame, op));
+      if (!response.ok) return { ok: false as const, message: response.error.message };
+      const made = response.effects.find((e) => e.kind === "node_created");
+      const all = response.effects.flatMap((e) => e.kind === "node_created" ? [e.node] : []);
+      return { ok: true as const, created: made !== undefined && made.kind === "node_created" ? made.node : null, made: all };
+    }),
+  });
+  attachDrawingEdit({
+    doc, status, root: $("deck-canvas"),
+    edit: (figure, op) => enqueue(async () => {
+      if (view === null) return { ok: false as const, message: "No deck is open" };
+      const response = await send(requests.figureEdit(view.revision, figure, op));
+      return response.ok ? { ok: true as const } : { ok: false as const, message: response.error.message };
+    }),
+  });
   const deck = createDeckView({
+    editing,
     doc, scroller: $("deck"), canvas: $("deck-canvas"), rail: $("slide-items"), paint: paintBase,
     sink: {
       pointer: (fact) => enqueue(() => send(requests.pointerEvent(fact))),
@@ -237,10 +360,13 @@ async function main(): Promise<void> {
       try {
         const dirty = view !== null && view.revision !== view.saved;
         if (dirty) {
-          const saved = await enqueue(() => send(requests.command("save", view?.revision)));
+          const saved = await enqueue(() => send(requests.command("save")));
           if (!saved.ok) { say(`PDF export failed: could not save first: ${saved.error.message}`); return; }
         }
-        say(pdfStatus(await exportPdf((url, init) => fetch(url, init), location.origin, entry, event.shiftKey)));
+        const steps = !event.shiftKey;
+        const result = host !== null ? await host.exportPdf(entry, steps) : await exportPdf((url, init) => fetch(url, init), location.origin, entry, steps);
+        say(pdfStatus(result));
+        if (result.ok && result.path !== undefined) openWrittenPdf(result.path, result.name);
       } finally {
         exporting = false;
         if (view !== null) chrome(view);
@@ -250,7 +376,7 @@ async function main(): Promise<void> {
 
   const command = (name: string): void => {
     void enqueue(async () => {
-      const response = await send(requests.command(name, view?.revision));
+      const response = await send(requests.command(name, name === "save" ? undefined : view?.revision));
       if (!response.ok) status(response.error.message);
     });
   };
@@ -259,7 +385,14 @@ async function main(): Promise<void> {
   button("save").addEventListener("click", () => command("save"));
   for (const id of ["new-slide", "deck-add"]) button(id).addEventListener("click", () => command("new_slide"));
   doc.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "s") { event.preventDefault(); command("save"); }
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (event.key === "s") { event.preventDefault(); command("save"); return; }
+    // Undo and redo for canvas edits; inside the source pane or a text field the field's own undo applies.
+    const typing = (event.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], .cm-editor") != null;
+    if (typing) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) { event.preventDefault(); command("undo"); }
+    else if (key === "y" || (key === "z" && event.shiftKey)) { event.preventDefault(); command("redo"); }
   });
 
   const toolbar = installStyleToolbar({
@@ -270,6 +403,14 @@ async function main(): Promise<void> {
     },
     status,
   });
+
+  // The written PDF opens in the desktop's PDF viewer; in a browser, in a new tab (served from the project).
+  const openWrittenPdf = (path: string, name: string | undefined): void => {
+    const shell = window.__SB_SHELL__;
+    if (shell?.openPdf !== undefined) { void shell.openPdf(path).catch((e: unknown) => say(`PDF written, but could not open it: ${String(e)}`)); return; }
+    const deckDir = entry.includes("/") ? entry.slice(0, entry.lastIndexOf("/") + 1) : "";
+    if (name !== undefined) window.open(`${base}project/${deckDir}${encodeURIComponent(name)}`, "_blank");
+  };
 
   // --- view toggles & zoom ---------------------------------------------------------------
   const toggle = (id: string, apply: (on: boolean) => void): void => {
@@ -302,6 +443,7 @@ async function main(): Promise<void> {
     request: (request) => enqueue(() => send(request)),
     navigator: () => view?.navigator.items ?? [],
     title: () => view?.frontmatter.title ?? "",
+    theme: () => themeShown,
     onError: status,
   });
   // Present always works: it (re)opens both windows (a closed or stale window comes back)
@@ -317,9 +459,9 @@ async function main(): Promise<void> {
   // --- connection ------------------------------------------------------------------------
   const conn = $("conn");
   let everOpen = false;
-  transport.onState((state) => {
+  const showState = (state: ReturnType<SessionTransport["state"]>): void => {
     conn.dataset.state = state;
-    conn.textContent = { connecting: "Connecting", open: "Connected", reconnecting: "Reconnecting", closed: "Disconnected" }[state];
+    conn.textContent = { connecting: "Connecting", open: host !== null ? "Ready" : "Connected", reconnecting: "Reconnecting", closed: "Disconnected" }[state];
     if (state === "open") {
       banner(null);
       // A restarted sb has no presentation: restore it where it was.
@@ -333,17 +475,44 @@ async function main(): Promise<void> {
     } else if (everOpen) {
       banner("Lost the connection to sb serve. Reconnecting; your edits stay in the source pane.");
     }
-  });
+  };
+  transport.onState(showState);
+  // the in-page core is ready from the start and never announces it
+  if (transport.state() === "open") showState("open");
   transport.onPush((push) => { void adopt(push); });
 
   if (fixture) conn.textContent = "Fixture";
-  const entry = params.get("entry") ?? (fixture ? "deck.slideBlaster.md" : await discoverEntry());
+  const entry = params.get("entry") ?? (fixture ? "deck.slideBlaster.md" : await discoverEntry(wiring));
   const opened = await enqueue(() => send(requests.openProject(entry)));
+  // Opened from a deck (a picture file brought in with \\cat): offer the way back.
+  const backTo = params.get("back");
+  if (backTo !== null) {
+    const back = doc.createElement("button");
+    back.type = "button";
+    back.className = "app-back";
+    back.textContent = "\u2190 Back to deck";
+    back.title = `Save and go back to ${backTo}`;
+    back.addEventListener("click", () => {
+      void (async () => {
+        if (view !== null && view.revision !== view.saved) {
+          const saved = await enqueue(() => send(requests.command("save")));
+          if (!saved.ok) { status(`Could not save: ${saved.error.message}`); return; }
+        }
+        const next = new URLSearchParams(location.search);
+        next.set("entry", backTo);
+        next.delete("back");
+        location.search = next.toString();
+      })();
+    });
+    $("view-source").before(back);
+  }
   if (!opened.ok) {
     status(`Could not open ${entry}: ${opened.error.message}`);
     banner(`Could not open ${entry}: ${opened.error.message}`);
   }
-  if (!fixture) {
+  if (host !== null) {
+    host.onChange((changes) => { if (themeLoaded !== "" && changes.some((c) => c.path.includes("themes/"))) reloadTheme(themeLoaded); });
+  } else if (!fixture) {
     const watcher = createCapClient(capUrlFor(location));
     watcher.onEvent((event) => {
       if (event.event === "watch" && themeLoaded !== "" && event.changes.some((c) => c.path.includes("themes/"))) reloadTheme(themeLoaded);

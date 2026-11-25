@@ -15,6 +15,7 @@ library
       SlideBlaster.Deck.Frontmatter
       SlideBlaster.Deck.Include
       SlideBlaster.Deck.Markdown
+      SlideBlaster.Deck.PictureEdit
   hs-source-dirs:      src
   build-depends:
       base >=4.20 && <5
@@ -73,6 +74,28 @@ test-suite slideblaster-deck-markdown-tests
     , bytestring >=0.11 && <0.13
     , directory >=1.3 && <1.4
     , slideblaster-canvas
+    , slideblaster-deck
+    , slideblaster-document
+    , slideblaster-source
+    , text >=2.0 && <2.2
+  default-language:    GHC2024
+  ghc-options:
+      -Wall
+      -Wcompat
+      -Widentities
+      -Wincomplete-record-updates
+      -Wincomplete-uni-patterns
+      -Wmissing-export-lists
+      -Wmissing-home-modules
+      -Wpartial-fields
+
+test-suite slideblaster-deck-picture-edit-tests
+  type:                exitcode-stdio-1.0
+  main-is:             PictureEdit.hs
+  hs-source-dirs:      test
+  build-depends:
+      base >=4.20 && <5
+    , bytestring >=0.11 && <0.13
     , slideblaster-deck
     , slideblaster-document
     , slideblaster-source

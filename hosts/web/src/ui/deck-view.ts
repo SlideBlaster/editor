@@ -1,15 +1,16 @@
 /**
  * Continuous vertical deck preview plus the thumbnail rail (design 5, F13/F14).
  *
- * Every navigator item is painted from the plan the core projected for it; only the active
- * slide, painted from `view.active.plan`, gets interaction targets. The rail highlights the
+ * Every navigator item is painted from the plan the core projected for it, and every slide
+ * of the deck itself (not an included one) is editable in place through the canvas layer;
+ * there is no "open one slide to edit it" mode. The rail highlights the
  * slide under the reading line as the preview scrolls and scrolls the preview on click.
  * Nothing here decides what is active: selection is a request to the core.
  */
 import type { Plan } from "../protocol/plan.ts";
 import type { NavigatorItem, View } from "../protocol/session.ts";
 import { paintPlan, type PaintContext } from "../plan/paint.ts";
-import { attachPointerFacts, type PointerSink } from "./pointer-facts.ts";
+import type { PointerSink } from "./pointer-facts.ts";
 
 export interface DeckViewOptions {
   readonly doc: Document;
@@ -27,6 +28,8 @@ export interface DeckViewOptions {
   readonly onNodeClick?: (frame: string, nodeId: string) => void;
   /** Present in the desktop shell: switch to the deck an included slide comes from (its deck file, relative to this deck's folder). */
   readonly onOpenOrigin?: (path: string) => void;
+  /** Makes a painted slide editable (create, drag, connect, retype); returns the detach function. */
+  readonly editing?: { attach(slide: HTMLElement, plan: Plan): () => void };
 }
 
 export interface DeckView {
@@ -65,13 +68,13 @@ export function createDeckView(options: DeckViewOptions): DeckView {
 
   const keyOf = (plan: Plan | null, extra = ""): string => plan === null ? "none" : `${plan.revision}:${plan.ticket}:${plan.step}${extra}`;
 
-  function paintInto(holder: HTMLElement, plan: Plan | null, interactive: boolean, selection: string | null): (() => void) | null {
+  function paintInto(holder: HTMLElement, plan: Plan | null, editable: boolean): (() => void) | null {
     holder.replaceChildren();
     if (plan === null) return null;
-    const painted = paintPlan(plan, { ...options.paint, doc, interactive, selection });
+    const painted = paintPlan(plan, { ...options.paint, doc, interactive: false, selection: null });
     holder.append(painted.element);
     settled.push(painted.settled);
-    return interactive ? attachPointerFacts(painted.element, plan, options.sink) : null;
+    return editable && options.editing !== undefined ? options.editing.attach(painted.element, plan) : null;
   }
 
   function ensureRow(item: NavigatorItem, index: number) {
@@ -186,13 +189,13 @@ export function createDeckView(options: DeckViewOptions): DeckView {
       const liveThumbs: HTMLElement[] = [];
       items.forEach((item, index) => {
         const entry = ensureRow(item, index);
-        // an included slide is read-only here: no interaction targets, only the badge
+        // an included slide is read-only here: no canvas layer, only the badge
         const isActive = item.frame === activeFrame && view.active !== null && !item.origin;
-        const plan = isActive ? view.active!.plan : item.audience;
-        const key = keyOf(plan, `${isActive ? "A" : "S"}|${selection ?? ""}`);
+        const plan = item.audience;
+        const key = keyOf(plan);
         if (entry.key !== key) {
           entry.detach?.();
-          entry.detach = paintInto(entry.slide, plan, isActive, selection);
+          entry.detach = paintInto(entry.slide, plan, !item.origin);
           entry.key = key;
         }
         const notesKey = keyOf(item.notes);
@@ -204,7 +207,7 @@ export function createDeckView(options: DeckViewOptions): DeckView {
             empty.className = "notes-empty";
             empty.textContent = "No notes";
             entry.notes.append(empty);
-          } else paintInto(entry.notes, item.notes, false, null);
+          } else paintInto(entry.notes, item.notes, false);
         }
         entry.row.classList.toggle("is-active-surface", isActive);
         syncOrigin(entry.slide, item);
@@ -212,13 +215,17 @@ export function createDeckView(options: DeckViewOptions): DeckView {
 
         const thumb = ensureThumb(item, index);
         const thumbKey = keyOf(item.audience);
-        if (thumb.key !== thumbKey) { paintInto(thumb.card, item.audience, false, null); thumb.key = thumbKey; }
+        if (thumb.key !== thumbKey) { paintInto(thumb.card, item.audience, false); thumb.key = thumbKey; }
         liveThumbs.push(thumb.button);
       });
       for (const [frame, r] of [...rows]) if (!items.some((i) => i.frame === frame)) { r.detach?.(); r.row.remove(); rows.delete(frame); }
       for (const [frame, t] of [...thumbs]) if (!items.some((i) => i.frame === frame)) { t.button.remove(); thumbs.delete(frame); }
-      canvas.replaceChildren(...liveRows);
-      rail.replaceChildren(...liveThumbs);
+      // Re-inserting an element drops focus inside it (a node being typed in), so the
+      // lists are only rewritten when a slide was added, removed or moved.
+      const sameOrder = (parent: HTMLElement, wanted: readonly HTMLElement[]): boolean =>
+        parent.children.length === wanted.length && wanted.every((el, i) => parent.children[i] === el);
+      if (!sameOrder(canvas, liveRows)) canvas.replaceChildren(...liveRows);
+      if (!sameOrder(rail, liveThumbs)) rail.replaceChildren(...liveThumbs);
       markCurrent(railFrame ?? activeFrame);
       await Promise.all(settled.splice(0));
     },

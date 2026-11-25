@@ -76,8 +76,10 @@ external file-watching guarantee. A stronger platform backend may be added
 later behind the same capability only if a real product requirement earns that
 complexity.
 
-A native desktop UI, Tauri sidecar composition, or system-browser composition is
-deferred. None is implied by this first target.
+The desktop application (`apps/desktop`, since 2026-11-25) is not a native composition of the
+core: it embeds the web artifact and runs the same Wasm reactor in its own page. Its shell adds
+only the project folder (list, read, conditional write, watch) and runs the native CLI once per
+figure compile or PDF export (`sb render`, `sb build --pdf`). It starts no server.
 
 ## Capability equivalence
 

@@ -13,7 +13,10 @@ module SlideBlaster.Product.Runtime.MarkdownAnalyzer
   ) where
 
 import SlideBlaster.Canvas
-  ( ContentNode (..)
+  ( ContainerKind (GenericContainer)
+  , ContentNode (..)
+  , Dialect (Markdown)
+  , Provenance (CanvasProvenance)
   , content
   , contentNodes
   , defaultTheme
@@ -23,10 +26,13 @@ import SlideBlaster.Cite (CitationStyle (..), parseCitationStyle, readBibliograp
 import SlideBlaster.Canvas.Flow (FlowResource (..), ResourceKind (..))
 import SlideBlaster.Canvas.Flow qualified as Flow
 import SlideBlaster.Deck.Edit (newSlideAfter)
+import SlideBlaster.Deck.PictureEdit (PictureOp, pictureEditMessage)
+import SlideBlaster.Deck.PictureEdit qualified as PictureEdit
 import SlideBlaster.Deck.Frontmatter (frontmatterLookup)
-import SlideBlaster.Deck.Include (IncludeLine (..), childKeyOf, deckSuffix, joinKey, keyDirectory, keyToRelative, normalizeKey)
+import SlideBlaster.Deck.Include (IncludeLine (..), childKeyOf, deckSuffix, joinKey, keyDirectory, keyToRelative, normalizeKey, optionList, optionName)
 import SlideBlaster.Deck.Markdown
   ( DeckSlide (..)
+  , WrittenText (..)
   , MarkdownDeck (..)
   , DeckSection (..)
   , DeckInclude (..)
@@ -41,7 +47,7 @@ import SlideBlaster.Presentation.Route qualified as Route
 import SlideBlaster.Product.Runtime.Analysis
 import SlideBlaster.Product.Runtime.Lower (contentRoutes)
 import SlideBlaster.Product.Runtime.MathMacros (expandMathIn, parseMathMacros)
-import SlideBlaster.Product.Runtime.Picture (preambleColours)
+import SlideBlaster.Product.Runtime.Picture (expandNodeStyles, libraryStyles, optionKeys, preambleColours)
 import SlideBlaster.Product.Runtime.Citations (Resolved (..), resolveCitations)
 import SlideBlaster.Product.Runtime.SlidePlan (FrameInput (..), TitleFields (..))
 import SlideBlaster.Source qualified as Source
@@ -59,10 +65,53 @@ import Data.Text.Read qualified as TextRead
 
 -- | Analyzer backed by the alpha Markdown deck reader.
 markdownAnalyzer :: Analyzer
-markdownAnalyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter}
+markdownAnalyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter, editPicture = editPictureOf}
 
 analyse :: Map Text ByteString -> Text -> ByteString -> Analysis
-analyse files entry = analyseWith (Ctx "" [entry] "" []) files
+analyse files entry bytes
+  | pictureEntry entry =
+      -- A picture file opened on its own: one slide whose picture is the file,
+      -- with every span counted in the file's own bytes.
+      let (wrapped, lead, _) = pictureWrap entry bytes
+          whole = analyseWith (Ctx "" [entry] "" []) files wrapped
+          size = ByteString.length bytes
+          back n = max 0 (min size (n - lead))
+          own frame =
+            frame
+              { frameSpan = (0, size)
+              , frameScene =
+                  (frameScene frame)
+                    { frameInputPicture = fmap (Flow.shiftPictureItem (negate lead)) (frameInputPicture (frameScene frame))
+                    , frameInputWritten = []
+                    }
+              }
+       in whole
+            { analysisFrames = [own frame | frame <- analysisFrames whole, frameKey frame == pictureFrame]
+            , analysisDiagnostics = [item {diagnosticSpan = fmap (\(a, b) -> (back a, back b)) (diagnosticSpan item)} | item <- analysisDiagnostics whole]
+            }
+  | otherwise = analyseWith (Ctx "" [entry] "" []) files bytes
+
+-- | The text of a project file named in a deck that sits in the given folder.
+projectText :: Text -> Map Text ByteString -> Text -> Maybe Text
+projectText dir files path = Encoding.decodeUtf8With (\_ _ -> Just '?') <$> Map.lookup (joinKey dir (Text.strip path)) files
+
+-- | Whether an entry is a picture file (@.tikz@) rather than a deck.
+pictureEntry :: Text -> Bool
+pictureEntry = Text.isSuffixOf ".tikz"
+
+-- | The id of the one slide a picture file is shown on.
+pictureFrame :: Text
+pictureFrame = "picture"
+
+-- | A picture file read as a deck: the file is the picture block of one slide
+-- titled with the file's name. Returns the deck, the length of what was put
+-- before the file, and what was put after it.
+pictureWrap :: Text -> ByteString -> (ByteString, Int, ByteString)
+pictureWrap entry bytes =
+  let name = Text.map (\c -> if c `elem` ("_#{}\\$%&^~*`<>[]" :: String) then ' ' else c) (last ("" : Text.splitOn "/" entry))
+      prefix = Encoding.encodeUtf8 ("---\nslideblaster: 1\n---\n\n## " <> name <> " {#" <> pictureFrame <> "}\n\n```slide\n")
+      suffix = (if ByteString.null bytes || "\n" `ByteString.isSuffixOf` bytes then "" else "\n") <> "```\n"
+   in (prefix <> bytes <> suffix, ByteString.length prefix, suffix)
 
 -- | Where a deck sits among the decks that include it.
 data Ctx = Ctx
@@ -80,7 +129,7 @@ analyseWith ctx files bytes =
   withIncludes ctx files (deckIncludes' document) ownBib (analyseOwn ctx files bytes document)
   where
     snapshot = Source.snapshotFromBytes bytes
-    document = analyzeMarkdownDeckWith (DeckConfig (const (Just defaultTheme)) (ctxHandlePrefix ctx)) snapshot
+    document = analyzeMarkdownDeckWith (DeckConfig (const (Just defaultTheme)) (ctxHandlePrefix ctx) (projectText (ctxDir ctx) files)) snapshot
     deckIncludes' d = maybe [] deckIncludes (Document.documentSemantic d)
     ownBib = case Document.documentSemantic document >>= deckFrontmatter of
       Just front -> bibTextOf ctx files (fromMaybe "" (frontmatterLookup "bibliography" front))
@@ -110,7 +159,7 @@ analyseOwn ctx files bytes document =
           front = deckFrontmatter deck
           lookupFront key = fromMaybe "" (front >>= frontmatterLookup key)
           preamble = Encoding.encodeUtf8 (lookupFront "preamble")
-          cited = citeFrames (maybeToList (bibTextOf ctx files (lookupFront "bibliography")) <> ctxBibs ctx) bytes lookupFront slides (fmap (frameOf lookupFront) slides)
+          cited = citeFrames (maybeToList (bibTextOf ctx files (lookupFront "bibliography")) <> ctxBibs ctx) bytes lookupFront slides (fmap (frameOf (libraryStyles (projectText "" files)) lookupFront) slides)
           sections = [Route.Section (deckSectionId s) (deckSectionTitle s) (maybe [] pure (deckSectionDivider s) <> deckSectionSlides s) | s <- deckSections deck]
           routes = deckRoutes deck
           choices = [(frameKey f, route) | f <- fst cited, (route, _) <- contentRoutes (contentNodes (frameInputBody (frameScene f)))]
@@ -160,13 +209,38 @@ citeFrames :: [Text] -> ByteString -> (Text -> Text) -> [DeckSlide] -> [Analyzed
 citeFrames bibTexts deckBytes lookupFront slides frames =
   (zipWith apply frames resolvedFrames, unknown <> missing)
   where
-    bodies = fmap (frameInputBody . frameScene) frames
+    -- citations inside picture nodes are resolved with the body's, in reading
+    -- order: each node's content rides along in a marked container and is
+    -- taken back out afterwards
+    marker = "picture-node:"
+    bodies =
+      [ content
+          ( contentNodes (frameInputBody scene)
+              <> [ TransparentContainer (CanvasProvenance Markdown) (GenericContainer (marker <> Text.pack (show i))) (Flow.pictureNodeContent n)
+                 | (i, Flow.PictureNodeItem n) <- zip [0 :: Int ..] (frameInputPicture scene)
+                 ]
+          )
+      | scene <- fmap frameScene frames
+      ]
     style = fromMaybe NumericStyle (parseCitationStyle (lookupFront "citation-style"))
     path = Text.strip (lookupFront "bibliography")
     -- the deck's own bibliography first, then those of the decks that include it
     bibliography = fst (readBibliography (Text.intercalate "\n" bibTexts))
     Resolved resolvedFrames unknownKeys = resolveCitations style bibliography bodies
-    apply frame (body, footer) = frame {frameScene = (frameScene frame) {frameInputBody = body, frameInputFooter = footer}}
+    apply frame (body, footer) =
+      let scene = frameScene frame
+          carried = [(name, kids) | TransparentContainer _ (GenericContainer name) kids <- contentNodes body, marker `Text.isPrefixOf` name]
+          own = [n | n <- contentNodes body, not (isCarried n)]
+          isCarried n = case n of
+            TransparentContainer _ (GenericContainer name) _ -> marker `Text.isPrefixOf` name
+            _ -> False
+          picture =
+            [ case item of
+                Flow.PictureNodeItem node -> maybe item (\kids -> Flow.PictureNodeItem node {Flow.pictureNodeContent = kids}) (lookup (marker <> Text.pack (show i)) carried)
+                other -> other
+            | (i, item) <- zip [0 :: Int ..] (frameInputPicture scene)
+            ]
+       in frame {frameScene = scene {frameInputBody = content own, frameInputFooter = footer, frameInputPicture = picture}}
     missing =
       [ DiagnosticItem "warning" "cite.no-bibliography" ("bibliography file not found: " <> (if Text.null path then "(no bibliography: in the frontmatter)" else path)) Nothing Nothing
       | null bibTexts
@@ -187,12 +261,19 @@ citeFrames bibTexts deckBytes lookupFront slides frames =
         then Just (start, end)
         else Just (start + ByteString.length before, start + ByteString.length before + ByteString.length needle)
 
-frameOf :: (Text -> Text) -> DeckSlide -> AnalyzedFrame
-frameOf lookupFront slide =
+-- The first argument gives the definitions of the library styles an option list uses.
+frameOf :: (Text -> Text) -> (Text -> Text) -> DeckSlide -> AnalyzedFrame
+frameOf library lookupFront slide =
   let macros = parseMathMacros (lookupFront "preamble")
       mapContent c = content (fmap (expandMathIn macros) (contentNodes c))
       expandPicture item = case item of
-        Flow.PictureNodeItem {} -> item {Flow.pictureNodeContent = fmap (expandMathIn macros) (Flow.pictureNodeContent item)}
+        Flow.PictureNodeItem node ->
+          Flow.PictureNodeItem
+            node
+            { Flow.pictureNodeContent = fmap (expandMathIn macros) (Flow.pictureNodeContent node)
+            , -- named styles (title, body, note, the deck's own \tikzset) stand for their options
+              Flow.pictureNodeOptions = expandNodeStyles (lookupFront "preamble" <> "\n" <> library (Flow.pictureNodeOptions node)) (Flow.pictureNodeOptions node)
+            }
         other -> other
    in AnalyzedFrame
     { frameKey = deckSlideId slide
@@ -220,6 +301,7 @@ frameOf lookupFront slide =
                 else Nothing
           , frameInputPicture = fmap expandPicture (deckSlidePicture slide)
           , frameInputColours = preambleColours (lookupFront "preamble")
+          , frameInputWritten = [(writtenPart w, writtenStart w, writtenEnd w, writtenSource w, writtenBefore w, writtenAfter w) | w <- deckSlideWritten slide]
           , frameInputFooter = content []
           }
     , frameNotes = mapContent (deckSlideNotes slide)
@@ -303,6 +385,43 @@ insertAfter bytes after =
   where
     snapshot = Source.snapshotFromBytes bytes
 
+editPictureOf :: Map Text ByteString -> Text -> ByteString -> Text -> PictureOp -> Either Text (ByteString, [Text])
+editPictureOf files entry bytes frame requested
+  | pictureEntry entry = do
+      -- edit the file as the picture block it is shown as, then take the file back out
+      let (wrapped, lead, suffix) = pictureWrap entry bytes
+      (edited, made) <- editDeckPicture files wrapped frame requested
+      let inner = ByteString.drop lead edited
+      if ByteString.take lead edited == ByteString.take lead wrapped && suffix `ByteString.isSuffixOf` inner
+        then Right (ByteString.take (ByteString.length inner - ByteString.length suffix) inner, made)
+        else Left "the edit reached outside the picture file"
+  | otherwise = editDeckPicture files bytes frame requested
+
+editDeckPicture :: Map Text ByteString -> ByteString -> Text -> PictureOp -> Either Text (ByteString, [Text])
+editDeckPicture files bytes frame requested =
+  case PictureEdit.editPicture config frame op document of
+    Right (successor, made) -> Right (Source.snapshotBytes (Document.documentSource successor), made)
+    Left failure -> Left (pictureEditMessage failure)
+  where
+    config = defaultDeckConfig {configReadFile = projectText "" files}
+    document = analyzeMarkdownDeckWith config (Source.snapshotFromBytes bytes)
+    deck = Document.documentSemantic document
+    preamble = fromMaybe "" (deck >>= deckFrontmatter >>= frontmatterLookup "preamble")
+    written item = listToMaybe' [Flow.pictureNodeOptions n | Just d <- [deck], s <- deckFrames d, deckSlideId s == frame, Flow.PictureNodeItem n <- deckSlidePicture s, Flow.pictureNodeId n == item]
+    listToMaybe' xs = case xs of x : _ -> Just x; [] -> Nothing
+    -- Taking a fill or border off a node whose named style supplies it means
+    -- saying so: the option is written as @none@ rather than merely removed.
+    op = case requested of
+      PictureEdit.SetOptions item changes | Just options <- written item ->
+        PictureEdit.SetOptions item (fmap (override options changes) changes)
+      other -> other
+    override options changes change = case change of
+      PictureEdit.RemoveOption key
+        | key `elem` ["fill", "draw"]
+        , let next = PictureEdit.applyOptions changes options
+        , key `elem` optionKeys (expandNodeStyles (preamble <> "\n" <> libraryStyles (projectText "" files) next) next) -> PictureEdit.SetOption key (Just "none")
+      other -> other
+
 ------------------------------------------------------------------------------
 -- Sub-presentations
 
@@ -334,7 +453,7 @@ withIncludes ctx files includes ownBib base
     go _ [] = []
     go used (inc : rest) =
       let (diags, spliced) = includeOne ctx files ownBib used inc
-       in (inc, diags, spliced) : go (maybe used (\s -> spliceKey s : used) spliced) rest
+       in (inc, diags, spliced) : go (maybe used (\s -> (spliceKey s, fmap frameKey (spliceFrames s)) : used) spliced) rest
     baseIndex = Map.fromList (zip (fmap frameKey (analysisFrames base)) [0 :: Int ..])
     -- a section's frames in order, the spliced slides in front of the first frame at or after the include
     withChildren sec =
@@ -358,15 +477,17 @@ spliceAt groups = go 0
 
 -- | Locate, analyse and rename one included deck: its diagnostics (at the
 -- include line) and, when it could be included, its slides.
-includeOne :: Ctx -> Map Text ByteString -> Maybe Text -> [Text] -> DeckInclude -> ([DiagnosticItem], Maybe Spliced)
+--
+-- @used@ holds the decks already included, each with the slides taken from it.
+-- A deck may be included again as long as no slide is taken twice (one include
+-- with @skip={references}@, a later one with @only={references}@).
+includeOne :: Ctx -> Map Text ByteString -> Maybe Text -> [(Text, [Text])] -> DeckInclude -> ([DiagnosticItem], Maybe Spliced)
 includeOne ctx files ownBib used inc =
   case located of
     Left (code, message) -> ([problem "error" code message], Nothing)
     Right (deckKey, childName)
       | deckKey `elem` ctxStack ctx ->
           ([problem "error" "include.cycle" ("include cycle: " <> Text.intercalate " -> " (reverse (ctxStack ctx) <> [deckKey]))], Nothing)
-      | childName `elem` used ->
-          ([problem "error" "include.duplicate" ("two includes are named " <> childName <> "; their slide ids would collide (rename a folder)")], Nothing)
       | otherwise ->
           case Map.lookup deckKey files of
             Nothing -> ([problem "error" "include.missing" ("included deck is not readable: " <> includePath line)], Nothing)
@@ -387,7 +508,15 @@ includeOne ctx files ownBib used inc =
                       )
                     else
                       let (spliced, notes) = rename childName deckKey child
-                       in (optionNotes <> notes, Just spliced)
+                          earlier = concat [keys | (name, keys) <- used, name == childName]
+                          twice = [k | k <- fmap frameKey (spliceFrames spliced), k `elem` earlier]
+                       in case twice of
+                            k : _ ->
+                              ( [ problem "error" "include.duplicate" ("slide " <> k <> " is included twice (leave it out of one include with skip={..} or only={..}, or rename a folder)")
+                                ]
+                              , Nothing
+                              )
+                            [] -> (optionNotes <> idNotes child <> notes, Just spliced)
   where
     line = deckIncludeLine inc
     spanHere = spanPair <$> deckIncludeSpan inc
@@ -397,10 +526,20 @@ includeOne ctx files ownBib used inc =
       [] -> ""
     options = includeOptions line
     optionNotes =
-      [ problem "warning" "include.option" ("unknown include option " <> o <> " (known: titleslide, dividers)")
+      [ problem "warning" "include.option" ("unknown include option " <> o <> " (known: titleslide, dividers, skip={ids}, only={ids})")
       | o <- options
       , o `notElem` ["titleslide", "dividers"]
+      , not (optionName o `elem` ["skip", "only"] && "=" `Text.isInfixOf` o)
       ]
+    skipped = fromMaybe [] (optionList "skip" options)
+    only = optionList "only" options
+    idNotes child =
+      [ problem "warning" "include.option" ("no slide with id " <> k <> " in the included deck")
+      | k <- nub (skipped <> fromMaybe [] only)
+      , k `notElem` fmap frameKey (analysisFrames child)
+      ]
+    -- how many times this deck was included before: later ones get their own group names
+    repeatOf childName = length [() | (name, _) <- used, name == childName]
     keepTitle = "titleslide" `elem` options
     keepDividers = "dividers" `elem` options
     located = locateDeck ctx files (includePath line)
@@ -408,7 +547,12 @@ includeOne ctx files ownBib used inc =
       let ns k = childName <> "/" <> k
           isTitle f = case frameInputTitleSlide (frameScene f) of Just t -> not (titleFieldDivider t); Nothing -> False
           isDivider f = case frameInputTitleSlide (frameScene f) of Just t -> titleFieldDivider t; Nothing -> False
-          dropped = [frameKey f | f <- analysisFrames child, (isTitle f && not keepTitle) || (isDivider f && not keepDividers)]
+          left f = frameKey f `elem` skipped || maybe False (frameKey f `notElem`) only
+          dropped = [frameKey f | f <- analysisFrames child, (isTitle f && not keepTitle) || (isDivider f && not keepDividers) || left f]
+          -- group names: the deck's name, numbered when the deck is included again
+          group k = case repeatOf childName of
+            0 -> ns k
+            n -> childName <> "." <> Text.pack (show (n + 1)) <> "/" <> k
           kept = [f | f <- analysisFrames child, frameKey f `notElem` dropped]
           origin = FrameOrigin childName (keyToRelative deckKey)
           rewrite f =
@@ -419,8 +563,14 @@ includeOne ctx files ownBib used inc =
               , frameOrigin = Just (fromMaybe origin (frameOrigin f))
               }
           keptKeys ks = [ns k | k <- ks, k `notElem` dropped]
-          own = [Subsection (ns (Route.sectionId s)) (Route.sectionTitle s) (deckIncludeSection inc) (keptKeys (Route.sectionFrames s)) childName | s <- analysisSections child]
-          nested = [sub {subId = ns (subId sub), subParent = maybe (deckIncludeSection inc) (Just . ns) (subParent sub), subFrames = keptKeys (subFrames sub)} | sub <- analysisSubsections child]
+          own = [Subsection (group (Route.sectionId s)) (Route.sectionTitle s) (deckIncludeSection inc) (keptKeys (Route.sectionFrames s)) childName | s <- analysisSections child]
+          nested = [sub {subId = group (subId sub), subParent = maybe (deckIncludeSection inc) (Just . group) (subParent sub), subFrames = keptKeys (subFrames sub)} | sub <- analysisSubsections child]
+          -- a group with no slide left (all skipped) is not shown
+          every = own <> nested
+          alive known =
+            let next = [subId sub | sub <- every, not (null (subFrames sub)) || or [subParent c == Just (subId sub) | c <- every, subId c `elem` known]]
+             in if next == known then known else alive next
+          groups = [sub | sub <- every, subId sub `elem` alive []]
           figures = [r {figureFrame = ns (figureFrame r)} | r <- analysisFigures child, figureFrame r `notElem` dropped]
           images = [r {imageFrame = ns (imageFrame r)} | r <- analysisImages child, imageFrame r `notElem` dropped]
           notes =
@@ -428,7 +578,7 @@ includeOne ctx files ownBib used inc =
             | d <- analysisDiagnostics child
             , not ("route." `Text.isPrefixOf` diagnosticCode d)
             ]
-       in (Spliced childName (fmap rewrite kept) (own <> nested) figures images, notes)
+       in (Spliced childName (fmap rewrite kept) groups figures images, notes)
 
 -- | The deck file an include names: a @.slideBlaster.md@ file, or the single
 -- one in a folder; with the name its slides are filed under.

@@ -12,6 +12,7 @@ library
       SlideBlaster.Cli.Cap
       SlideBlaster.Cli.Check
       SlideBlaster.Cli.New
+      SlideBlaster.Cli.Render
       SlideBlaster.Cli.Pdf
       SlideBlaster.Cli.Serve
       SlideBlaster.Cli.Session

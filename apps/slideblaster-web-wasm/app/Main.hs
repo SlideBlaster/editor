@@ -25,11 +25,20 @@ import SlideBlaster.Adapter.Web.ProductV2
   , dispatchProductV2RequestJSON
   , newProductV2Runtime
   )
+import SlideBlaster.Adapter.Web.Bytes (JSVal, bytesFromJS, bytesToJS, nullValue)
+import SlideBlaster.Adapter.Web.Session
+  ( SessionRuntime
+  , dispatchSessionFrame
+  , newSessionRuntime
+  , sessionRuntimeNodeSizes
+  )
 import SlideBlaster.Adapter.Web.String
   ( JSString (..)
   , fromWebString
   , toWebString
   )
+
+import SlideBlaster.Product.Runtime.MarkdownAnalyzer (markdownAnalyzer)
 
 import Control.Exception (throwIO)
 import qualified Data.Text as Text
@@ -48,8 +57,27 @@ foreign export javascript "sb_product_dispatch"
 foreign export javascript "sb_product_v2_dispatch"
   sbProductV2Dispatch :: JSString -> IO JSString
 
+-- session/1 in the page (milestone W-web): one request frame in, one response
+-- frame out, both UTF-8 JSON in a @Uint8Array@. It needs no @sb_start@.
+foreign export javascript "sb_session_dispatch"
+  sbSessionDispatch :: JSVal -> IO JSVal
+
+-- The measured node sizes as a @Uint8Array@, or @null@ when there are none.
+foreign export javascript "sb_session_node_sizes"
+  sbSessionNodeSizes :: IO JSVal
+
 main :: IO ()
 main = sbStart
+
+sbSessionDispatch :: JSVal -> IO JSVal
+sbSessionDispatch frame = bytesFromJS frame >>= dispatchSessionFrame sessionRuntime >>= bytesToJS
+
+sbSessionNodeSizes :: IO JSVal
+sbSessionNodeSizes = sessionRuntimeNodeSizes sessionRuntime >>= maybe nullValue bytesToJS
+
+{-# NOINLINE sessionRuntime #-}
+sessionRuntime :: SessionRuntime
+sessionRuntime = unsafePerformIO (newSessionRuntime markdownAnalyzer)
 
 sbStart :: IO ()
 sbStart = do

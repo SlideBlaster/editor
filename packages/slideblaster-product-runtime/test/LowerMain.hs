@@ -147,6 +147,15 @@ stepCounts = do
   expect "none" (Aeson.toJSON (1 :: Int)) (Aeson.toJSON (contentStepCount (content [txt "a"])))
   expect "two pauses" (Aeson.toJSON (3 :: Int)) (Aeson.toJSON (contentStepCount (content [OverlayPauseContent prov PauseNext, OverlayPauseContent prov PauseNext])))
   expect "hook" (Aeson.toJSON (3 :: Int)) (Aeson.toJSON (contentStepCount (content [OverlayContent hook [txt "x"]])))
+  -- a pause comes one step after everything before it, numbered steps included:
+  -- \\only<1>{a} \\only<2>{b} \\pause c \\pause d is four steps, c from the third
+  let only n body = OverlayContent (VisibleDuring (singleStep (step n) :| [])) [TransparentContainer prov (GenericContainer "only") [txt body]]
+      staged = [only 1 "a", only 2 "b", txt "p", OverlayPauseContent prov PauseNext, txt "c", OverlayPauseContent prov PauseNext, txt "d"]
+      hidden value = object ["t" .= ("reserved" :: Text), "children" .= [value]]
+  expect "a pause after numbered steps adds steps" (Aeson.toJSON (4 :: Int)) (Aeson.toJSON (contentStepCount (content staged)))
+  expect "step 2: plain text shows, what follows the pause waits" (Aeson.toJSON [textValue "b", textValue "p", hidden (textValue "c"), hidden (textValue "d")]) (Aeson.toJSON (lowerAt 2 staged))
+  expect "step 3: the first pause has passed" (Aeson.toJSON [textValue "p", textValue "c", hidden (textValue "d")]) (Aeson.toJSON (lowerAt 3 staged))
+  expect "a numbered step after a pause does not move it" (Aeson.toJSON (3 :: Int)) (Aeson.toJSON (contentStepCount (content [OverlayPauseContent prov PauseNext, only 3 "x"])))
 
 figures :: IO ()
 figures = do
@@ -192,10 +201,10 @@ ctx page step' =
   PlanContext
     { planSession = 1, planRevision = 2, planTicket = 3, planPage = page, planPages = 3
     , planDeckTitle = "Deck", planSection = "", planProgress = Nothing, planSectionProgress = Nothing, planStep = step', planSurface = "audience"
-    , planFigures = const FigureUnknown, planAsset = const Nothing, planArtifacts = Map.empty }
+    , planFigures = const FigureUnknown, planAsset = const Nothing, planArtifacts = Map.empty, planByRef = False, planNodeSizes = Map.empty }
 
 frame :: FrameInput
-frame = FrameInput "s1" (content [txt "Title"]) (content [txt "Body", OverlayPauseContent prov PauseNext, txt "More"]) Nothing [] [] (content [])
+frame = FrameInput "s1" (content [txt "Title"]) (content [txt "Body", OverlayPauseContent prov PauseNext, txt "More"]) Nothing [] [] [] (content [])
 
 field :: Text -> Value -> Value
 field k (Aeson.Object o) = fromMaybe Aeson.Null (KeyMap.lookup (Key.fromText k) o)

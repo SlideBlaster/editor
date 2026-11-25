@@ -18,24 +18,36 @@ module SlideBlaster.Product.Runtime.Session
   , sessionRevision
   , sessionSaved
   , sessionDeckBytes
+  , nodeSizesPath
+  , sessionNodeSizesFile
   ) where
 
-import SlideBlaster.Canvas (SourceRef, contentNodes, emptyContent, identifierText)
+import SlideBlaster.Canvas (OverlayStep, SourceRef, contentNodes, emptyContent, firstOverlayStep, identifierText, mkOverlayStep)
+import SlideBlaster.Canvas.Flow (PictureItem (..), PictureNode (..))
+import SlideBlaster.Deck.PictureEdit (Layer (..), OptionChange (..), PictureOp (..))
+import SlideBlaster.Product.Runtime.Picture (PictureEnv (..), libraryFileOf, libraryNames, naturalSize, optionKeys, pictureCentres, pictureMeasureItems)
+import Data.Set qualified as Set
 import SlideBlaster.Presentation.Route qualified as Route
 import SlideBlaster.Product.Runtime.Analysis
 import SlideBlaster.Product.Runtime.ImageSize (imageDimensions, imageMime)
+import SlideBlaster.Product.Runtime.Drawing (drawnFigure, figureMeasureItems, figurePlace, figureSizes)
+import SlideBlaster.Syntax.Tikz.Edit qualified as Tikz
 import SlideBlaster.Product.Runtime.Lower (FigureInfo (..), contentRoutes)
 import SlideBlaster.Product.Runtime.Sha256 (sha256Hex)
 import SlideBlaster.Product.Runtime.SlidePlan
 import SlideBlaster.Product.Runtime.Theme
 import SlideBlaster.Protocol.Session
 
-import Data.Aeson (Value (..), object, (.=))
+import Data.Aeson (Value (..), decodeStrict, encode, object, (.=))
+import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Scientific (toRealFloat)
+import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Aeson.Key qualified as Key
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
 import Data.List (findIndex)
+import Data.Bits (xor)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -56,8 +68,8 @@ data Open = Open
   , openDeck :: !ByteString
   , openRevision :: !Word64
   , openSaved :: !Word64
-  , openUndo :: ![ByteString]
-  , openRedo :: ![ByteString]
+  , openUndo :: ![Snapshot]
+  , openRedo :: ![Snapshot]
   , openAnalysis :: Analysis
   , openTheme :: !Theme
   , openActive :: !Text
@@ -68,6 +80,16 @@ data Open = Open
   , openViewTicket :: !Word64
   , openMeasureTicket :: !(Maybe (Word64, [Text]))
   , openMeasured :: !(Map Text Double)
+  , openNodeSizes :: !(Map Text (Double, Double))
+  -- ^ measured content sizes of picture nodes, kept across edits (by options and content)
+  , openImageRefs :: !Bool
+  , openBlobs :: !(Map Text Text)
+  -- ^ for each image file, the name its bytes are asked for by: it changes when the bytes do
+  , openDrawn :: !(Map Text (Maybe Value))
+  -- ^ each TikZ figure as the core draws it (by its reference), or nothing when it is left to TeX:
+  -- worked out once when the deck or the measured sizes change, not for every plan
+  , openNodeStyle :: !ByteString
+  -- ^ the type those sizes were measured in; a change empties them
   , openPresenter :: !(Maybe (Text, Int))
   , openRoute :: !(Maybe Text)
   -- ^ route chosen while presenting; none means the default route
@@ -78,10 +100,12 @@ data Session = Session
   , sessionNextId :: !Word64
   , sessionId :: !Word64
   , sessionOpen :: !(Maybe Open)
+  , sessionImageRefs :: !Bool
+  -- ^ whether plans name their images instead of carrying them (the page then asks once for each)
   }
 
 newSession :: Analyzer -> Session
-newSession analyzer = Session analyzer 1 0 Nothing
+newSession analyzer = Session analyzer 1 0 Nothing False
 
 sessionRevision :: Session -> Maybe Word64
 sessionRevision = fmap openRevision . sessionOpen
@@ -92,7 +116,42 @@ sessionSaved = fmap openSaved . sessionOpen
 sessionDeckBytes :: Session -> Maybe ByteString
 sessionDeckBytes = fmap openDeck . sessionOpen
 
+-- | Where measured node sizes are kept between runs, as a project file. The
+-- editor's page measures; @sb build@ has no page, so it lays pictures out from
+-- what the editor last measured for the same content and type.
+nodeSizesPath :: Text
+nodeSizesPath = ".slideblaster/cache/node-sizes.json"
+
+-- | The measured node sizes to keep, or nothing when there are none.
+sessionNodeSizesFile :: Session -> Maybe ByteString
+sessionNodeSizesFile session = do
+  open <- sessionOpen session
+  if Map.null (openNodeSizes open)
+    then Nothing
+    else
+      Just . LazyByteString.toStrict . encode $
+        object
+          [ "style" .= utf8 (openNodeStyle open)
+          , "sizes" .= object [Key.fromText key .= [w, h] | (key, (w, h)) <- Map.toList (openNodeSizes open)]
+          ]
+
+-- Sizes read back from that file: the type they were measured in, and the sizes.
+readNodeSizes :: ByteString -> Maybe (ByteString, Map Text (Double, Double))
+readNodeSizes bytes =
+  case decodeStrict bytes of
+    Just (Object file)
+      | Just (String style) <- KeyMap.lookup "style" file
+      , Just (Object sizes) <- KeyMap.lookup "sizes" file ->
+          Just
+            ( Encoding.encodeUtf8 style
+            , Map.fromList [(Key.toText key, (toRealFloat w, toRealFloat h)) | (key, Array pair) <- KeyMap.toList sizes, [Number w, Number h] <- [foldr (:) [] pair]]
+            )
+    _ -> Nothing
+
 type Step = Either SessionError (Session, Text, [Value])
+
+-- A step of history: the deck's text, and the figure files that step had different.
+data Snapshot = Snapshot !ByteString ![(Text, ByteString)]
 
 -- | Run one request.
 runSession :: Session -> SessionRequest -> Step
@@ -101,11 +160,40 @@ runSession session request =
     OpenProject entry files -> openProject session entry files
     OpenSource bytes -> openProject session "deck.slideBlaster.md" [("deck.slideBlaster.md", bytes)]
     WorkspaceSnapshot -> withOpen session $ \open -> Right (session, "workspace_snapshot", [], open)
+    ImageRefs on -> Right (session {sessionImageRefs = on, sessionOpen = fmap (\open -> open {openImageRefs = on}) (sessionOpen session)}, "image_refs_set", [])
+    Resources refs -> withOpen session $ \open ->
+      Right
+        ( session
+        , "resources"
+        , [ object ["kind" .= ("resource" :: Text), "ref" .= ref, "mime" .= mime, "bytesBase16" .= base16Text bytes]
+          | ref <- refs
+          , (path, key) <- Map.toList (openBlobs open)
+          , key == ref
+          , Just mime <- [imageMime path]
+          , Just bytes <- [Map.lookup path (openFiles open)]
+          ]
+            -- bytes named by what they are (a logo, a compiled figure): found among the files and the figures
+            <> [ object ["kind" .= ("resource" :: Text), "ref" .= ref, "mime" .= mime, "bytesBase16" .= base16Text bytes]
+               | ref <- refs
+               , "b" `Text.isPrefixOf` ref
+               , (mime, bytes) <-
+                   take 1
+                     [ found
+                     | found@(_, candidate) <-
+                         [(fromMaybe "application/octet-stream" (imageMime path), bytes') | (path, bytes') <- Map.toList (openFiles open)]
+                           <> [(artifactMime a, artifactBytes a) | FigureReadyStatus a <- Map.elems (openFigures open)]
+                     , ("b" <> Text.pack (show (ByteString.length candidate)) <> "-") `Text.isPrefixOf` ref
+                     , contentRef candidate == ref
+                     ]
+               ]
+        , open
+        )
     ProjectFile path bytes -> withOpen session $ \open ->
       let files = maybe (Map.delete path (openFiles open)) (\b -> Map.insert path b (openFiles open)) bytes
+          blobs = maybe (Map.delete path (openBlobs open)) (\b -> if imageMime path == Nothing then openBlobs open else Map.insert path (blobKey path b) (openBlobs open)) bytes
        in if path == openEntry open
             then Right (session, "project_file_updated", [], open)
-            else rean session open {openFiles = files} "project_file_updated"
+            else rean session open {openFiles = files, openBlobs = blobs} "project_file_updated"
     ApplySourceReplace revision start end expected replacement -> withOpen session $ \open -> do
       checkRevision revision open
       let bytes = openDeck open
@@ -123,6 +211,89 @@ runSession session request =
       checkRevision revision open
       changeDeck session open bytes "source_replaced"
     SessionCommand name revision -> withOpen session $ \open -> command session open name revision
+    PictureEdit revision frame op -> withOpen session $ \open -> do
+      checkRevision revision open
+      target <- maybe (Left SessionUnknownFrame) Right (listToMaybe' [f | f <- analysisFrames (openAnalysis open), frameKey f == frame])
+      if frameOrigin target /= Nothing then Left (SessionEditRejected includeReadOnly) else Right ()
+      -- plan pixels (y down) to slide units (y up)
+      let (_, planHeight) = themePlanSize (openTheme open)
+          ux x = toRational (x / unitScale)
+          uy y = toRational ((planHeight - y) / unitScale)
+          picture = frameInputPicture (frameScene target)
+          -- nodes attached to a removed node stay where the layout has them
+          pinsFor items =
+            let centres = pictureCentres (PictureEnv (openNodeSizes open) (pictureRegions (openTheme open))) picture
+             in [(pictureNodeId n, toRational x, toRational y) | PictureNodeItem n <- picture, Just (_, to) <- [pictureNodeAttached n], to `elem` items, pictureNodeId n `notElem` items, Just (x, y) <- [lookup (pictureNodeId n) centres]]
+          convert one = case one of
+            PictureBatch ops -> Batch (fmap convert ops)
+            PictureRoute line to bend -> SetRoute line to (toRational <$> bend)
+            PictureLabelText line index text -> SetLineLabel line index text
+            PictureLabelStyle line index set remove -> SetLabelOptions line index (fmap RemoveOption remove <> fmap (uncurry SetOption) set)
+            PictureAddPoint line step x y -> AddLinePoint line step (ux x) (uy y)
+            PictureMovePoint line point x y -> MoveLinePoint line point (ux x) (uy y)
+            PictureRemovePoint line point -> RemoveLinePoint line point
+            PictureDeleteMany items -> DeleteItems items (pinsFor items)
+            PictureReorder node to -> Reorder node (case to of "front" -> ToFront; "back" -> ToBack; "forward" -> Forward; _ -> Backward)
+            PicturePaste text x y -> PasteStatements text (toRational (x / unitScale)) (toRational (negate y / unitScale))
+            PictureAddNode options x y text -> AddNode options (ux x) (uy y) text
+            PictureMoveNode node x y -> MoveNode node (ux x) (uy y)
+            PictureAttach node side to gap -> AttachNode node side to (fmap (\d -> toRational (d / unitScale)) gap)
+            PictureSetText node text -> SetNodeText node text
+            PictureStyle item set remove -> SetOptions item (fmap RemoveOption remove <> fmap (uncurry SetOption) set)
+            -- a box no bigger than its content needs no minimum; a circle has one size
+            PictureResize node width height ->
+              let (naturalW, naturalH) = case [naturalSize (openNodeSizes open) n | PictureNodeItem n <- picture, pictureNodeId n == node] of
+                    size : _ -> size
+                    [] -> (0, 0)
+                  circle = or ["circle" `elem` optionKeys (pictureNodeOptions n) | PictureNodeItem n <- picture, pictureNodeId n == node]
+                  grid v = fromIntegral (round (v / unitScale * 20) :: Integer) / 20 :: Double
+                  shown v = Text.pack (trimZeros (show (grid v)))
+                  trimZeros t = if ".0" `isSuffixOf'` t then take (length t - 2) t else t
+                  isSuffixOf' suffix t = drop (length t - length suffix) t == suffix
+                  minimum' key wanted natural
+                    | grid wanted > natural + 0.02 = SetOption key (Just (shown wanted))
+                    | otherwise = RemoveOption key
+               in SetOptions node $
+                    if circle
+                      then [minimum' "minimum size" (max width height) (max naturalW naturalH), RemoveOption "minimum width", RemoveOption "minimum height"]
+                      else [minimum' "minimum width" width naturalW, minimum' "minimum height" height naturalH]
+            PictureConnect from to -> ConnectNodes from to
+            -- a shift is a distance: right and down in pixels, right and up in units
+            PictureAddInclude path x y -> AddInclude path (toRational (x / unitScale)) (toRational (negate y / unitScale))
+            PictureMoveInclude item x y -> MoveInclude item (toRational (x / unitScale)) (toRational (negate y / unitScale))
+            PictureDelete item -> DeleteItem item (pinsFor [item])
+      (bytes, made) <- either (Left . SessionEditRejected) Right (editPicture (sessionAnalyzer session) (openFiles open) (openEntry open) (openDeck open) frame (convert op))
+      (s, k, e, o) <- changeDeck session open bytes "picture_edited"
+      Right (s, k, e <> [object ["kind" .= ("node_created" :: Text), "frame" .= frame, "node" .= node] | node <- made], o {openActive = frame})
+    FigureEdit revision ref op -> withOpen session $ \open -> do
+      checkRevision revision open
+      wanted <- maybe (Left (SessionEditRejected "that figure is not there any more")) Right (listToMaybe' [r | r <- analysisFigures (openAnalysis open), identifierText (figureRef r) == ref, figureKind r == "tikz"])
+      let path = resolveProjectPath open <$> figureInputPath wanted
+          bodyBytes = maybe (figureBody wanted) (fromMaybe ByteString.empty . projectFile open) path
+          body = utf8 bodyBytes
+          place = figurePlace (figureSizes (openNodeSizes open)) (utf8 (figurePreamble wanted)) (figurePalette wanted)
+          change one = case one of
+            FigureMove at dx dy -> Tikz.MoveItem at dx dy
+            FigureText at new -> Tikz.SetText at new
+            FigureOption at key value -> Tikz.SetOption at key value
+            FigureDelete at -> Tikz.DeleteItem at
+            FigureAddNode x y options written -> Tikz.AddNode x y options written
+            FigureAddLine from to options -> Tikz.AddLine from to options
+            FigureResize at width height -> Tikz.Resize at width height
+            FigureRoute at to -> Tikz.SetRoute at to
+            FigureBatch ops -> Tikz.Batch (fmap change ops)
+      new <- either (Left . SessionEditRejected) Right (Tikz.editFigure place (change op) body)
+      let newBytes = Encoding.encodeUtf8 new
+      case path of
+        -- a figure written in the deck: the deck's text changes, and undo takes it back
+        Nothing ->
+          case ByteString.breakSubstring bodyBytes (openDeck open) of
+            (_, rest) | ByteString.null rest || ByteString.null bodyBytes -> Left (SessionEditRejected "cannot find this figure's text in the deck")
+            (before, rest) -> changeDeck session open (before <> newBytes <> ByteString.drop (ByteString.length bodyBytes) rest) "figure_edited"
+        -- a figure in a file of its own: the file changes, and the host writes it
+        Just file -> do
+          (s, k, e, o) <- rean session open {openFiles = Map.insert file newBytes (openFiles open), openUndo = Snapshot (openDeck open) [(file, bodyBytes)] : openUndo open, openRedo = []} "figure_edited"
+          Right (s, k, e <> [object ["kind" .= ("file.write" :: Text), "path" .= file, "expectedBase16" .= encodeBase16 bodyBytes, "bytesBase16" .= encodeBase16 newBytes]], o)
     SelectSlide frame -> withOpen session $ \open ->
       if frame `elem` frameKeys open
         then Right (session, "slide_selected", [], open {openActive = frame})
@@ -140,12 +311,20 @@ runSession session request =
               let returned = fmap (\(k, _, _) -> k) results
                in if length returned == length keys && all (`elem` keys) returned && length (nubText returned) == length returned
                     then
-                      Right
-                        ( session
-                        , "measurement_accepted"
-                        , []
-                        , open {openMeasured = Map.union (Map.fromList [(k, h) | (k, _, h) <- results]) (openMeasured open), openMeasureTicket = Nothing}
-                        )
+                      -- node sizes change the picture's geometry, so the plans are offered anew
+                      let nodes = Map.fromList [(k, (w, h)) | (k, w, h) <- results, "node:" `Text.isPrefixOf` k]
+                       in Right
+                            ( session
+                            , "measurement_accepted"
+                            , []
+                            , open
+                                { openMeasured = Map.union (Map.fromList [(k, h) | (k, _, h) <- results, not ("node:" `Text.isPrefixOf` k)]) (openMeasured open)
+                                , openNodeSizes = Map.union nodes (openNodeSizes open)
+                                , openDrawn = if Map.null nodes then openDrawn open else drawnFigures open (openAnalysis open) (Map.union nodes (openNodeSizes open))
+                                , openViewTicket = if Map.null nodes then openViewTicket open else openViewTicket open + 1
+                                , openMeasureTicket = Nothing
+                                }
+                            )
                     else Left SessionMeasurementMismatch
         _ -> Left SessionStaleTicket
     ProviderResult ticket fingerprint outcome -> withOpen session $ \open ->
@@ -263,6 +442,7 @@ openProject session entry files =
           sid = sessionNextId session
           session' = session {sessionId = sid, sessionNextId = sid + 1}
           analysis = analyzeDeck (sessionAnalyzer session) others entry deck
+          kept = lookup nodeSizesPath files >>= readNodeSizes
           open0 =
             Open
               { openEntry = entry, openFiles = others, openDeck = deck, openRevision = 1, openSaved = 1
@@ -270,7 +450,7 @@ openProject session entry files =
               , openActive = fromMaybe "" (listToMaybe' (fmap frameKey (analysisFrames analysis)))
               , openFigures = Map.empty, openRefFingerprint = Map.empty, openOutstanding = Map.empty
               , openNextTicket = 1, openViewTicket = 1, openMeasureTicket = Nothing
-              , openMeasured = Map.empty, openPresenter = Nothing, openRoute = Nothing
+              , openMeasured = Map.empty, openImageRefs = sessionImageRefs session, openBlobs = Map.fromList [(path, blobKey path bytes) | (path, bytes) <- Map.toList others, imageMime path /= Nothing], openDrawn = Map.empty, openNodeSizes = maybe Map.empty snd kept, openNodeStyle = maybe ByteString.empty fst kept, openPresenter = Nothing, openRoute = Nothing
               }
           (kind, effects, opened) = reanalyse session' open0 "project_opened"
        in Right (session' {sessionOpen = Just opened}, kind, effects)
@@ -285,7 +465,7 @@ changeDeck session open new kind
   | otherwise =
       rean
         session
-        open {openDeck = new, openRevision = openRevision open + 1, openUndo = openDeck open : openUndo open, openRedo = []}
+        open {openDeck = new, openRevision = openRevision open + 1, openUndo = Snapshot (openDeck open) [] : openUndo open, openRedo = []}
         kind
 
 rean :: Session -> Open -> Text -> Either SessionError (Session, Text, [Value], Open)
@@ -316,10 +496,10 @@ command session open name revision =
       Right (s, k, e, o {openActive = frame})
     Undo -> fenced $ case openUndo open of
       [] -> Left SessionHistoryUnavailable
-      (previous : rest) -> restore previous rest (openDeck open : openRedo open) "undone"
+      (previous : rest) -> restore previous rest (back previous : openRedo open) "undone"
     Redo -> fenced $ case openRedo open of
       [] -> Left SessionHistoryUnavailable
-      (next : rest) -> restore next (openDeck open : openUndo open) rest "redone"
+      (next : rest) -> restore next (back next : openUndo open) rest "redone"
   where
     unless' ok failure = if ok then Right () else Left failure
     fenced action = maybe (Right ()) (`checkRevision` open) revision >> action
@@ -330,11 +510,22 @@ command session open name revision =
           | Just target <- nth keys (index + delta) ->
               Right (session, "slide_selected", [], open {openActive = target})
         _ -> Left (SessionDisabled "no_such_slide")
-    restore bytes undoStack redoStack kind =
-      rean
-        session
-        open {openDeck = bytes, openRevision = openRevision open + 1, openUndo = undoStack, openRedo = redoStack}
-        kind
+    -- what takes a step back again: the deck as it is, and the files the step changes as they are
+    back (Snapshot _ files) = Snapshot (openDeck open) [(file, fromMaybe ByteString.empty (Map.lookup file (openFiles open))) | (file, _) <- files]
+    restore (Snapshot bytes files) undoStack redoStack kind = do
+      (s, k, e, o) <-
+        rean
+          session
+          open
+            { openDeck = bytes
+            , openFiles = foldr (\(file, was) -> Map.insert file was) (openFiles open) files
+            , openRevision = openRevision open + 1
+            , openUndo = undoStack
+            , openRedo = redoStack
+            }
+          kind
+      -- a figure file put back is written, as its edit was
+      Right (s, k, e <> [object ["kind" .= ("file.write" :: Text), "path" .= file, "expectedBase16" .= encodeBase16 (fromMaybe ByteString.empty (Map.lookup file (openFiles open))), "bytesBase16" .= encodeBase16 was] | (file, was) <- files], o)
 
 -- Whether the active slide comes from an included deck, which is read-only here.
 activeIncluded :: Open -> Bool
@@ -350,7 +541,10 @@ reanalyse session open kind =
   let analysis = analyzeDeck (sessionAnalyzer session) (openFiles open) (openEntry open) (openDeck open)
       theme = themeFor open
       requests = [(fingerprintOf open r, r) | r <- analysisFigures analysis]
-      fresh = [(fp, r) | (fp, r) <- requests, not (Map.member fp (openFigures open))]
+      -- a figure the core draws itself is not sent to TeX
+      drawnNow = drawnFigures open analysis sizes
+      drawable r = maybe False (/= Nothing) (Map.lookup (identifierText (figureRef r)) drawnNow)
+      fresh = [(fp, r) | (fp, r) <- requests, not (Map.member fp (openFigures open)), not (drawable r)]
       (tickets, nextTicket) = assignTickets (openNextTicket open) fresh
       figures' =
         foldr
@@ -358,14 +552,30 @@ reanalyse session open kind =
           (openFigures open)
           fresh
       renderEffects =
-        [ blockEffect t fp r (openFiles open) | (t, (fp, r)) <- tickets, hasInputs open r ]
+        [ blockEffect t fp r {figureInputPath = resolveProjectPath open <$> figureInputPath r} (openEntry open) (openFiles open) | (t, (fp, r)) <- tickets, hasInputs open r ]
       outstanding' = foldr (\(t, (fp, r)) acc -> if hasInputs open r then Map.insert t fp acc else acc) (openOutstanding open) tickets
       active = if openActive open `elem` fmap frameKey (analysisFrames analysis) then openActive open else fromMaybe "" (listToMaybe' (fmap frameKey (analysisFrames analysis)))
-      measureKeys = [frameKey f | f <- analysisFrames analysis]
+      nodeStyle = LazyByteString.toStrict (encode (fmap (nodeRoleStyle theme) ["title", "subtitle", "body", "small", "code"]))
+      sizes = if nodeStyle == openNodeStyle open then openNodeSizes open else Map.empty
+      nodeItems =
+        Map.toList . Map.fromList $
+          concat
+            [ pictureMeasureItems sizes (frameInputColours scene) (nodeRoleStyle theme) (finalStep scene) (figureInfo open {openAnalysis = analysis}) (frameInputPicture scene)
+            | f <- analysisFrames analysis
+            , let scene = frameScene f
+            ]
+            <> concat [ figureMeasureItems (nodeRoleStyle theme "body") sizes (utf8 (figurePreamble r)) (figurePalette r) (utf8 (maybe (figureBody r) (fromMaybe ByteString.empty . projectFile open . resolveProjectPath open) (figureInputPath r)))
+               | r <- analysisFigures analysis
+               , figureKind r == "tikz"
+               ]
+      measureKeys = [frameKey f | f <- analysisFrames analysis] <> fmap fst nodeItems
       measureTicket = nextTicket
       open' =
         open
           { openAnalysis = analysis
+          , openNodeSizes = sizes
+          , openDrawn = drawnNow
+          , openNodeStyle = nodeStyle
           , openTheme = theme
           , openActive = active
           , openFigures = figures'
@@ -381,14 +591,18 @@ reanalyse session open kind =
         [ object
             [ "kind" .= ("measure" :: Text)
             , "ticket" .= measureTicket
-            , "items" .= measureItems open' theme
+            , "items" .= (measureItems open' theme <> fmap snd nodeItems)
             ]
         | not (null measureKeys)
         ]
    in (kind, renderEffects <> measureEffect, open')
 
+-- The step at which all of a slide shows.
+finalStep :: FrameInput -> OverlayStep
+finalStep scene = fromMaybe firstOverlayStep (mkOverlayStep (fromIntegral (max 1 (frameStepCount scene))))
+
 hasInputs :: Open -> FigureRequest -> Bool
-hasInputs open request = maybe True (`Map.member` openFiles open) (figureInputPath request)
+hasInputs open request = maybe True (\path -> Map.member (resolveProjectPath open path) (openFiles open)) (figureInputPath request)
 
 initialStatus :: Open -> FigureRequest -> FigureStatus
 initialStatus open request
@@ -438,7 +652,7 @@ fingerprintOf open request =
   Text.pack (sha256Hex (ByteString.concat (concatMap part material)))
   where
     nul = ByteString.singleton 0
-    body = maybe (figureBody request) (\path -> Map.findWithDefault ByteString.empty path (openFiles open)) (figureInputPath request)
+    body = maybe (figureBody request) (fromMaybe ByteString.empty . projectFile open) (figureInputPath request)
     palette = Encoding.encodeUtf8 (Text.intercalate "," [n <> "=" <> h | (n, h) <- figurePalette request])
     width = Char8.pack (show (round (figureWidth request * 1000) :: Integer))
     inputs = concat [[Encoding.encodeUtf8 p, Map.findWithDefault ByteString.empty p (openFiles open)] | p <- Map.keys (Map.fromList [(p, ()) | p <- figureInputs request])]
@@ -448,8 +662,10 @@ fingerprintOf open request =
 utf8 :: ByteString -> Text
 utf8 = Encoding.decodeUtf8With lenientDecode
 
-blockEffect :: Word64 -> Text -> FigureRequest -> Map Text ByteString -> Value
-blockEffect ticket fingerprint request files =
+-- The line map names the file a compile error is reported in: the figure's own
+-- file, or the deck for a figure written in it.
+blockEffect :: Word64 -> Text -> FigureRequest -> Text -> Map Text ByteString -> Value
+blockEffect ticket fingerprint request entry files =
   object
     [ "kind" .= ("block.render" :: Text)
     , "ticket" .= ticket
@@ -467,7 +683,7 @@ blockEffect ticket fingerprint request files =
                 , "palette" .= [object ["name" .= n, "hex" .= h] | (n, h) <- figurePalette request]
                 , "width" .= figureWidth request
                 , "inputs" .= [object ["path" .= p, "contentBase64" .= base64 (Map.findWithDefault ByteString.empty p files)] | p <- figureInputs request]
-                , "lineMap" .= object ["file" .= figureInputPath request, "firstLine" .= figureFirstLine request]
+                , "lineMap" .= object ["file" .= fromMaybe entry (figureInputPath request), "firstLine" .= figureFirstLine request]
                 ]
           ]
     ]
@@ -522,6 +738,8 @@ contextFor open step f =
     , planFigures = figureInfo open
     , planAsset = assetLookup open
     , planArtifacts = artifactsFor open f
+    , planByRef = openImageRefs open
+    , planNodeSizes = openNodeSizes open
     }
   where
     routes = routesOf open
@@ -535,10 +753,22 @@ contextFor open step f =
       _ <- Route.positionSection p
       Just (fromIntegral (Route.positionSectionPage p) / fromIntegral (max 1 (Route.positionSectionPages p)))
 
+-- Every TikZ figure of the deck as the core draws it, with the sizes measured so far.
+drawnFigures :: Open -> Analysis -> Map Text (Double, Double) -> Map Text (Maybe Value)
+drawnFigures open analysis sizes =
+  Map.fromList
+    [ (identifierText (figureRef r), drawnFigure (identifierText (figureRef r)) (figureInputPath r) (figureSizes sizes) (utf8 (figurePreamble r)) (figurePalette r) (figureUnits r) (utf8 body))
+    | r <- analysisFigures analysis
+    , figureKind r == "tikz"
+    , let body = maybe (figureBody r) (fromMaybe ByteString.empty . projectFile open . resolveProjectPath open) (figureInputPath r)
+    ]
+
 figureInfo :: Open -> SourceRef -> FigureInfo
 figureInfo open ref =
   case [r | r <- analysisImages (openAnalysis open), identifierText (imageRef r) == identifierText ref] of
     (image : _) -> imageInfo open image
+    []
+      | Just value <- drawn -> FigureDrawn value
     [] ->
       case Map.lookup (identifierText ref) (openRefFingerprint open) of
         Nothing -> FigureUnknown
@@ -553,6 +783,8 @@ figureInfo open ref =
                 (d : _) -> FigureFailed fp (providerMessage d)
                 [] -> FigureFailed fp "figure failed"
   where
+    -- a TikZ figure the core can carry out itself is drawn without TeX, as parts the canvas can edit
+    drawn = Map.lookup (identifierText ref) (openDrawn open) >>= id
     -- A requested display width scales the compiled figure, keeping its aspect.
     compiledSize figureRef' fp w h =
       case [u | r <- analysisFigures (openAnalysis open), identifierText (figureRef r) == identifierText figureRef', Just u <- [figureUnits r]] of
@@ -562,12 +794,39 @@ figureInfo open ref =
 -- Why a project image cannot be shown, or its bytes, media type and intrinsic size.
 imageSource :: Open -> ImageRequest -> Either (Text, Text) (Text, ByteString, (Double, Double))
 imageSource open r =
-  case (imageMime path, Map.lookup path (openFiles open)) of
+  case (imageMime path, projectFile open path) of
     (Nothing, _) -> Left ("unsupported_image", "unsupported image type: " <> imagePath r)
     (_, Nothing) -> Left ("missing_asset", "image file is missing: " <> imagePath r)
     (Just mime, Just bytes) -> Right (mime, bytes, fromMaybe (1, 1) (imageDimensions mime bytes))
   where
     path = fromMaybe (imagePath r) (Text.stripPrefix "./" (imagePath r))
+
+-- The name an image's bytes are asked for by: its path, its length and a sum over its bytes.
+blobKey :: Text -> ByteString -> Text
+blobKey path bytes =
+  let sum' = ByteString.foldl' (\acc byte -> (acc `xor` fromIntegral byte) * 1099511628211) (14695981039346656037 :: Word64) bytes
+   in path <> "@" <> Text.pack (show (ByteString.length bytes)) <> "-" <> Text.pack (show sum')
+
+-- | A file the deck names (image, figure source), as sb build reads it: relative to the deck's
+-- folder first, then from the project root.
+resolveProjectPath :: Open -> Text -> Text
+resolveProjectPath open path =
+  fromMaybe path (listToMaybe' [c | c <- candidates, Map.member c (openFiles open)])
+  where
+    deckDir = fst (Text.breakOnEnd "/" (openEntry open))
+    candidates = [normalisePath (deckDir <> path) | not (Text.null deckDir)] <> [path]
+
+projectFile :: Open -> Text -> Maybe ByteString
+projectFile open path = Map.lookup (resolveProjectPath open path) (openFiles open)
+
+-- "a/b/../c" -> "a/c"; leading ".." that would leave the project are kept (and find nothing).
+normalisePath :: Text -> Text
+normalisePath = Text.intercalate "/" . reverse . foldl step [] . Text.splitOn "/"
+  where
+    step acc "." = acc
+    step acc "" = acc
+    step (prev : acc) ".." | prev /= ".." = acc
+    step acc segment = segment : acc
 
 -- An image embeds its bytes. @width=W@ sets the width in slide units; otherwise
 -- the image takes the body width, shrunk to fit the body height. Plan content
@@ -585,7 +844,10 @@ imageInfo open r =
             Just u -> (u, u * ratio)
             Nothing | bodyW * ratio > bodyH -> (bodyH / ratio, bodyH)
             Nothing -> (bodyW, bodyW * ratio)
-       in FigureImage mime (base16Text bytes) (w * unitScale) (h * unitScale)
+          resolved = resolveProjectPath open (fromMaybe (imagePath r) (Text.stripPrefix "./" (imagePath r)))
+       in case Map.lookup resolved (openBlobs open) of
+            Just ref | openImageRefs open -> FigureImageRef mime ref (w * unitScale) (h * unitScale)
+            _ -> FigureImage mime (base16Text bytes) (w * unitScale) (h * unitScale)
 
 artifactsFor :: Open -> AnalyzedFrame -> Map Text (Text, ByteString)
 artifactsFor open f =
@@ -613,6 +875,20 @@ openView session open =
     , "ready" .= analysisReady analysis
     , "frontmatter" .= object ["title" .= analysisTitle analysis, "theme" .= analysisTheme analysis, "aspect" .= ("16:9" :: Text), "size" .= object ["width" .= w, "height" .= h]]
     , "source" .= object ["sourceBase16" .= encodeBase16 (openDeck open)]
+    , "pictureFiles" .= [path | path <- Map.keys (openFiles open), ".tikz" `Text.isSuffixOf` path, path /= openEntry open, not ("shapes/" `Text.isPrefixOf` path)]
+    , -- library files the deck's nodes name styles from that the project does not hold: a
+      -- host with a shipped library supplies them (@project_file@)
+      "needs"
+        .= Set.toList
+          ( Set.fromList
+              [ path
+              | f <- analysisFrames analysis
+              , PictureNodeItem n <- frameInputPicture (frameScene f)
+              , name <- libraryNames (pictureNodeOptions n)
+              , Just path <- [libraryFileOf name]
+              , not (Map.member path (openFiles open))
+              ]
+          )
     , "navigator" .= navigator
     , "sections" .= sectionsValue
     , "subsections" .= subsectionsValue

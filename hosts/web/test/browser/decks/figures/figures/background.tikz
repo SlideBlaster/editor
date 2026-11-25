@@ -1,0 +1,50 @@
+\begin{tikzpicture}[
+        >=stealth,
+        state/.style={rectangle, draw, rounded corners=2pt,
+                     align=left, font=\tiny, inner sep=3pt, text width=2.7cm},
+        tag/.style={font=\tiny\bfseries\sffamily, inner sep=1.5pt,
+                    rounded corners=2pt},
+      ]
+      % Reserve the full final extent on every overlay so the diagram
+      % (and everything below it) does not jump as nodes appear.
+      \useasboundingbox (-3.5,0.5) rectangle (3.5,-3.9);
+      % Step 1: start node, fields are symbols.
+      \node<1->[state, draw=palCerulean!85!black, fill=palCerulean!10] (s1) at (0, 0) {%
+        \textbf{Start} (after line 1)\\[1pt]
+        $\sigma$: $\mathit{ttl} = \alpha,\; \mathit{dst} = \beta$};
+        % $pc = \mathbf{true}$
+
+      % Step 2: unconditional decrement builds an expression.
+      \node<2->[state, draw=palCerulean!85!black, fill=palCerulean!10] (s2) at (0, -1.2) {%
+        \textbf{line 2:} $\mathit{ttl} := \alpha - 1$\\[1pt]
+        $\sigma$: $\mathit{ttl} = \alpha - 1,\; \mathit{dst} = \beta$};
+        % $pc = \mathbf{true}$
+      \draw<2->[->, thick, palGray] (s1.south) -- (s2.north);
+
+      % Step 3: branch on (ttl == 0) forks into two paths.
+      \node<3->[state, draw=palCoral!80!black, fill=palCoral!15] (sf) at (-2.0, -2.8) {%
+        \textbf{line 4:} $\mathit{drop}()$\\[1pt]
+        $\sigma$: $\mathit{ttl} = \alpha - 1$\\
+        $pc = (\alpha - 1 = 0)$};
+      \node<3->[state, draw=palOlivine!75!black, fill=palOlivine!15] (st) at (2.0, -2.8) {%
+        \textbf{line 6:} $\mathit{forward}()$\\[1pt]
+        $\sigma$: $\mathit{ttl} = \alpha - 1$\\
+        $pc = (\alpha - 1 \neq 0)$};
+
+      \node<3->[tag, fill=palCoral!80!black, text=white,
+        anchor=south] at ([yshift=2pt]sf.north) {DROPPED};
+      \node<3->[tag, fill=palOlivine!75!black, text=white,
+        anchor=south] at ([yshift=2pt]st.north) {FORWARDED};
+
+      \draw<3->[->, thick, palCoral!70!black]
+        (s2.south) -- node[fill=white, font=\tiny, inner sep=1pt,
+        pos=0.6, sloped] {$\mathit{ttl} = 0$} (sf.north);
+      \draw<3->[->, thick, palOlivine!60!black]
+        (s2.south) -- node[fill=white, font=\tiny, inner sep=1pt,
+        pos=0.6, sloped] {$\mathit{ttl} \neq 0$} (st.north);
+
+      % Step 4: the property holds on the forwarded path.
+      \node<4->[tag, draw=palOlivine!70!black, fill=white,
+        text=palOlivine!50!black, anchor=north] at ([yshift=-2pt]st.south)
+        {$\alpha - 1 \neq 0 \Rightarrow \texttt{ttl} \neq 0$ \checkmark};
+      \end{tikzpicture}

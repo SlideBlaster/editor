@@ -145,7 +145,9 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Builder qualified as ByteStringBuilder
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Text.Encoding qualified as TextEncoding
 import Data.Char (chr, ord)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
@@ -920,27 +922,27 @@ decodeJSONValue :: ByteString -> Either String Value
 decodeJSONValue = eitherDecodeStrict'
 
 encodeBase16 :: ByteString -> Text
-encodeBase16 = Text.pack . concatMap encodeByte . ByteString.unpack
-  where
-    encodeByte :: Word8 -> String
-    encodeByte byte =
-      let value = fromIntegral byte :: Int
-       in [hexDigit (value `div` 16), hexDigit (value `mod` 16)]
+encodeBase16 = TextEncoding.decodeLatin1 . LazyByteString.toStrict . ByteStringBuilder.toLazyByteString . ByteStringBuilder.byteStringHex
 
 decodeBase16 :: Text -> Either Text ByteString
-decodeBase16 = fmap (ByteString.pack . reverse) . decodePairs [] . Text.unpack
-  where
-    decodePairs :: [Word8] -> String -> Either Text [Word8]
-    decodePairs accumulator characters =
-      case characters of
-        [] -> Right accumulator
-        [_] -> Left "base16 value has an odd number of digits"
-        high : low : rest ->
-          case (hexNibble high, hexNibble low) of
-            (Just highValue, Just lowValue) ->
-              let byte = fromIntegral (highValue * 16 + lowValue)
-               in decodePairs (byte : accumulator) rest
-            _ -> Left "base16 value contains a non-hexadecimal digit"
+decodeBase16 value =
+  -- over the bytes, not through a list of characters
+  let digits = TextEncoding.encodeUtf8 value
+      count = ByteString.length digits
+      nibble w
+        | w >= 48 && w <= 57 = Just (w - 48)
+        | w >= 97 && w <= 102 = Just (w - 87)
+        | w >= 65 && w <= 70 = Just (w - 55)
+        | otherwise = Nothing
+      step index
+        | index + 1 >= count = Nothing
+        | otherwise = case (nibble (ByteString.index digits index), nibble (ByteString.index digits (index + 1))) of
+            (Just high, Just low) -> Just (high * 16 + low, index + 2)
+            _ -> Nothing
+      (bytes, _) = ByteString.unfoldrN (count `div` 2) step 0
+   in if odd count
+        then Left "base16 value has an odd number of digits"
+        else if ByteString.length bytes == count `div` 2 then Right bytes else Left "base16 value contains a non-hexadecimal digit"
 
 hexDigit :: Int -> Char
 hexDigit value

@@ -143,19 +143,25 @@ export async function relayBlockRender(
   effect: { ticket: number; fingerprint: string; request: Record<string, unknown> },
   cap: Pick<CapClient, "blockRender"> | null,
 ): Promise<Record<string, unknown>> {
-  const absent = (message: string): Record<string, unknown> => ({
-    diagnostics: [{ severity: "warning", code: "provider_absent", message, absent: true }],
-  });
+  // A `provider_result` body is closed: each diagnostic has exactly these five fields.
+  const diagnostic = (d: { severity?: string; code?: string; message?: string; sourceLine?: number; texLine?: number }, absent: boolean): Record<string, unknown> => {
+    const line = d.sourceLine ?? d.texLine;
+    return { severity: d.severity ?? "error", code: d.code ?? "provider", message: d.message ?? "", line: typeof line === "number" && Number.isInteger(line) && line >= 0 ? line : null, absent };
+  };
+  const absent = (message: string): Record<string, unknown> => ({ diagnostics: [diagnostic({ severity: "warning", code: "provider_absent", message }, true)] });
   if (cap === null) return absent("No extension provider is connected; figures stay placeholders");
   let response: BlockRenderResponse;
   try {
-    response = await cap.blockRender({ ...(effect.request as Omit<BlockRenderRequest, "ticket">), ticket: `t-${effect.ticket}` } as BlockRenderRequest);
+    // The core's fingerprint is not the provider's (that one adds the provider's identity), so it is not claimed.
+    const { fingerprint: _claimed, ...request } = effect.request as Record<string, unknown>;
+    response = await cap.blockRender({ ...(request as Omit<BlockRenderRequest, "ticket" | "fingerprint">), ticket: `t-${effect.ticket}` } as BlockRenderRequest);
   } catch (failure) {
     return absent(failure instanceof Error ? failure.message : "provider request failed");
   }
   if (response.ticket !== `t-${effect.ticket}`) return absent("provider answered a different request");
   if (response.absence !== undefined) {
-    return { diagnostics: [...(response.diagnostics ?? [{ severity: "warning", code: "provider.absent", message: `provider absent: ${response.absence.reason}` }]).map((d) => ({ ...d, absent: true }))] };
+    const said = response.diagnostics ?? [];
+    return { diagnostics: said.length > 0 ? said.map((d) => diagnostic(d, true)) : [diagnostic({ severity: "warning", code: "provider.absent", message: `provider absent: ${response.absence.reason}` }, true)] };
   }
   if (response.artifact !== undefined) {
     const bytes = response.artifact.encoding === "base64" ? fromBase64(response.artifact.data) : new TextEncoder().encode(response.artifact.data);
@@ -164,13 +170,13 @@ export async function relayBlockRender(
       artifact: {
         mime: response.artifact.mime,
         bytesBase16: [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(""),
-        width: intrinsic?.width ?? 0,
-        height: intrinsic?.height ?? 0,
+        width: intrinsic?.width ?? 100,
+        height: intrinsic?.height ?? 100,
         provenance: String(response.artifact.provenance?.provider ?? "provider"),
       },
     };
   }
-  return { diagnostics: (response.diagnostics ?? []).map((d) => ({ ...d, line: d.sourceLine ?? d.texLine ?? 0, absent: false })) };
+  return { diagnostics: (response.diagnostics ?? []).map((d) => diagnostic(d, false)) };
 }
 
 /** Intrinsic size from the root `width`/`height` or `viewBox`; a measurement, not a parse of the deck. */

@@ -25,14 +25,27 @@ function harness() {
   return { document, view, selected, canvas: document.getElementById("c")!, rail: document.getElementById("r")! };
 }
 
-test("every navigator item is painted in the continuous preview and the rail; only the active slide is interactive", async () => {
+test("every navigator item is painted in the continuous preview and the rail; every slide of the deck is offered to the canvas layer", async () => {
   const h = harness();
+  const offered: string[] = [];
+  const editable = createDeckView({
+    doc: h.document as unknown as Document,
+    scroller: h.document.getElementById("s") as unknown as HTMLElement,
+    canvas: h.canvas as unknown as HTMLElement,
+    rail: h.rail as unknown as HTMLElement,
+    paint: { math: katexProvider },
+    sink: { pointer: async () => undefined, activate: async () => undefined },
+    onSelect: () => undefined,
+    editing: { attach: (slide, plan) => { offered.push(`${plan.frame}:${slide.parentElement?.className}`); return () => undefined; } },
+  });
+  await editable.update(buildSampleView({ revision: 1, source, activeFrame: "results" }));
+  assert.deepEqual(offered, ["title", "why", "prog", "arch", "results", "refs"].map((f) => `${f}:deck-slide`), "each slide once, never a note or a thumbnail");
+  h.canvas.replaceChildren();
+  h.rail.replaceChildren();
   await h.view.update(buildSampleView({ revision: 1, source, activeFrame: "results" }));
   assert.equal(h.canvas.querySelectorAll(".deck-row").length, 6);
   assert.equal(h.rail.querySelectorAll(".slide-thumb").length, 6);
   assert.deepEqual([...h.canvas.querySelectorAll(".deck-row")].map((r) => r.getAttribute("data-frame")), ["title", "why", "prog", "arch", "results", "refs"]);
-  const interactive = [...h.canvas.querySelectorAll(".deck-row")].filter((r) => r.querySelector(".sb-hit") !== null).map((r) => r.getAttribute("data-frame"));
-  assert.deepEqual(interactive, ["results"]);
   assert.equal(h.rail.querySelectorAll(".sb-hit").length, 0, "thumbnails are never interactive");
   assert.equal(h.canvas.querySelector(".deck-row.is-current")?.getAttribute("data-frame"), "results");
   assert.equal(h.rail.querySelector(".slide-thumb.is-current")?.getAttribute("data-frame"), "results");

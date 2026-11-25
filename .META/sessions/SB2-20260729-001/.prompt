@@ -1,0 +1,102 @@
+You are the orchestrator for the next core SlideBlaster vertical slice: Core TikZ Authoring Breadth.
+
+Goal: locally deliver and verify a source-authoritative TikZ authoring path in which a meaningful real-world slide with multiple named nodes, real structured content, common styles and placement, and straight or orthogonal connectors renders through the shared product model and supports verified canvas edits without changing unrelated authored source.
+
+This prompt is scaffolding for future execution. Before mutating product files, follow the repository workflow, confirm that the active P0 session has released every overlapping file, and establish one governed implementation owner for the slice. Do not create duplicate ownership or edit another active session’s worktree.
+
+The user-visible capability must cover this coherent breadth slice:
+
+- Multiple named nodes on one slide.
+- Real node text and structured content rendering rather than identity placeholders.
+- Common TikZ node options including anchors, text width, shape, fill, stroke, and typography where evidence supports exact semantics.
+- Absolute and relative positioning with explicit writable or read-only provenance.
+- Straight and orthogonal connectors with visible arrow tips.
+- Connector geometry that updates when an attached node moves.
+- Selection and movement of any supported writable node.
+- Resize, create, duplicate, and delete for the supported node subset.
+- Exact source-local edits followed by complete reparse, elaboration, and intended-semantic verification.
+- Exact preservation and visibly read-only treatment of unsupported or ambiguous TikZ.
+- A meaningful real-world TikZ fixture that exercises the slice instead of a specially minimal demonstration.
+
+Do not interpret “TikZ breadth” as permission to claim arbitrary PGF/TikZ compatibility. Start from accepted design, legacy executable behavior, real fixtures, and current source laws; state the exact supported subset and fail closed outside it. A compiled view-only escape hatch is not evidence that a construct is canvas-editable.
+
+Required orchestration graph:
+
+1. An analyst independently inventories the current P0 implementation, accepted TikZ contracts, legacy parser/editor behavior, representative real fixtures, and exact gaps for every capability above.
+2. A fixture analyst selects or derives one representative fixture with provenance and explains why it is realistic, challenging, and legally usable; it must not mutate product code.
+3. A designer defines one end-to-end semantic path, writable provenance rules, unsupported/read-only behavior, connector dependency behavior, rendering/measurement needs, failure atomicity, and target boundaries.
+4. The orchestrator resolves user-gated format or semantic decisions before implementation, assigns one writer per file, and prevents overlap with unfinished P0 work.
+5. Implementers work only on disjoint assigned paths and include contract-derived tests with every behavior change.
+6. An independent verifier derives checks from source-authority and user-visible behavior, then runs the cheapest focused checks before package, native, Wasm, browser, and end-to-end gates.
+7. An independent reviewer inspects exact source locality, stale-state rejection, unsupported preservation, connector correctness, browser/Haskell authority, accessibility, and accidental complexity.
+8. The integrator alone updates shared manifests, package maps, current architecture, semantic knowledge, roadmap status, and the final local demonstration record after ownership handoff.
+
+Non-negotiable source and architecture laws:
+
+- Exact authored bytes and revision remain authoritative.
+- Comments, whitespace, delimiters, option spelling and order, unsupported constructs, malformed regions, and unrelated bytes remain identical after a local edit.
+- A stale snapshot, gesture, paint, measurement, or source candidate cannot commit.
+- Projection or verification failure is atomic and creates no history entry.
+- Every canvas edit reparses the complete affected source and verifies the intended semantic result before commit.
+- Expanded, computed, ambiguous, unsupported, or non-invertible syntax remains read-only until an explicit inverse is implemented and verified.
+- Shared semantic, source, application, and render policy stays in portable Haskell; JavaScript only validates closed projections, transports raw browser facts, invokes capabilities, and paints.
+- Browser presentation state may remain local only where it has no document, semantic, source, geometry, history, command, or acceptance meaning.
+- Ordinary edits never canonicalize the whole document.
+
+Slice-shaping rules:
+
+- Prefer one realistic diagram working deeply over many constructs represented only by types.
+- Reuse current common Canvas, Document, App, Presentation, Render, and Product runtime boundaries instead of creating a second feature model.
+- Promote bounded TikZ behavior through a format adapter with exact provenance; do not leak private parser spans or syntax constructors into generic application policy.
+- Treat text measurement and font readiness honestly; do not paint placeholder labels and call structured content complete.
+- Connector endpoints must derive from accepted node geometry and ports, not from stale browser pixels.
+- Create, duplicate, resize, delete, and move must each be one verified undoable source transaction with exact no-op behavior.
+- Unsupported constructs must remain visible enough for the user to understand their location and read-only status without fabricating editable semantics.
+
+Local-only safety:
+
+- Work, build, test, and demonstrate locally only.
+- Do not commit, merge, push, publish, deploy, tag, sign, advance main, create a release, use production services, or use live credentials without a separate explicit product-owner instruction for the exact operation.
+- Do not make outbound requests that transmit project source, fixtures, credentials, or user data.
+- Preserve every unrelated worktree change and never reset, clean, or overwrite another session’s files.
+- New dependencies require explicit justification, exact versions, license review, and product-owner escalation when they create a cross-cutting or hosted dependency.
+
+Required local evidence:
+
+- Parser and exact round-trip laws for the supported and unsupported regions of the real fixture.
+- Source-locality laws for move, resize, create, duplicate, and delete.
+- Full-candidate reparse and intended-semantic verification for every writable operation.
+- Connector endpoint and rerouting laws after node movement and resizing.
+- Rendering checks for real content, styles, anchors, shapes, typography, and arrow tips.
+- Stale revision, stale paint, stale gesture, no-op, unsupported, ambiguous, malformed, measurement-failure, and projection-failure cases.
+- Undo and redo restoring exact expected bytes and semantic state.
+- Native and GHC-Wasm conformance for shared semantics and wire projections.
+- Real packaged-browser interaction over the representative fixture with zero unexpected page or console errors.
+- An independent exact-diff review and a complete list of unverified limitations.
+
+Product-owner gate:
+
+When technical verification is complete, provide exact local launch instructions and a short sequence that visibly exercises the real fixture, multiple node selection and movement, resize, create, duplicate, delete, connector following, real content and styling, Undo/Redo, source locality, and unsupported read-only behavior.
+
+Ask separately:
+
+1. Can the product owner observe every named behavior in the local artifact?
+2. Does the observed core TikZ authoring breadth meet the intended outcome?
+
+Record both answers separately, treat requested changes as active work, do not infer acceptance from tests or silence, and stop after this one slice rather than beginning project persistence, collaboration, publishing, or cosmetic product dressing.
+
+Final report:
+
+Result
+Supported TikZ subset and deliberate exclusions
+Representative fixture and provenance
+Local artifact and access instructions
+User-visible behaviors
+Exact source-preservation evidence
+Files changed
+Verification commands and outcomes
+Independent review disposition
+Product-owner observation status
+Product-owner acceptance status
+Remaining core TikZ gaps
+Exact local review unit

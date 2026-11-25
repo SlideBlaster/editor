@@ -1,7 +1,7 @@
 [package]
 name = "slideblaster-desktop"
 version = "0.2.0-alpha"
-description = "SlideBlaster desktop shell: window, menus, folder dialog, presenter windows, sb serve sidecar"
+description = "SlideBlaster desktop shell: window, menus, folder dialog, presenter windows, project files"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "custom-protocol"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 

@@ -24,6 +24,7 @@ module SlideBlaster.Cli
 
 import SlideBlaster.Cli.Build (BuildOptions (..), BuildTarget (..), buildPdfFile, defaultBuildOutput, runBuild)
 import SlideBlaster.Cli.Check (DeckChecker, analysisChecks, basicChecker, hasErrors, renderDiagnostic)
+import SlideBlaster.Cli.Render (runRender)
 import SlideBlaster.Cli.New (NewError (..), scaffoldProject, sampleDeckName)
 import SlideBlaster.Cli.Session (sessionMount)
 import SlideBlaster.Product.Runtime.Analysis (Analyzer (..))
@@ -43,7 +44,9 @@ import Data.Text.IO qualified as Text.IO
 import System.Exit (ExitCode (..))
 import System.IO (stderr)
 import System.Directory (doesDirectoryExist, doesFileExist)
-import System.Environment (getExecutablePath)
+import System.Environment (getExecutablePath, lookupEnv)
+import System.Process (proc, waitForProcess, withCreateProcess)
+import Data.Maybe (fromMaybe)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import SlideBlaster.Cli.Watch (scanProject)
 import Data.ByteString qualified as ByteString
@@ -103,6 +106,10 @@ data CliCommand
   | CliCheck !FilePath
   | CliBuild !BuildTarget !FilePath !FilePath !(Maybe FilePath)
   -- ^ target, deck, output file, optional web directory
+  | CliRender !FilePath
+  -- ^ project directory; one block.render request on standard input
+  | CliShots ![Text]
+  -- ^ arguments for the web host's shots script (it parses them)
   deriving (Eq, Show)
 
 -- | Parsed @sb serve@ arguments.
@@ -198,6 +205,8 @@ parseArguments arguments =
     ["new", dir] -> Right (CliNew (Text.unpack dir))
     ["check", path] -> Right (CliCheck (Text.unpack path))
     ("build" : rest) -> parseBuild rest
+    ["render", dir] -> Right (CliRender (Text.unpack dir))
+    ("shots" : rest@(_ : _)) -> Right (CliShots rest)
     [] -> Right CliHelp
     _ -> Left "invalid command or arguments"
 
@@ -268,6 +277,8 @@ usage =
     , "  sb check DECK"
     , "  sb build --html DECK [-o OUT.html] [--web DIR]"
     , "  sb build --pdf DECK [-o OUT.pdf] [--steps] [--web DIR]"
+    , "  sb render DIR < REQUEST.json"
+    , "  sb shots DECK [-o DIR] [--compare] [--root DIR] [--size WxH] [--web DIR]"
     , "  sb version"
     , "  slideblaster inspect FILE"
     , "  slideblaster replace FILE START END EXPECTED REPLACEMENT [--write]"
@@ -281,6 +292,11 @@ usage =
     , "build --html writes one offline page: every slide and step with the figures compiled."
     , "build --pdf prints that page with headless Chrome (SB_CHROME, google-chrome, chromium on PATH):"
     , "one page per slide showing its final step; --steps prints one page per overlay step."
+    , "render compiles one figure: a block.render request on standard input, the provider outcome"
+    , "(artifact or diagnostics) on standard output; DIR is the project whose cache it uses."
+    , "shots presents the deck in headless Chrome and saves what the audience window shows, one PNG"
+    , "per step (default DECK_DIR/.slideblaster/shots/); --compare also prints the stepped PDF and"
+    , "lists every step where the two differ, with side-by-side images. Needs node and pdftoppm."
     , "START and END are zero-based, half-open byte offsets."
     , "EXPECTED and REPLACEMENT are command-line text encoded as UTF-8."
     , "replace is an exact, checked dry run unless --write is supplied."
@@ -380,6 +396,8 @@ runCommand hooks fileSystem command =
     CliServe options -> runServeCommand hooks options
     CliNew dir -> runNew dir
     CliCheck path -> runCheck hooks fileSystem path
+    CliShots arguments -> runShots arguments
+    CliRender dir -> runRender dir
     CliBuild target deck out web -> do
       webDir <- maybe findWebDirectory (pure . Just) web
       exe <- takeDirectory <$> getExecutablePath
@@ -392,6 +410,29 @@ runCommand hooks fileSystem command =
           , buildThemeDirs = themeDirectories webDir exe
           , buildViewerDirs = viewerDirectories webDir exe
           }
+
+-- | @sb shots@: the web host's script drives Chrome; this sb serves and prints for it.
+runShots :: [Text] -> IO ExitCode
+runShots arguments = do
+  self <- getExecutablePath
+  webDir <- if "--web" `elem` arguments then pure Nothing else findWebDirectory
+  let scriptDir = case [Text.unpack d | ("--web", d) <- zip arguments (drop 1 arguments)] of
+        d : _ -> Just d
+        [] -> webDir
+  case scriptDir of
+    Nothing -> do
+      Text.IO.hPutStrLn stderr "sb shots: no web directory found (pass --web DIR)"
+      pure (ExitFailure 2)
+    Just dir -> do
+      node <- fromMaybe "node" <$> lookupEnv "SB_NODE"
+      let script = dir </> "scripts" </> "shots.mjs"
+          extra = ["--sb", self] <> maybe [] (\d -> ["--web", d]) webDir
+      result <- try (withCreateProcess (proc node (script : fmap Text.unpack arguments <> extra)) (\_ _ _ handle' -> waitForProcess handle'))
+      case result of
+        Right code -> pure code
+        Left (failure :: SomeException) -> do
+          Text.IO.hPutStrLn stderr ("sb shots: could not run " <> Text.pack node <> ": " <> Text.pack (show failure))
+          pure (ExitFailure 2)
 
 viewerDirectories :: Maybe FilePath -> FilePath -> [FilePath]
 viewerDirectories webDir exe =
@@ -430,10 +471,12 @@ runServeCommand hooks options = do
       Text.IO.hPutStrLn stderr ("slideblaster: serve failed: " <> Text.pack (show problem))
       pure (ExitFailure 1)
 
+-- Where the bundled themes and the shape library may be (the library is
+-- generated into the web host's dist/ by its build).
 themeDirectories :: Maybe FilePath -> FilePath -> [FilePath]
 themeDirectories webDir exe =
-  maybe [] (\d -> [d </> "themes", d </> ".." </> ".." </> "themes", d </> ".." </> ".." </> ".." </> "themes"]) webDir
-    <> ["themes", exe </> "themes", exe </> ".." </> "share" </> "slideblaster" </> "themes"]
+  maybe [] (\d -> [d </> "themes", d </> ".." </> ".." </> "themes", d </> ".." </> ".." </> ".." </> "themes", d </> "dist" </> "shapes", d </> "shapes"]) webDir
+    <> ["themes", exe </> "themes", exe </> ".." </> "share" </> "slideblaster" </> "themes", exe </> "shapes", exe </> ".." </> "share" </> "slideblaster" </> "shapes"]
 
 -- The packaged web host: hosts/web/dist in the working tree, else beside the
 -- executable (web/ or ../share/slideblaster/web).

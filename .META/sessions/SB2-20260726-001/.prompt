@@ -1,0 +1,9 @@
+[Prompt-capture provenance]
+
+Session SB2-20260726-001 was created before tracked `.prompt` capture was
+accepted on 2026-07-27. The exact initiating user prompt is not available in the
+current transcript context and is therefore not reconstructed or fabricated.
+
+Accepted initiating objective: preserve the existing work, establish `dev`, and
+install dependency-free `.META` session, worktree, research, version, changelog,
+and product-owner release safeguards without changing product behaviour.

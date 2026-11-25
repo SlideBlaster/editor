@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-project-cache-write"
+description = "Enables the project_cache_write command without any pre-configured scope."
+commands.allow = ["project_cache_write"]
+
+[[permission]]
+identifier = "deny-project-cache-write"
+description = "Denies the project_cache_write command without any pre-configured scope."
+commands.deny = ["project_cache_write"]

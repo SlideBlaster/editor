@@ -1,0 +1,40 @@
+== typed sessions, research, and worktrees ==
+Created research session SB2-20260726-002 at /tmp/slideblaster2-workflow-final.4yGH4t/.META/sessions/SB2-20260726-002
+Created maintenance session SB2-20260726-003 at /tmp/slideblaster2-workflow-final.4yGH4t/.META/sessions/SB2-20260726-003
+Created implementation session SB2-20260726-004 at /tmp/slideblaster2-workflow-final.4yGH4t/.META/sessions/SB2-20260726-004
+unsupported closure rejected: Session SB2-20260726-004 requires an exact non-pending Artifact revision
+Created research artifact SB2-20260726-002--compile-time--kiro-verifier--01
+Worktree path must not begin with '-': --force
+Preparing worktree (new branch 'session/SB2-20260726-004')
+HEAD is now at 854e45f record research artifact
+Valid worktree for SB2-20260726-004 (registration 95110ba): /tmp/slideblaster2-workflow-final.4yGH4t-good
+Valid worktree for SB2-20260726-004 (registration 95110ba): /tmp/slideblaster2-workflow-final.4yGH4t-good
+Created implementation session SB2-20260726-005 at /tmp/slideblaster2-workflow-final.4yGH4t/.META/sessions/SB2-20260726-005
+wrong-base rejection: Session branch does not contain its dev registration commit: session/SB2-20260726-005
+== explicit product-owner closure state ==
+missing closure response, malformed review unit, pending steering, and disposition masking rejected
+Valid maintenance session (closed): SB2-20260726-003
+explicit closure accepted at integration 616c1eef81a124b17919054bc8556b6761fbd00e
+workflow fixture: /tmp/slideblaster2-workflow-final.4yGH4t
+immutable registration: 95110bab6e1582038ee349436983247cec1516a6
+== release preview and explicit fixture-only promotion ==
+Version 0.1.0 maps consistently to Cabal 0.1.0.0 across all 16 packages.
+Release candidate 0.1.0 is clean on dev; main can fast-forward to 0b82cb5.
+Version 0.1.0 maps consistently to Cabal 0.1.0.0 across all 16 packages.
+Release candidate 0.1.0 is clean on dev; main can fast-forward to 0b82cb5.
+Promotion plan for release 0.1.0:
+  main 1675281
+  dev  0b82cb5
+  action: local fast-forward of main to dev; no push
+No branch was changed. The product owner may rerun with:
+  /tmp/slideblaster2-release-final.b5KLwE/scripts/release/promote.sh --execute --confirm 0.1.0
+Version 0.1.0 maps consistently to Cabal 0.1.0.0 across all 16 packages.
+Release candidate 0.1.0 is clean on dev; main can fast-forward to 0b82cb5.
+Promotion plan for release 0.1.0:
+  main 1675281
+  dev  0b82cb5
+  action: local fast-forward of main to dev; no push
+Promoted local main to 0b82cb5 for release 0.1.0. Nothing was pushed.
+same-version rejection: Every main advance requires a new product version; main is already 0.1.0.
+release fixture: /tmp/slideblaster2-release-final.b5KLwE
+all isolated workflow fixture checks passed

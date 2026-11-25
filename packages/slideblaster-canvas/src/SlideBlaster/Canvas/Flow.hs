@@ -62,8 +62,17 @@ module SlideBlaster.Canvas.Flow
   , contentPlainText
   , pictureEntries
   , PictureItem (..)
+  , PictureNode (..)
+  , PictureLine (..)
+  , PictureJoin (..)
+  , PictureLabel (..)
   , PictureEndpoint (..)
   , pictureItems
+  , shiftPictureItem
+  , PictureFrom (..)
+  , includedItem
+  , pictureNodeDistance
+  , parseDraw
   ) where
 
 import SlideBlaster.Canvas.Content
@@ -109,7 +118,7 @@ import SlideBlaster.Canvas.Overlay
   , stepsFrom
   , stepsThrough
   )
-import SlideBlaster.Canvas.Placement (Placement (AbsolutePlacement, GeneratedPlacement))
+import SlideBlaster.Canvas.Placement (Placement (AbsolutePlacement, GeneratedPlacement, RelativeNodePlacement), RelativePlacement (RelativePlacement), RelativeSide (Above, AboveLeft, AboveRight, Below, BelowLeft, BelowRight, LeftOf, RightOf), defaultPortsForSide)
 import SlideBlaster.Canvas.Property
   ( NodePropertyPatch (nodePatchOverlay, nodePatchRole, nodePatchSizing)
   , Sizing (FixedSize)
@@ -144,7 +153,7 @@ import SlideBlaster.Syntax.Overlay
   , parseOverlaySpec
   , specRanges
   )
-import SlideBlaster.Syntax.Picture (Statement (NodeStatement, OpaqueStatement), optionPairs, readPicture)
+import SlideBlaster.Syntax.Picture (DrawJoin (..), DrawLabel (..), DrawPath (..), DrawPoint (..), DrawStep (..), Statement (AttachedStatement, NodeStatement, OpaqueStatement), optionPairs, readDraw, readPicture, statementText)
 import SlideBlaster.Syntax.Printer (printColourExpr, printNodes)
 import SlideBlaster.Syntax.Style
   ( Family (Monospace)
@@ -157,13 +166,14 @@ import SlideBlaster.Syntax.Surface qualified as Surface
 import SlideBlaster.Syntax.Surface (MdSpelling (MdInlineLink), Surface (MarkdownSurface), linkTarget)
 import SlideBlaster.Syntax.Tex.Reader (readTex)
 
-import Data.Char (isAlphaNum, isSpace)
+import Data.Char (isAlphaNum, isDigit, isSpace)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Unsafe (lengthWord8)
 import Data.Text.Read qualified as TextRead
 import Numeric.Natural (Natural)
 
@@ -711,10 +721,91 @@ lowerOne ctx current =
            in case mkListing (listingLanguage' header) code Nothing False of
                 Right listing -> pure [CodeContent (provenance ctx LaTeX) listing]
                 Left _ -> (: []) <$> unsupported ctx LaTeX UnsupportedSyntax
+      | name `elem` ["tabular", "tabular*", "array"] = lowerTabular ctx (printNodes body)
+      | name == "columns" = lowerColumns ctx (printNodes body)
+      | name == "column" = do
+          let (width, rest) = leadingGroup (printNodes body)
+          inner <- lowerBlocks ctx (Block.flowBlocks (Block.readFlow (Text.dropWhile (== '\n') rest)))
+          pure [TransparentContainer (provenance ctx LaTeX) (ColumnContainer (columnWidth width)) inner]
       | otherwise = do
           report ctx LevelInfo "environment.unknown" ("unknown environment " <> name <> "; its content is shown")
           inner <- lowerSeq ctx body
           pure [TransparentContainer (provenance ctx LaTeX) (GenericContainer name) inner]
+
+-- @\\begin{tabular}{lr} a & b \\\\ c & d \\end{tabular}@: rows end with @\\\\@, cells
+-- are split at @&@, the column letters give the alignment, and rules
+-- (@\\toprule@, @\\midrule@, @\\bottomrule@, @\\hline@) are dropped. The first row
+-- is the head.
+lowerTabular :: Ctx -> Text -> L [ContentNode]
+lowerTabular ctx raw = do
+  let (spec, rest) = leadingGroup raw
+      aligns = [Text.singleton c | c <- Text.unpack spec, c `elem` ("lcr" :: String)]
+      rows = filter (not . Text.null . Text.strip) (fmap withoutRules (splitTop "\\\\" rest))
+  rowModels <- traverse lowerRow rows
+  case NonEmpty.nonEmpty (mapMaybe id rowModels) of
+    Just neRows -> pure [TableContent (provenance ctx LaTeX) (DerivedReady (TableModel neRows aligns))]
+    Nothing -> (: []) <$> unsupported ctx LaTeX UnsupportedSyntax
+  where
+    withoutRules row = foldl (\t rule -> Text.replace rule "" t) row ["\\toprule", "\\midrule", "\\bottomrule", "\\hline"]
+    lowerRow row = do
+      cells <- traverse (\cell -> TableCell 1 1 . trimNodes <$> lowerProse ctx (Block.readProse (Text.strip cell))) (splitTop "&" row)
+      pure (TableRow <$> NonEmpty.nonEmpty cells)
+
+-- @\\begin{columns} \\column{0.6} .. \\column{0.4} .. \\end{columns}@ as in Beamer;
+-- @\\begin{column}{w}@ environments inside are read by the environment rule.
+lowerColumns :: Ctx -> Text -> L [ContentNode]
+lowerColumns ctx raw =
+  case drop 1 (Text.splitOn "\\column{" (snd (leadingOptional raw))) of
+    [] -> do
+      inner <- lowerBlocks ctx (Block.flowBlocks (Block.readFlow (Text.dropWhile (== '\n') raw)))
+      pure [TransparentContainer (provenance ctx LaTeX) ColumnsContainer inner]
+    pieces -> do
+      columns <- traverse one pieces
+      pure [TransparentContainer (provenance ctx LaTeX) ColumnsContainer columns]
+  where
+    one piece = do
+      let (width, rest) = Text.breakOn "}" piece
+      inner <- lowerBlocks ctx (Block.flowBlocks (Block.readFlow (Text.dropWhile (== '\n') (Text.drop 1 rest))))
+      pure (TransparentContainer (provenance ctx LaTeX) (ColumnContainer (columnWidth width)) inner)
+
+-- A Beamer column width (@0.6@, @0.6\\textwidth@, @.5\\linewidth@) as a percentage.
+columnWidth :: Text -> Text
+columnWidth width =
+  let number = Text.takeWhile (\c -> isDigit c || c == '.') (Text.strip width)
+   in case TextRead.double (if "." `Text.isPrefixOf` number then "0" <> number else number) of
+        Right (v, _) | v > 0 && v <= 1 -> Text.pack (show (round (v * 100) :: Int)) <> "%"
+        _ -> Text.strip width
+
+-- A leading @{..}@ group of an environment body, and the text after it.
+leadingGroup :: Text -> (Text, Text)
+leadingGroup raw =
+  case Text.uncons (Text.stripStart (snd (leadingOptional raw))) of
+    Just ('{', rest) -> let (inside, after) = Text.break (== '}') rest in (inside, Text.drop 1 after)
+    _ -> (Text.empty, raw)
+
+-- A leading @[..]@ group and the text after it.
+leadingOptional :: Text -> (Text, Text)
+leadingOptional raw =
+  case Text.uncons (Text.stripStart raw) of
+    Just ('[', rest) -> let (inside, after) = Text.break (== ']') rest in (inside, Text.drop 1 after)
+    _ -> (Text.empty, raw)
+
+-- Split at a separator outside braces and inline math.
+splitTop :: Text -> Text -> [Text]
+splitTop separator = go (0 :: Int) False Text.empty
+  where
+    go depth math acc remaining
+      | Text.null remaining = [acc]
+      | depth == 0 && not math && separator `Text.isPrefixOf` remaining = acc : go depth math Text.empty (Text.drop (Text.length separator) remaining)
+      | otherwise =
+          case Text.uncons remaining of
+            Nothing -> [acc]
+            Just ('\\', rest) | Just (c, rest') <- Text.uncons rest, c /= '\\' -> go depth math (acc <> Text.pack ['\\', c]) rest'
+            Just (c, rest)
+              | c == '{' -> go (depth + 1) math (Text.snoc acc c) rest
+              | c == '}' -> go (max 0 (depth - 1)) math (Text.snoc acc c) rest
+              | c == '$' -> go depth (not math) (Text.snoc acc c) rest
+              | otherwise -> go depth math (Text.snoc acc c) rest
 
 -- | The @[language=P4]@ header of a listing environment and the code after it.
 splitListingHeader :: Text -> (Text, Text)
@@ -757,7 +848,25 @@ splitArgs args =
 lowerCommand :: Ctx -> SynNode -> Text -> [ArgumentF SynNode] -> L [ContentNode]
 lowerCommand ctx current name args =
   case name of
+    -- @\\pause[3]@: what follows is shown from that step on, as in Beamer
+    "pause"
+      | Right (number, rest) <- TextRead.decimal (Text.strip (printNodes (concat (argOptional a))))
+      , Text.null rest
+      , Just at <- mkOverlayStep (number :: Natural) ->
+          pure [OverlayPauseContent p (PauseAt at)]
     "pause" -> pure [OverlayPauseContent p PauseNext]
+    "appear" -> pure [OverlayPauseContent p PauseNext]
+    "printbibliography" -> pure [TransparentContainer p (GenericContainer "bibliography") []]
+    -- @\\matrix{1 & 2 \\\\ 3 & 4}@: a matrix, typeset as math
+    "matrix" -> pure [OpaqueMath p InlineMath ("\\begin{pmatrix}" <> printNodes (concat (take 1 (argMandatory a))) <> "\\end{pmatrix}")]
+    -- @\\alert<2>{..}@: emphasised on those steps (always, without a spec), shown plain otherwise
+    "alert" -> do
+      inner <- maybe (pure []) (lowerSeq ctx) (listToMaybe' (argMandatory a))
+      case argAngle a of
+        Nothing -> pure [StyledRun p (InlineColour "#c62828" :| []) inner]
+        Just spec -> do
+          hook <- hookFor ctx spec
+          pure [OverlayContent hook [TransparentContainer p (GenericContainer "alert") inner]]
     -- Vertical space, as in Beamer: the plan carries the length in em.
     "smallskip" -> pure [vspace "0.3"]
     "medskip" -> pure [vspace "0.6"]
@@ -798,9 +907,13 @@ lowerCommand ctx current name args =
     _
       | name `elem` ["only", "uncover", "onslide", "visible"] -> overlayCommand
       | name == "invisible" -> do
-          report ctx LevelInfo "overlay.unsupported" "\\invisible is not supported; content is shown"
+          -- hidden (its space kept) on the named steps, shown on the others
           inner <- maybe (pure []) (lowerSeq ctx) (listToMaybe' (argMandatory a))
-          pure inner
+          case argAngle a of
+            Nothing -> pure [OverlayContent AlwaysVisible [TransparentContainer p (GenericContainer "invisible") inner]]
+            Just spec -> do
+              hook <- hookFor ctx spec
+              pure [OverlayContent hook [TransparentContainer p (GenericContainer "invisible") inner]]
       | otherwise -> do
           report ctx LevelInfo "command.unknown" ("unknown command \\" <> name <> "; kept as an opaque region")
           (: []) <$> unsupported ctx LaTeX UnsupportedSyntax
@@ -1037,13 +1150,14 @@ fallbackNodeId =
 ------------------------------------------------------------------------------
 -- Picture tier
 
--- | Lower a @```slide@ block body. Supported @\\node@ statements become absolutely
+-- | Lower a @```slide@ block body. A slide may hold several blocks: statements
+-- are numbered across them, so each block is given the number of its first. Supported @\\node@ statements become absolutely
 -- placed nodes (anchor @center@ unless @anchor=..@ says otherwise, overlay from
 -- @overlay={spec}@); anything else becomes an opaque-statement barrier with an
 -- informational diagnostic. Statement text is never modified.
-pictureEntries :: FlowContext -> Int -> Text -> ([LayerEntry], [FlowDiagnostic], [FlowResource])
-pictureEntries context firstLine body =
-  let (entries, final) = runL (go (Ctx context firstLine) (1 :: Int) (readPicture body))
+pictureEntries :: FlowContext -> Int -> Int -> Text -> ([LayerEntry], [FlowDiagnostic], [FlowResource])
+pictureEntries context firstLine firstStatement body =
+  let (entries, final) = runL (go (Ctx context firstLine) firstStatement (readPicture body))
    in (concat entries, reverse (sDiagnostics final), reverse (sResources final))
   where
     go _ _ [] = pure []
@@ -1052,21 +1166,25 @@ pictureEntries context firstLine body =
       let advanced = ctx {ctxLine = ctxLine ctx + Text.count "\n" (statementTextOf statement)}
       later <- go advanced (n + 1) rest
       pure (here : later)
-    statementTextOf statement =
-      case statement of
-        NodeStatement {} -> nodeRaw statement
-        OpaqueStatement raw -> raw
-    nodeRaw statement =
-      case statement of
-        NodeStatement _ _ _ _ _ raw -> raw
-        OpaqueStatement raw -> raw
+    statementTextOf = statementText
     one ctx n statement =
-      case statement of
-        NodeStatement options name x y nodeBody _ -> do
+      case nodeForm statement of
+        Just (NodeForm options name place nodeBody) -> do
           let pairs = optionPairs options
               identifier = pickId n name
               port = maybe Centre id (lookupAnchor pairs)
-          inner <- lowerProse ctx (Block.readProse nodeBody)
+              placement =
+                case place of
+                  Left (x, y) -> AbsolutePlacement (point (canvasUnit x) (canvasUnit y)) port
+                  Right (side, target, gap) ->
+                    case (nodeId target, lookup side [("above", Above), ("below", Below), ("left", LeftOf), ("right", RightOf), ("above left", AboveLeft), ("above right", AboveRight), ("below left", BelowLeft), ("below right", BelowRight)]) of
+                      (Just targetId, Just relativeSide) ->
+                        let (own, theirs) = defaultPortsForSide relativeSide
+                            distance = canvasUnit (maybe pictureNodeDistance id gap)
+                            diagonal = relativeSide `elem` [AboveLeft, AboveRight, BelowLeft, BelowRight]
+                         in RelativeNodePlacement (RelativePlacement targetId relativeSide distance (if diagonal then distance else canvasUnit 0) theirs own)
+                      _ -> AbsolutePlacement (point (canvasUnit 8) (canvasUnit 4.5)) port
+          inner <- lowerNodeBody ctx nodeBody
           let isBox = any (\(k, _) -> k == "sbbox") pairs
               boxed =
                 if isBox
@@ -1088,7 +1206,7 @@ pictureEntries context firstLine body =
                 ( CanvasNode
                     Object.Node
                       { Object.nodeIdentifier = identifier
-                      , Object.nodePlacement = AbsolutePlacement (point (canvasUnit x) (canvasUnit y)) port
+                      , Object.nodePlacement = placement
                       , Object.nodeOutline = PrimitiveGeometry RectangleOutline
                       , Object.nodeContent = content boxed
                       , Object.nodePropertyOverrides = emptyNodePropertyPatch {nodePatchOverlay = hook}
@@ -1097,7 +1215,7 @@ pictureEntries context firstLine body =
                       }
                 )
             ]
-        OpaqueStatement raw
+        Nothing
           | Text.all isSpace raw || isCommentOnly raw -> pure []
           | Just _ <- parseDraw raw -> pure []
           | otherwise -> do
@@ -1105,6 +1223,8 @@ pictureEntries context firstLine body =
               case (barrierId ("statement-" <> Text.pack (show n)), sourceRef (contextHandlePrefix context <> "-statement-" <> Text.pack (show n))) of
                 (Just barrier, Just ref) -> pure [BarrierEntry (OpaqueStatementBarrier barrier ref)]
                 _ -> pure []
+          where
+            raw = statementText statement
     isCommentOnly raw = all (\l -> let t = Text.strip l in Text.null t || "%" `Text.isPrefixOf` t) (Text.lines raw)
     pickId n name =
       case name >>= validId of
@@ -1150,7 +1270,12 @@ contentPlainText = Text.unwords . Text.words . Text.concat . fmap plain . conten
 -- | A picture-tier item the host can place on top of the flow body: a node at
 -- slide coordinates (units, origin bottom-left) or a straight polyline.
 data PictureItem
-  = PictureNodeItem
+  = PictureNodeItem !PictureNode
+  | PictureLineItem !PictureLine
+  deriving stock (Eq, Show)
+
+-- | A placed node of a picture.
+data PictureNode = PictureNode
       { pictureNodeId :: !Text
       , pictureNodeX :: !Double
       , pictureNodeY :: !Double
@@ -1158,12 +1283,94 @@ data PictureItem
       , pictureNodeOptions :: !Text
       , pictureNodeContent :: ![ContentNode]
       , pictureNodeHook :: !(Maybe OverlayHook)
-      }
-  | PictureLineItem
-      { pictureLineOptions :: !Text
-      , pictureLinePoints :: ![PictureEndpoint]
+      , pictureNodeStatement :: !Int
+      -- ^ one-based number of the statement in the block
+      , pictureNodeNamed :: !Bool
+      -- ^ whether the source gives the node a name (else the id is @picture-N@)
+      , pictureNodeSource :: !Text
+      -- ^ the content exactly as written between the braces
+      , pictureNodeSpan :: !(Int, Int)
+      -- ^ UTF-8 byte span of the statement (leading blank space excluded)
+      , pictureNodeAttached :: !(Maybe (Text, Text))
+      -- ^ side and target id of a node attached to another (@below=of a@); its
+      -- point is then derived by the layout and the X and Y fields are unused
+      , pictureNodeGap :: !(Maybe Double)
+      -- ^ the written distance of an attached node (@below=1.5 of a@), slide units
+      , pictureNodeFrom :: !(Maybe PictureFrom)
+      -- ^ set on a node that comes from an included picture file
       }
   deriving stock (Eq, Show)
+
+-- | A line between nodes or points of a picture.
+data PictureLine = PictureLine
+      { pictureLineOptions :: !Text
+      , pictureLinePoints :: ![PictureEndpoint]
+      , pictureLineStatement :: !Int
+      , pictureLineSpan :: !(Int, Int)
+      , pictureLineFrom :: !(Maybe PictureFrom)
+      , pictureLineAnchors :: ![Maybe Text]
+      -- ^ for each point, the anchor written on a node end (@a.north@, @a.30@)
+      , pictureLineJoins :: ![PictureJoin]
+      -- ^ how each step reaches its point; one fewer than the points
+      , pictureLineLabels :: ![PictureLabel]
+      }
+  deriving stock (Eq, Show)
+
+-- | How a line goes from one point to the next.
+data PictureJoin
+  = PictureStraight
+  | -- | along x, then along y (@-|@)
+    PictureHV
+  | -- | along y, then along x (@|-@)
+    PictureVH
+  | -- | a curve leaving at this many degrees to the left of straight (negative: right)
+    PictureBend !Double
+  | -- | a curve leaving and arriving at these angles (@out@, @in@)
+    PictureOutIn !Double !Double
+  deriving stock (Eq, Show)
+
+-- | A label on a line: its step (from 1), whether it sits at the step's point
+-- rather than along it, and what it shows, as a node (its point is derived).
+data PictureLabel = PictureLabel
+  { pictureLabelStep :: !Int
+  , pictureLabelAtEnd :: !Bool
+  , pictureLabelNode :: !PictureNode
+  }
+  deriving stock (Eq, Show)
+
+-- | Where an included picture item comes from: the file, the @\\cat@ statement
+-- that brings it in (its number among the slide's statements and its byte span
+-- in the deck) and the shift that statement gives it, in slide units. The
+-- item's own span counts in the file.
+data PictureFrom = PictureFrom
+  { fromFile :: !Text
+  , fromStatement :: !Int
+  , fromSpan :: !(Int, Int)
+  , fromShift :: !(Double, Double)
+  }
+  deriving stock (Eq, Show)
+
+-- | Mark an item as included and move it by the include's shift.
+includedItem :: PictureFrom -> PictureItem -> PictureItem
+includedItem from item =
+  let (dx, dy) = fromShift from
+   in case item of
+        PictureNodeItem node -> PictureNodeItem node {pictureNodeX = pictureNodeX node + dx, pictureNodeY = pictureNodeY node + dy, pictureNodeFrom = Just from}
+        PictureLineItem line ->
+          PictureLineItem
+            line
+            { pictureLinePoints = [case point of EndpointPoint x y -> EndpointPoint (x + dx) (y + dy); other -> other | point <- pictureLinePoints line]
+            , pictureLineFrom = Just from
+            }
+
+-- | Move an item's byte span by an offset (block-relative to file-relative).
+shiftPictureItem :: Int -> PictureItem -> PictureItem
+shiftPictureItem base item =
+  case item of
+    PictureNodeItem node -> PictureNodeItem node {pictureNodeSpan = shifted (pictureNodeSpan node)}
+    PictureLineItem line -> PictureLineItem line {pictureLineSpan = shifted (pictureLineSpan line)}
+  where
+    shifted (a, b) = (a + base, b + base)
 
 -- | An end of a drawn line: a node id or slide coordinates.
 data PictureEndpoint
@@ -1174,27 +1381,28 @@ data PictureEndpoint
 -- | The nodes and straight @\\draw@ lines of a picture block, in source order.
 -- Statements outside this subset are skipped here (they stay opaque in
 -- 'pictureEntries', which reports them).
-pictureItems :: FlowContext -> Int -> Text -> [PictureItem]
-pictureItems context firstLine body = concat (fst (runL (go (Ctx context firstLine) (1 :: Int) (readPicture body))))
+pictureItems :: FlowContext -> Int -> Int -> Text -> [PictureItem]
+pictureItems context firstLine firstStatement body = concat (fst (runL (go (Ctx context firstLine) firstStatement (0 :: Int) (readPicture body))))
   where
-    go _ _ [] = pure []
-    go ctx n (statement : rest) = do
-      here <- one ctx n statement
-      let raw = case statement of
-            NodeStatement _ _ _ _ _ r -> r
-            OpaqueStatement r -> r
-      later <- go (ctx {ctxLine = ctxLine ctx + Text.count "\n" raw}) (n + 1) rest
+    go _ _ _ [] = pure []
+    go ctx n offset (statement : rest) = do
+      let raw = statementText statement
+          bytesOf = lengthWord8
+          end = offset + bytesOf raw
+          start = end - bytesOf (Text.stripStart raw)
+      here <- one ctx n (start, end) statement
+      later <- go (ctx {ctxLine = ctxLine ctx + Text.count "\n" raw}) (n + 1) end rest
       pure (here : later)
-    one ctx n statement =
-      case statement of
-        NodeStatement options name x y nodeBody _ -> do
+    one ctx n range statement =
+      case nodeForm statement of
+        Just (NodeForm options name place nodeBody) -> do
           let pairs = optionPairs options
               identifier = maybe ("picture-" <> Text.pack (show n)) id (name >>= validName)
               isBox = any (\(k, _) -> k == "sbbox") pairs
               anchor = case [v | (k, Just v) <- pairs, k == "anchor"] of
                 v : _ -> Text.strip v
                 [] -> "center"
-          inner <- lowerProse ctx (Block.readProse nodeBody)
+          inner <- lowerNodeBody ctx nodeBody
           let nodes
                 | isBox = [TransparentContainer (provenance ctx LaTeX) (BoxContainer options) [TransparentContainer (provenance ctx LaTeX) (GenericContainer "box-title") [], TransparentContainer (provenance ctx LaTeX) (GenericContainer "box-body") (trimNodes inner)]]
                 | otherwise = trimNodes inner
@@ -1202,30 +1410,76 @@ pictureItems context firstLine body = concat (fst (runL (go (Ctx context firstLi
             case [v | (k, Just v) <- pairs, k == "overlay"] of
               spec : _ -> Just <$> hookFor ctx spec
               [] -> pure Nothing
-          pure [PictureNodeItem identifier (fromRational x) (fromRational y) anchor options nodes hook]
-        OpaqueStatement raw ->
-          pure [PictureLineItem opts points | Just (opts, points) <- [parseDraw raw]]
+          let (x, y) = either id (const (0, 0)) place
+          pure [PictureNodeItem (PictureNode identifier (fromRational x) (fromRational y) anchor options nodes hook n (maybe False (const True) (name >>= validName)) nodeBody range (either (const Nothing) (\(side, target, _) -> Just (side, target)) place) (either (const Nothing) (\(_, _, gap) -> fromRational <$> gap) place) Nothing)]
+        Nothing ->
+          case readDraw (statementText statement) of
+            Nothing -> pure []
+            Just path -> do
+              let written = zip [1 :: Int ..] [(k, atEnd, label) | (k, step) <- zip [1 :: Int ..] (drawSteps path), (atEnd, label) <- fmap ((,) False) (stepLabels step) <> fmap ((,) True) (stepAfter step)]
+              labels <- traverse (\(j, (k, atEnd, DrawLabel labelOptions body)) -> do
+                  content <- lowerNodeBody ctx body
+                  pure (PictureLabel k atEnd (PictureNode ("label-" <> Text.pack (show n) <> "-" <> Text.pack (show j)) 0 0 "" labelOptions (trimNodes content) Nothing n False body range Nothing Nothing Nothing))) written
+              pure [PictureLineItem (PictureLine (drawOptions path) (drawEnds path) n range Nothing (drawAnchors path) (drawJoins path) labels)]
     validName t = if not (Text.null t) && Text.all (\c -> isAlphaNum c || c == '-' || c == '_') t then Just t else Nothing
 
--- @\\draw[options] (a) -- (b) -- (x,y);@ with node ids and plain coordinates.
-parseDraw :: Text -> Maybe (Text, [PictureEndpoint])
-parseDraw raw = do
-  afterDraw <- Text.stripPrefix "\\draw" (Text.strip raw)
-  let (options, afterOptions) = case Text.uncons (Text.stripStart afterDraw) of
-        Just ('[', rest) -> let (inside, after) = Text.break (== ']') rest in (inside, Text.drop 1 after)
-        _ -> ("", afterDraw)
-      path = Text.strip (maybe (Text.strip afterOptions) id (Text.stripSuffix ";" (Text.strip afterOptions)))
-  points <- traverse endpoint (Text.splitOn "--" path)
-  if length points >= 2 then Just (options, points) else Nothing
+-- A node's content: one line is inline text; several lines are a flow of
+-- blocks (lists, tables, containers), as in a slide body.
+lowerNodeBody :: Ctx -> Text -> L [ContentNode]
+lowerNodeBody ctx body
+  | Text.any (== '\n') (Text.strip body) =
+      let text = Text.dropWhile (== '\n') (Text.dropWhileEnd isSpace body)
+       in lowerBlocks ctx (Block.flowBlocks (Block.readFlow text))
+  | otherwise = lowerProse ctx (Block.readProse body)
+
+-- | The gap, in slide units, between a node and one attached to it.
+pictureNodeDistance :: Rational
+pictureNodeDistance = 3 / 4
+
+-- Both node forms as one: options, name, an absolute point or a side and
+-- target, and the content.
+data NodeForm = NodeForm !Text !(Maybe Text) !(Either (Rational, Rational) (Text, Text, Maybe Rational)) !Text
+
+nodeForm :: Statement -> Maybe NodeForm
+nodeForm statement =
+  case statement of
+    NodeStatement options name x y body _ -> Just (NodeForm options name (Left (x, y)) body)
+    AttachedStatement options name side target gap body _ -> Just (NodeForm options name (Right (side, target, gap)) body)
+    OpaqueStatement _ -> Nothing
+
+drawPoints :: DrawPath -> [DrawPoint]
+drawPoints path = drawStart path : fmap stepPoint (drawSteps path)
+
+drawEnds :: DrawPath -> [PictureEndpoint]
+drawEnds path = [case at of DrawNode name _ -> EndpointNode name; DrawAt x y -> EndpointPoint (fromRational x) (fromRational y) | at <- drawPoints path]
+
+drawAnchors :: DrawPath -> [Maybe Text]
+drawAnchors path = [case at of DrawNode _ anchor -> anchor; DrawAt _ _ -> Nothing | at <- drawPoints path]
+
+-- A @to@ bends as its own options say, else as the line's; without either it is straight.
+drawJoins :: DrawPath -> [PictureJoin]
+drawJoins path = fmap (joinOf . stepJoin) (drawSteps path)
   where
-    endpoint part = do
-      inner <- Text.stripPrefix "(" (Text.strip part) >>= Text.stripSuffix ")"
-      case Text.splitOn "," inner of
-        [a, b] -> EndpointPoint <$> number a <*> number b
-        [single]
-          | Text.all (\c -> isAlphaNum c || c `elem` ("-_." :: String)) (Text.strip single), not (Text.null (Text.strip single)) ->
-              Just (EndpointNode (Text.takeWhile (/= '.') (Text.strip single)))
-        _ -> Nothing
-    number t = case TextRead.signed TextRead.double (Text.strip t) of
-      Right (v, rest) | Text.null rest -> Just v
-      _ -> Nothing
+    joinOf join = case join of
+      JoinStraight -> PictureStraight
+      JoinHV -> PictureHV
+      JoinVH -> PictureVH
+      JoinTo options -> fromMaybe PictureStraight (curve (optionPairs options) `orElse` curve (optionPairs (drawOptions path)))
+    orElse a b = maybe b Just a
+    curve pairs =
+      let value key = case reverse [v | (k, v) <- pairs, k == key] of
+            v : _ -> Just v
+            [] -> Nothing
+          degrees fallback v = fromMaybe fallback (v >>= numberOf)
+          numberOf t = case TextRead.signed TextRead.double (Text.strip t) of
+            Right (v, rest) | Text.null (Text.strip rest) -> Just v
+            _ -> Nothing
+       in case (value "out" >>= (>>= numberOf), value "in" >>= (>>= numberOf), value "bend left", value "bend right") of
+            (Just out, Just into, _, _) -> Just (PictureOutIn out into)
+            (_, _, Just v, _) -> Just (PictureBend (degrees 30 v))
+            (_, _, _, Just v) -> Just (PictureBend (negate (degrees 30 v)))
+            _ -> Nothing
+
+-- | The options and ends of a @\\draw@ line (see 'readDraw' for its full form).
+parseDraw :: Text -> Maybe (Text, [PictureEndpoint])
+parseDraw raw = (\path -> (drawOptions path, drawEnds path)) <$> readDraw raw

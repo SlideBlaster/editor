@@ -1,0 +1,23 @@
+== bash syntax and executable modes ==
+ok scripts/session/create.sh
+ok scripts/session/validate.sh
+ok scripts/session/worktree.sh
+ok scripts/research/create.sh
+ok scripts/release/check-versions.sh
+ok scripts/release/promote.sh
+ok scripts/release/verify.sh
+== metadata ==
+./scripts/session/validate.sh
+Valid implementation session (closed): SB2-20260726-001
+Valid research artifact: SB2-20260726-001--workflow-validation--kiro-verifier--01
+== versions ==
+./scripts/release/check-versions.sh
+Version 0.1.0 maps consistently to Cabal 0.1.0.0 across all 16 packages.
+== ignore boundaries ==
+ignore boundaries passed
+== option-like worktree path ==
+option-like path rejected
+== release fails closed before candidate commit ==
+dirty release candidate rejected
+== diff whitespace ==
+all repository-local workflow checks passed

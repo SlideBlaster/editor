@@ -1,0 +1,35 @@
+\begin{tikzpicture}[
+    font=\scriptsize,
+    every node/.style={align=center},
+    obj/.style={draw, rounded corners=1pt, inner sep=2.5pt, minimum height=7mm},
+    untrusted/.style={obj, dashed},
+    trusted/.style={obj, fill=black!15},
+    proved/.style={obj, very thick},
+    arr/.style={-{Stealth[length=1.6mm]}},
+  ]
+  \matrix[column sep=4.5mm, row sep=11mm] {
+    \node[obj] (p1) {program}; &
+    \node[trusted] (t1) {translation}; &
+    \node[obj] (m1) {model}; &
+    \node[untrusted] (e1) {model\\checker}; &
+    \node[trusted] (c1) {checker}; &
+    \node (v1) {HOLDS}; \\
+    \node[obj] (p2) {definition\\and program}; &
+    \node[proved] (t2) {front and\\stages}; &
+    \node[obj] (m2) {made\\system}; &
+    \node[untrusted] (e2) {analysis solver,\\exports\\and engines}; &
+    \node[trusted] (c2) {obligations,\\cvc5, Ethos,\\or lift and replay}; &
+    \node (v2) {HOLDS\\FAILS}; \\
+  };
+  \foreach \r in {1,2} {
+    \draw[arr] (p\r) -- (t\r);
+    \draw[arr] (t\r) -- (m\r);
+    \draw[arr] (m\r) -- (e\r);
+    \draw[arr] (e\r) -- (c\r);
+    \draw[arr] (c\r) -- (v\r);
+  }
+  \draw[arr] (m1.north) to[bend left=22] (c1.north);
+  \draw[arr] (m2.south) to[bend right=22] (c2.south);
+  \node[anchor=south west, font=\scriptsize\itshape] at ([yshift=5mm]p1.north west) {Certifying model checker};
+  \node[anchor=south west, font=\scriptsize\itshape] at ([yshift=2mm]p2.north west) {\Tovrin{}};
+\end{tikzpicture}

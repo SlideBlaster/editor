@@ -16,5 +16,7 @@ packages:
   ../../packages/slideblaster-app
   ../../packages/slideblaster-tikz
   ../../packages/slideblaster-deck
+  ../../packages/slideblaster-listing
+  ../../packages/slideblaster-cite
 
 optimization: 2

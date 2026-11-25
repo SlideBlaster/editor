@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-render-block"
+description = "Enables the render_block command without any pre-configured scope."
+commands.allow = ["render_block"]
+
+[[permission]]
+identifier = "deny-render-block"
+description = "Denies the render_block command without any pre-configured scope."
+commands.deny = ["render_block"]

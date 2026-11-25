@@ -144,3 +144,4 @@ watchLaw = do
   _ <- timeout 2000000 (takeMVar pushed)
   snapshot <- handleSessionFrame driver (req "workspace_snapshot" []) >>= decode
   expect "deck reloaded to disk bytes" (String (encodeBase16 new)) (field "sourceBase16" (field "source" (field "view" snapshot)))
+  expect "a deck reloaded from disk is not an unsaved edit" (field "revision" (field "view" snapshot)) (field "saved" (field "view" snapshot))

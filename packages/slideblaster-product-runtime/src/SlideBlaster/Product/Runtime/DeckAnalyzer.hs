@@ -57,7 +57,7 @@ import Data.Text.Encoding.Error (lenientDecode)
 
 -- | The W analyzer.
 deckAnalyzer :: Analyzer
-deckAnalyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter}
+deckAnalyzer = Analyzer {analyzeDeck = analyse, insertSlideAfter = insertAfter, editPicture = \_ _ _ _ _ -> Left "canvas edits need a .slideBlaster.md deck"}
 
 prov :: Provenance
 prov = CanvasProvenance Markdown
@@ -206,6 +206,7 @@ analyse _files _entry bytes =
                     )
                     []
                     []
+                    []
                     (content [])
               , frameNotes = content []
               , frameOrigin = Nothing
@@ -219,7 +220,7 @@ analyse _files _entry bytes =
               { frameKey = sectionId s
               , frameTitleText = sectionTitle s
               , frameSpan = sectionSpan s
-              , frameScene = FrameInput (sectionId s) (content (inline (sectionTitle s))) (content nodes) Nothing [] [] (content [])
+              , frameScene = FrameInput (sectionId s) (content (inline (sectionTitle s))) (content nodes) Nothing [] [] [] (content [])
               , frameNotes = content notes
               , frameOrigin = Nothing
               }

@@ -140,3 +140,46 @@ test("a route choice paints as a button carrying its route id", () => {
   assert.equal(button.getAttribute("data-route"), "ai-first");
   assert.equal(button.textContent, "AI and software development");
 });
+
+test("picture nodes are turned and flipped, and a later node covers an earlier one's text", () => {
+  const style = { font: "serif", size: 20, weight: 400, italic: false, color: "#000000", align: "center", lineHeight: 1.2 };
+  const base = plan("results");
+  const node = (id: string, x: number, rotate?: number) => [
+    { kind: "rect", id: `pic-bg-${id}`, box: { x, y: 100, width: 200, height: 100 }, fill: "#ffffff", stroke: null, radius: 0, opacity: 1, hit: null, ...(rotate === undefined ? {} : { rotate }) },
+    { kind: "flow", id: `pic-${id}`, box: { x, y: 100, width: 200, height: 100 }, style, content: [], ...(rotate === undefined ? {} : { rotate }) },
+  ];
+  const shape = { kind: "path", id: "pic-bg-s", box: { x: 900, y: 500, width: 100, height: 50 }, d: "M0 0 L1 0.5 L0 1 Z", fill: null, stroke: null, opacity: 1, hit: null, rotate: 90, flip: { x: true, y: false } };
+  const made = validatePlan({ ...base, items: [...node("a", 100, 30), ...node("b", 200), ...node("c", 600), shape] });
+  const slide = paintPlan(made, { doc: doc(), math: katexProvider }).element;
+  // b overlaps a's text, so it starts a new pair of layers; c and the shape overlap nothing
+  assert.deepEqual([...slide.children].map((c) => c.getAttribute("class")?.replace("sb-layer ", "")), ["sb-layer-geometry", "sb-layer-content", "sb-layer-geometry", "sb-layer-content", "sb-layer-overlay"]);
+  assert.equal(slide.children[2]!.querySelectorAll("rect").length, 2);
+  assert.equal(slide.querySelector('[data-item-id="pic-bg-a"]')!.getAttribute("transform"), "rotate(-30 200 150)");
+  assert.equal(slide.querySelector('[data-item-id="pic-bg-b"]')!.getAttribute("transform"), null);
+  assert.match((slide.querySelector('[data-item-id="pic-a"]') as HTMLElement).style.transform, /rotate\(-30deg\)/);
+  const outline = slide.querySelector('[data-item-id="pic-bg-s"]')!;
+  assert.equal(outline.parentElement!.getAttribute("transform"), "rotate(-90 950 525)");
+  assert.equal(outline.querySelector("path")!.getAttribute("transform"), "translate(1 0) scale(-1 1)");
+  assert.throws(() => validatePlan({ ...base, items: [{ ...shape, flip: { x: 1, y: false } }] }), PlanError);
+});
+
+test("a trail is painted as a path with its arrowhead; other path data is refused", () => {
+  const base = plan("results");
+  const stroke = { color: "#112233", width: 2, dash: null };
+  const made = validatePlan({ ...base, items: [
+    { kind: "trail", id: "pic-line-1-1", d: "M 10 20 L 50 20 L 50 60", stroke, arrow: "end", hit: null },
+    { kind: "trail", id: "pic-line-2-1", d: "M 0 0 C 10 -10 30 -10 40 0", stroke, arrow: "both", hit: null },
+    { kind: "line", id: "pic-line-3-1", from: { x: 0, y: 0 }, to: { x: 5, y: 5 }, stroke, arrow: "start", hit: null },
+  ] });
+  const slide = paintPlan(made, { doc: doc(), math: katexProvider }).element;
+  const elbow = slide.querySelector('[data-item-id="pic-line-1-1"]')!;
+  assert.equal(elbow.tagName.toLowerCase(), "path");
+  assert.equal(elbow.getAttribute("d"), "M 10 20 L 50 20 L 50 60");
+  assert.equal(elbow.getAttribute("fill"), "none");
+  assert.ok(elbow.getAttribute("marker-end") !== null && elbow.getAttribute("marker-start") === null);
+  assert.ok(slide.querySelector('[data-item-id="pic-line-2-1"]')!.getAttribute("marker-start") !== null);
+  assert.ok(slide.querySelector('[data-item-id="pic-line-3-1"]')!.getAttribute("marker-start") !== null);
+  for (const d of ["M 0 0", "M 0 0 Z", "L 0 0 L 1 1", "M 0 0 l 1 1", "M 0 0 L 1e3 1", "M 0 0 L 1 1 <script>", "M 0 0 A 1 1 0 0 0 2 2"]) {
+    assert.throws(() => validatePlan({ ...base, items: [{ kind: "trail", id: "t", d, stroke, arrow: "none", hit: null }] }), PlanError, d);
+  }
+});
