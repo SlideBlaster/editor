@@ -75,6 +75,27 @@ function toggleFullscreen(doc: Document): void {
 /** Time the outgoing slide takes to zoom out when a route is chosen; the incoming slide zooms in for as long again. */
 const routeLeaveMs = 280;
 
+/**
+ * Steps from a held key. A held key repeats faster than a step is painted, so sending every repeat
+ * piles steps up and the talk keeps moving after the key is let go. A repeat is therefore sent only
+ * when the step before it has been shown (or a second has passed) and not more than about eight a
+ * second; a fresh press is always sent.
+ */
+export function heldKeySteps(send: (command: PresenterCommand) => void, now: () => number = () => performance.now()): { press(command: PresenterCommand, repeat: boolean): void; shown(): void } {
+  let waiting = false;
+  let sentAt = -Infinity;
+  return {
+    press(command, repeat) {
+      const at = now();
+      if (repeat && ((waiting && at - sentAt < 1000) || at - sentAt < 120)) return;
+      waiting = true;
+      sentAt = at;
+      send(command);
+    },
+    shown() { waiting = false; },
+  };
+}
+
 export function mountAudience({ doc, channel, paint }: WindowDeps): void {
   const state = createWindowState();
   const stage = doc.getElementById("stage")!;
@@ -92,6 +113,7 @@ export function mountAudience({ doc, channel, paint }: WindowDeps): void {
     if (state.title) doc.title = `${state.title} — audience`;
   };
   const send = (command: PresenterCommand) => channel.postMessage({ t: "command", command });
+  const keys = heldKeySteps(send);
   const choose = (route: string) => {
     choosing = true;
     stage.classList.remove("sb-route-enter");
@@ -100,6 +122,7 @@ export function mountAudience({ doc, channel, paint }: WindowDeps): void {
   };
   channel.onmessage = (event) => {
     if (!state.receive(event.data as ChannelMessage)) return;
+    keys.shown();
     const route = state.views?.route?.id ?? null;
     const selected = choosing || (routeSeen !== undefined && route !== routeSeen && route !== null);
     routeSeen = route;
@@ -121,7 +144,7 @@ export function mountAudience({ doc, channel, paint }: WindowDeps): void {
     const route = routeForKey(event.key, state.views);
     if (route !== null) { event.preventDefault(); choose(route); return; }
     const command = commandForKey(event.key);
-    if (command !== null) { event.preventDefault(); send(command); }
+    if (command !== null) { event.preventDefault(); keys.press(command, event.repeat); }
   });
   doc.addEventListener("click", (event) => {
     const button = (event.target as HTMLElement | null)?.closest?.("[data-route]");
@@ -143,6 +166,7 @@ export function mountConsole({ doc, channel, paint, now = () => Date.now() }: Wi
   const where = el("con-where");
   const timer = el("con-timer");
   const send = (command: PresenterCommand) => channel.postMessage({ t: "command", command });
+  const keys = heldKeySteps(send);
   let fitNotesNow = (): void => undefined;
   const render = () => {
     const v = state.views;
@@ -158,7 +182,7 @@ export function mountConsole({ doc, channel, paint, now = () => Date.now() }: Wi
     where.textContent = `Slide ${v.slide?.number ?? "?"}${v.slide ? ` / ${v.slide.count}` : ""} · step ${v.step} / ${v.steps}`;
     if (state.title) doc.title = `${state.title} — presenter`;
   };
-  channel.onmessage = (event) => { if (state.receive(event.data as ChannelMessage)) render(); };
+  channel.onmessage = (event) => { if (state.receive(event.data as ChannelMessage)) { keys.shown(); render(); } };
   const choose = (route: string) => channel.postMessage({ t: "route", route });
   // Notes size. Fit (the default): the largest size up to fitMax at which this slide's notes fit
   // without scrolling, never below fitMin. A-/A+ (or - / +) pick a fixed size; Fit goes back.
@@ -207,7 +231,7 @@ export function mountConsole({ doc, channel, paint, now = () => Date.now() }: Wi
     const route = routeForKey(event.key, state.views);
     if (route !== null) { event.preventDefault(); choose(route); return; }
     const command = commandForKey(event.key);
-    if (command !== null) { event.preventDefault(); (event.target as HTMLElement | null)?.blur?.(); send(command); }
+    if (command !== null) { event.preventDefault(); (event.target as HTMLElement | null)?.blur?.(); keys.press(command, event.repeat); }
   });
   doc.addEventListener("click", (event) => {
     const route = (event.target as HTMLElement | null)?.closest?.("[data-route]")?.getAttribute("data-route");
