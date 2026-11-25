@@ -28,6 +28,89 @@ pub struct Entry {
 
 pub type Scan = BTreeMap<String, Entry>;
 
+/// The path with links followed where the system itself cannot follow them.
+///
+/// A deck folder inside WSL, opened from Windows as `\\wsl.localhost\<distro>\..`, may hold a
+/// Linux symbolic link (an included deck is often one). Windows shows such a link but cannot open
+/// what it points to, so WSL is asked where it leads. Answers are kept for half a minute.
+pub fn follow(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        use std::collections::HashMap;
+        use std::os::windows::process::CommandExt;
+        use std::sync::{Mutex, OnceLock};
+        use std::time::{Duration, Instant};
+        if path.exists() {
+            return path.to_path_buf();
+        }
+        let text = path.to_string_lossy().replace('/', "\\");
+        let text = match text.strip_prefix("\\\\?\\UNC\\") {
+            Some(rest) => format!("\\\\{rest}"),
+            None => text,
+        };
+        let rest = text.strip_prefix("\\\\wsl.localhost\\").or_else(|| text.strip_prefix("\\\\wsl$\\"));
+        let Some(rest) = rest else { return path.to_path_buf() };
+        let mut parts = rest.split('\\').filter(|s| !s.is_empty());
+        let Some(distro) = parts.next() else { return path.to_path_buf() };
+        let mut inside: Vec<&str> = Vec::new();
+        for part in parts {
+            match part {
+                "." => {}
+                ".." => {
+                    inside.pop();
+                }
+                other => inside.push(other),
+            }
+        }
+        // only a link on the way is a reason to ask; a file that is simply missing is not
+        let share = format!("\\\\wsl.localhost\\{distro}");
+        let mut probe = PathBuf::from(&share);
+        let mut linked = false;
+        for part in &inside {
+            probe.push(part);
+            match std::fs::symlink_metadata(&probe) {
+                Ok(meta) if meta.file_type().is_symlink() || (!probe.is_dir() && !probe.is_file()) => {
+                    linked = true;
+                    break;
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        if !linked {
+            return path.to_path_buf();
+        }
+        static KNOWN: OnceLock<Mutex<HashMap<String, (Instant, Option<PathBuf>)>>> = OnceLock::new();
+        let known = KNOWN.get_or_init(|| Mutex::new(HashMap::new()));
+        let linux = format!("/{}", inside.join("/"));
+        let name = format!("{distro}:{linux}");
+        if let Some((at, answer)) = known.lock().ok().and_then(|k| k.get(&name).cloned()) {
+            if at.elapsed() < Duration::from_secs(30) {
+                return answer.unwrap_or_else(|| path.to_path_buf());
+            }
+        }
+        const NO_WINDOW: u32 = 0x0800_0000;
+        let answer = std::process::Command::new("wsl.exe")
+            .args(["-d", distro, "-e", "readlink", "-f", "--", &linux])
+            .creation_flags(NO_WINDOW)
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+            .filter(|target| target.starts_with('/'))
+            .map(|target| PathBuf::from(format!("{share}{}", target.replace('/', "\\"))))
+            .filter(|target| target.exists());
+        if let Ok(mut k) = known.lock() {
+            k.insert(name, (Instant::now(), answer.clone()));
+        }
+        answer.unwrap_or_else(|| path.to_path_buf())
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
+    }
+}
+
 fn skipped(name: &str) -> bool {
     matches!(name, ".slideblaster" | ".git" | "node_modules")
 }
@@ -112,7 +195,7 @@ pub fn scan(root: &Path) -> Scan {
         let text = String::from_utf8_lossy(&std::fs::read(&entry.real).unwrap_or_default()).into_owned();
         for path in include_paths(&text) {
             let target = normalize_key(&format!("{}/{}", key_directory(deck_key), path));
-            let real = root.join(key_to_relative(&target));
+            let real = follow(&root.join(key_to_relative(&target)));
             let file_dir = key_directory(&target).to_string();
             let ancestor_only = file_dir.split('/').filter(|s| !s.is_empty()).all(|s| s == "_up");
             let added: Scan = if real.is_dir() {
@@ -209,7 +292,7 @@ pub fn read(root: &Path, key: &str) -> Option<Vec<u8>> {
     if segments[up..].iter().any(|s| *s == "_up") {
         return None;
     }
-    let path = root.join(key_to_relative(key));
+    let path = follow(&root.join(key_to_relative(key)));
     path.is_file().then(|| std::fs::read(path).ok()).flatten()
 }
 

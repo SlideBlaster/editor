@@ -17,14 +17,25 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 /* ---- shell ---- */
 .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; min-width: 0; }
-.app-bar { z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; min-width: 0; padding: .45rem .9rem; border-bottom: 1px solid var(--line); background: var(--surface); }
-.app-brand { display: inline-flex; align-items: baseline; gap: .4rem; min-width: 0; white-space: nowrap; }
+.app-bar { z-index: 20; display: flex; align-items: center; flex-wrap: nowrap; gap: .4rem; min-width: 0; padding: .45rem .9rem; border-bottom: 1px solid var(--line); background: var(--surface); }
+/* One row at every width. The document name gives way first, then tools leave in steps (below);
+   Present stays at the right end and is never pushed off or onto a row of its own. */
+.app-bar > * { flex: 0 0 auto; white-space: nowrap; }
+.app-brand { display: inline-flex; align-items: baseline; gap: .4rem; flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+.app-bar > .bar-spacer { flex: 1 1 auto; }
+.app-bar #present-btn { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+.app-bar #present-btn:hover:not(:disabled) { color: #fff; filter: brightness(1.1); }
+@media (max-width: 1460px) { .app-bar label[for="theme-dialect"], .app-bar label[for="style-foreground"], .app-bar #style-apply-colour { display: none; } }
+@media (max-width: 1080px) { .app-bar .format-actions { display: none; } .app-bar .conn { font-size: 0; gap: 0; } }
+@media (max-width: 860px) { .app-bar .app-doc, .app-bar .bar-divider { display: none; } }
+@media (max-width: 700px) { .app-bar .app-brand, .app-bar .bar-group { display: none; } }
+@media (max-width: 460px) { .app-bar #view-notes { display: none; } }
 .app-name { font-weight: 650; letter-spacing: -.01em; }
 .app-doc { max-width: 16rem; overflow: hidden; color: var(--muted); font-size: .82rem; text-overflow: ellipsis; }
 .app-doc::before { content: "/ "; opacity: .5; }
 .app-doc[data-dirty="true"]::after { content: " \25CF"; color: var(--accent); }
 .bar-divider { width: 1px; height: 1.15rem; flex: 0 0 auto; background: var(--line); }
-.bar-group { display: inline-flex; flex-wrap: wrap; gap: .25rem; align-items: center; }
+.bar-group { display: inline-flex; flex-wrap: nowrap; gap: .25rem; align-items: center; }
 .bar-spacer { flex: 1 1 auto; min-width: 0; }
 .app-bar button, .app-bar select, .app-bar input, .deck-add, .zoom-control button { border: 1px solid var(--line); border-radius: 6px; padding: .26rem .6rem; background: var(--surface); font-size: .74rem; cursor: pointer; }
 .app-bar input { width: 8.5rem; cursor: text; }
@@ -201,8 +212,6 @@ path.sb-drawing-picked { filter: drop-shadow(0 0 2px #2f6fed) drop-shadow(0 0 1p
 }
 @media (max-width: 520px) {
   .app-bar { gap: .3rem; padding-inline: .5rem; }
-  .app-brand { flex: 1 1 100%; }
-  .bar-divider, .format-actions { display: none; }
   .deck-canvas { --slide-w: 88vw; padding-inline: 1rem; align-items: flex-start; }
 }
 /* Route choices (\route{id}{label}): large buttons; the number is the digit key that selects it. */
